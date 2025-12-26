@@ -16,13 +16,83 @@
 
 import logging
 import time
+import os
+import subprocess
+import shutil
+import tempfile
+import pathlib
 from minio import Minio
 from minio.commonconfig import CopySource
 from minio.error import S3Error
 from io import BytesIO
 from common.decorator import singleton
 from common import settings
+import sys
 
+def convert_to_pdf(file_path):
+    """
+    Converts a doc or docx file to pdf format.
+    
+    Args:
+        file_path (str): The absolute path to the doc/docx file.
+    """
+    if not os.path.exists(file_path):
+        print(f"Error: File '{file_path}' does not exist.")
+        return
+
+    # Determine output directory (same as input file)
+    output_dir = os.path.dirname(file_path)
+    
+    # Construct the libreoffice command
+    # libreoffice --headless --convert-to pdf <file_path> --outdir <output_dir>
+    # Add LD_LIBRARY_PATH to environment variables
+    env = os.environ.copy()
+    env['LD_LIBRARY_PATH'] = '/usr/lib/libreoffice/program:' + env.get('LD_LIBRARY_PATH', '')
+    
+    command = [
+        "libreoffice",
+        "--headless",
+        "--convert-to",
+        "pdf",
+        file_path,
+        "--outdir",
+        output_dir
+    ]
+    
+    print(f"DEBUG-HY: Starting conversion for: {file_path}")
+    print(f"DEBUG-HY:Output directory: {output_dir}")
+    
+    try:
+        # Run the command
+        result = subprocess.run(
+            command, 
+            check=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            env=env
+        )
+        print("DEBUG-HY: Conversion completed successfully.")
+        print("LibreOffice Output:")
+        print(result.stdout.decode())
+        
+        # Verify output file exists
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        pdf_path = os.path.join(output_dir, base_name + ".pdf")
+        if os.path.exists(pdf_path):
+            print(f"DEBUG-HY: PDF generated at: {pdf_path}")
+            return pdf_path
+        else:
+            print("DEBUG-HY: Warning: PDF file not found despite successful command execution.")
+            return None
+            
+    except subprocess.CalledProcessError as e:
+        print("DEBUG-HY: Error during conversion.")
+        print("DEBUG-HY: Return code:", e.returncode)
+        print("DEBUG-HY: Stderr:", e.stderr.decode())
+        return None
+    except Exception as e:
+        print(f"DEBUG-HY: An unexpected error occurred: {e}")
+        return None
 
 @singleton
 class RAGFlowMinio:
@@ -142,9 +212,36 @@ class RAGFlowMinio:
         for _ in range(1):
             try:
                 r = self.conn.get_object(bucket, filename)
-                return r.read()
+                print(f"【DEBUG-HY】: get {bucket}/{filename}, type is {type(r)}", file=sys.stderr, flush=True)
+                content = r.read()
+                save_dir = "/home/hit802/temp_docs"
+                save_path = os.path.join(save_dir, filename)
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                with open(save_path, "wb") as f:
+                    f.write(content)
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in [".doc", ".docx"]:
+                    try:
+                        pdf_path = convert_to_pdf(save_path)
+                        if pdf_path and os.path.exists(pdf_path):
+                            with open(pdf_path, "rb") as pf:
+                                content = pf.read()
+                        else:
+                            print(f"【DEBUG-HY】DOC/DOCX→PDF fallback to original for {save_path}", file=sys.stderr, flush=True)
+                    except Exception:
+                        print(f"【DEBUG-HY】Fail to convert {save_path} to PDF", file=sys.stderr, flush=True)
+                try:
+                    r.close()
+                except Exception:
+                    pass
+                try:
+                    if hasattr(r, "release_conn"):
+                        r.release_conn()
+                except Exception:
+                    pass
+                return content
             except Exception:
-                logging.exception(f"Fail to get {bucket}/{filename}")
+                print(f"【DEBUG-HY】Fail to get {bucket}/{filename}", file=sys.stderr, flush=True)
                 self.__open__()
                 time.sleep(1)
         return

@@ -232,6 +232,7 @@ async def build_chunks(task, progress_callback):
     try:
         st = timer()
         bucket, name = File2DocumentService.get_storage_address(doc_id=task["doc_id"])
+        print(f"【DEBUG-HY】: build_chunks filename{name}", file=sys.stderr, flush=True)
         binary = await get_storage_binary(bucket, name)
         logging.info("From minio({}) {}/{}".format(timer() - st, task["location"], task["name"]))
     except TimeoutError:

@@ -72,5 +72,4 @@ export default defineConfig({
     return memo;
   },
   tailwindcss: {},
-  mfsu: false,
 });

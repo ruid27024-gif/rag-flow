@@ -25,6 +25,7 @@ from deepdoc.parser import PdfParser
 import numpy as np
 from rag.app.naive import by_plaintext, PARSERS
 from common.parser_config_utils import normalize_layout_recognizer
+import sys
 
 
 class Pdf(PdfParser):
@@ -149,7 +150,8 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
     parser_config = kwargs.get(
         "parser_config", {
             "chunk_token_num": 512, "delimiter": "\n!?。；！？", "layout_recognize": "DeepDOC"})
-    if re.search(r"\.pdf$", filename, re.IGNORECASE):
+    print(f"【DEBUG-HY】: chunking filename{filename}", file=sys.stderr, flush=True)
+    if True:
         layout_recognizer, parser_model_name = normalize_layout_recognizer(
             parser_config.get("layout_recognize", "DeepDOC")
         )
