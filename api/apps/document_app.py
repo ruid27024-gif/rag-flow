@@ -517,6 +517,33 @@ async def run():
                 if not e:
                     return get_data_error_result(message="Document not found!")
 
+                import logging
+                import sys
+                from datetime import datetime
+                # 强制将日志写入指定文件，避开 basicConfig 的限制
+                logger = logging.getLogger("document_app_debug")
+                if not logger.handlers:
+                    try:
+                        handler = logging.FileHandler('/home/hit802/RAG1/ragflow/document_app_debug.log')
+                        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+                        logger.addHandler(handler)
+                        logger.setLevel(logging.INFO)
+                    except Exception as ex:
+                        print(f"Failed to setup debug logger: {ex}", file=sys.stderr)
+                
+                msg = f"DOCUMENT_APP_DEBUG: doc_id={id}, tenant_id={tenant_id}"
+                logger.info(msg)
+                # 强制刷新 stdout 和 stderr
+                print(f"DEBUG: {msg}", file=sys.stdout, flush=True)
+                print(f"DEBUG: {msg}", file=sys.stderr, flush=True)
+                
+                # 尝试直接写入文件作为兜底
+                try:
+                    with open('/home/hit802/RAG1/ragflow/direct_write.log', 'a') as f:
+                        f.write(f"{datetime.now()} - {msg}\n")
+                except:
+                    pass
+
                 if str(req["run"]) == TaskStatus.CANCEL.value:
                     if str(doc.run) == TaskStatus.RUNNING.value:
                         cancel_all_task_of(id)

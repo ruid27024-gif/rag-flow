@@ -50,6 +50,8 @@ from api.apps import login_required, current_user
 @validate_request("name")
 async def create():
     req = await get_request_json()
+    print('DEBUG: req content follows')
+    print(req)
     e, res = KnowledgebaseService.create_with_name(
         name = req.pop("name", None),
         tenant_id = current_user.id,

@@ -34,6 +34,7 @@ from deepdoc.parser.excel_parser import RAGFlowExcelParser
 from rag.utils.redis_conn import REDIS_CONN
 from common import settings
 from rag.nlp import search
+import sys
 
 CANVAS_DEBUG_DOC_ID = "dataflow_x"
 GRAPH_RAPTOR_FAKE_DOC_ID = "graph_raptor_x"
@@ -350,7 +351,26 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
         - Task digests are calculated for optimization and reuse
         - Previous task chunks may be reused if available
     """
-
+    import logging
+    # 强制将日志写入指定文件，避开 basicConfig 的限制
+    logger = logging.getLogger("queue_tasks_debug")
+    if not logger.handlers:
+        try:
+            handler = logging.FileHandler('/home/hit802/RAG1/ragflow/queue_tasks.log')
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        except Exception as e:
+            print(f"Failed to setup debug logger: {e}")
+    
+    msg = f"queue_tasks doc_id: {doc.get('id')}, name: {name}, bucket: {bucket}, priority: {priority}"
+    logger.info(msg)
+    # 同时打印到标准输出，方便在容器日志中查看
+    print(f"DEBUG: {msg}")
+    
+    # 原有的 logging.info 可能因为 basicConfig 已被调用而无法按预期工作
+    logging.info(msg)
+    
     def new_task():
         return {
             "id": get_uuid(),
@@ -384,6 +404,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
                 task["from_page"] = p
                 task["to_page"] = min(p + page_size, e)
                 parse_task_array.append(task)
+        print(f"【DEBUG-HY】: {parse_task_array}", file=sys.stderr, flush=True)
 
     elif doc["parser_id"] == "table":
         file_bin = settings.STORAGE_IMPL.get(bucket, name)
@@ -427,6 +448,7 @@ def queue_tasks(doc: dict, bucket: str, name: str, priority: int):
                                          chunking_config["kb_id"])
     DocumentService.update_by_id(doc["id"], {"chunk_num": ck_num})
 
+    print(f"【DEBUG-HY】: parse_task_array:{parse_task_array},Task :{Task}", file=sys.stderr, flush=True)
     bulk_insert_into_db(Task, parse_task_array, True)
     DocumentService.begin2parse(doc["id"])
 

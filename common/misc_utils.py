@@ -101,8 +101,10 @@ def once(func):
 @once
 def pip_install_torch():
     device = os.getenv("DEVICE", "cpu")
+    logging.info("【DEBUG-HY】device: {device}" )
     if device=="cpu":
         return
     logging.info("Installing pytorch")
     pkg_names = ["torch>=2.5.0,<3.0.0"]
+    # todo-zm 这里存在问题，这个方法调用不动，所以pytorch安装失败了
     subprocess.check_call([sys.executable, "-m", "pip", "install", *pkg_names])
