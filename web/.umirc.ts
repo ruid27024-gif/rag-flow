@@ -6,6 +6,7 @@ import routes from './src/routes';
 const ESLintPlugin = require('eslint-webpack-plugin');
 
 export default defineConfig({
+  mfsu: false,
   title: appName,
   outputPath: 'dist',
   alias: { '@parent': path.resolve(__dirname, '../') },

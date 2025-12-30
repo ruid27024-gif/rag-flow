@@ -1,3 +1,27 @@
+import fitz  # PyMuPDF
+import io
+import copy
+import json
+import os
+from pathlib import Path
+import tempfile
+import sys
+from loguru import logger
+
+from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env, read_fn
+from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from mineru.utils.enum_class import MakeMode
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+from mineru.backend.vlm.vlm_analyze import ModelSingleton as VLMModelSingleton
+from mineru.backend.pipeline.pipeline_analyze import ModelSingleton as PipelineModelSingleton
+from mineru.utils.model_utils import clean_memory
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path, guess_suffix_by_bytes
+from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 import os
 import re
 import tempfile
@@ -291,9 +315,9 @@ def _parse_markdown(md_text: str, base_dir: str, max_width: float, styles):
                 new_h = ih * scale
                 # Adjust valign to align with text baseline (approx -1/4 of height)
                 valign = -new_h / 4.0 
-                return f' <img src="{img_path}" width="{new_w}" height="{new_h}" valign="{valign}"/> '
+                return f'<img src="{img_path}" width="{new_w}" height="{new_h}" valign="{valign}"/>'
             except Exception:
-                return f' <img src="{img_path}" valign="-3"/> '
+                return f'<img src="{img_path}" valign="-3"/>'
         return match.group(0)
 
     for raw_line in md_text.splitlines():
@@ -427,18 +451,6 @@ def _parse_markdown(md_text: str, base_dir: str, max_width: float, styles):
             continue
         sanitized = re.sub(r"<[^>]+>", "", line)
         sanitized = html.escape(sanitized, quote=False)
-        
-        # Manually insert zero-width space after CJK characters to enable wrapping without wordWrap="CJK"
-        # Avoid inserting inside math formulas ($...$)
-        parts = re.split(r"(\$[^\$]+\$)", sanitized)
-        new_parts = []
-        for part in parts:
-            if part.startswith("$") and part.endswith("$"):
-                new_parts.append(part)
-            else:
-                new_parts.append(re.sub(r"([\u4e00-\u9fa5])", r"\1" + "\u200b", part))
-        sanitized = "".join(new_parts)
-
         sanitized = re.sub(r"\$([^\$]+)\$", replace_inline_math, sanitized)
         if not sanitized.strip():
             continue
@@ -450,12 +462,16 @@ def _parse_markdown(md_text: str, base_dir: str, max_width: float, styles):
 
 
 def convert_md_to_pdf(md_path: str) -> str:
+    print(f"【DEBUG-HY】: {md_path} in convert_md_to_pdf", file=sys.stderr, flush=True)
     md_path = os.path.abspath(md_path)
     if not os.path.exists(md_path):
         raise FileNotFoundError(md_path)
     base_dir = os.path.dirname(md_path)
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-    test_dir = os.path.join(project_root, "test")
+    # 获取md的无后缀文件名
+    md_base_name = os.path.splitext(os.path.basename(md_path))[0]
+    test_dir = os.path.join(project_root, f"temp_pdf/{md_base_name}")
+    os.makedirs(test_dir, exist_ok=True)
     out_path = os.path.join(test_dir, os.path.splitext(os.path.basename(md_path))[0] + ".pdf")
     font_name = _choose_font()
     styles = getSampleStyleSheet()
@@ -463,7 +479,9 @@ def convert_md_to_pdf(md_path: str) -> str:
     styles["Heading1"].fontName = font_name
     styles["Heading2"].fontName = font_name
     styles["Heading3"].fontName = font_name
+    print(f"【DEBUG-HY】: {md_path} styles build", file=sys.stderr, flush=True)
     doc = SimpleDocTemplate(out_path, pagesize=A4, leftMargin=inch, rightMargin=inch, topMargin=inch, bottomMargin=inch)
+    print(f"【DEBUG-HY】: {md_path} doc build", file=sys.stderr, flush=True)
     with open(md_path, "r", encoding="utf-8") as f:
         text = f.read()
     story = _parse_markdown(text, base_dir, doc.width, styles)
@@ -471,10 +489,237 @@ def convert_md_to_pdf(md_path: str) -> str:
     return out_path
 
 
-if __name__ == "__main__":
-    md_file_path = "/home/hit802/RAG1/ragflow/temp_pdf/62″热磨机主轴及密封系统的设计/62″热磨机主轴及密封系统的设计.md"
-    if os.path.exists(md_file_path):
-        pdf_path = convert_md_to_pdf(md_file_path)
-        print(pdf_path)
+def is_scanned_pdf_from_stream(pdf_bytes):
+    """
+    通过 PDF 二进制流判断其是否为扫描型 PDF。
+    
+    逻辑：即使存在透明文本层（双层PDF），
+    如果页面底层存在一张覆盖面积 > 90% 的图像，即判定为扫描件。
+    """
+    # 将二进制流加载到内存
+    stream = io.BytesIO(pdf_bytes)
+    
+    try:
+        doc = fitz.open(stream=stream, filetype="pdf")
+    except Exception as e:
+        return False
+
+    # 抽样前 2 页进行深度像素分析
+    pages_to_check = min(len(doc), 2)
+    is_scanned_structure = False
+
+    for i in range(pages_to_check):
+        page = doc[i]
+        page_area = page.rect.width * page.rect.height
+        
+        # 获取页面所有图像的信息
+        img_info = page.get_image_info()
+        
+        # 核心判断：寻找填满页面的大图
+        for img in img_info:
+            # 计算单个图像在页面上的实际占用面积
+            # bbox 为 [x0, y0, x1, y1]
+            bbox = img['bbox']
+            img_display_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+            
+            # 如果某张图片占据了页面 90% 以上的面积，说明文字极大概率是“浮”在图片上的 OCR 层
+            if img_display_area > (page_area * 0.9):
+                is_scanned_structure = True
+                break
+        
+        if is_scanned_structure:
+            break
+
+    doc.close()
+
+    return is_scanned_structure
+
+def do_parse(
+    output_dir,  # Output directory for storing parsing results
+    pdf_file_names: list[str],  # List of PDF file names to be parsed
+    pdf_bytes_list: list[bytes],  # List of PDF bytes to be parsed
+    p_lang_list: list[str],  # List of languages for each PDF, default is 'ch' (Chinese)
+    backend="pipeline",  # The backend for parsing PDF, default is 'pipeline'
+    parse_method="auto",  # The method for parsing PDF, default is 'auto'
+    formula_enable=True,  # Enable formula parsing
+    table_enable=True,  # Enable table parsing
+    server_url=None,  # Server URL for vlm-http-client backend
+    f_draw_layout_bbox=False,  # Whether to draw layout bounding boxes
+    f_draw_span_bbox=False,  # Whether to draw span bounding boxes
+    f_dump_md=True,  # Whether to dump markdown files
+    f_dump_middle_json=False,  # Whether to dump middle JSON files
+    f_dump_model_output=True,  # Whether to dump model output files
+    f_dump_orig_pdf=False,  # Whether to dump original PDF files
+    f_dump_content_list=False,  # Whether to dump content list files
+    f_make_md_mode=MakeMode.MM_MD,  # The mode for making markdown content, default is MM_MD
+    start_page_id=0,  # Start page ID for parsing, default is 0
+    end_page_id=None,  # End page ID for parsing, default is None (parse all pages until the end of the document)
+):
+
+    try:
+        backend = backend[4:]
+
+        f_draw_span_bbox = False
+        parse_method = "vlm"
+        for idx, pdf_bytes in enumerate(pdf_bytes_list):
+            pdf_file_name = pdf_file_names[idx]
+            pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, '.')
+            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+            middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
+
+            pdf_info = middle_json["pdf_info"]
+
+            _process_output(
+                pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            )
+    finally:
+        # Clear models and memory
+        VLMModelSingleton._models.clear()
+        PipelineModelSingleton._models.clear()
+        clean_memory()
+
+
+def _process_output(
+        pdf_info,
+        pdf_bytes,
+        pdf_file_name,
+        local_md_dir,
+        local_image_dir,
+        md_writer,
+        f_draw_layout_bbox,
+        f_draw_span_bbox,
+        f_dump_orig_pdf,
+        f_dump_md,
+        f_dump_content_list,
+        f_dump_middle_json,
+        f_dump_model_output,
+        f_make_md_mode,
+        middle_json,
+        model_output=None,
+        is_pipeline=True
+):
+    """处理输出文件"""
+    if f_draw_layout_bbox:
+        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+
+    if f_draw_span_bbox:
+        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+
+    if f_dump_orig_pdf:
+        md_writer.write(
+            f"{pdf_file_name}_origin.pdf",
+            pdf_bytes,
+        )
+
+    image_dir = str(os.path.basename(local_image_dir))
+
+    if f_dump_md:
+        make_func = pipeline_union_make if is_pipeline else vlm_union_make
+        md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
+        md_writer.write_string(
+            f"{pdf_file_name}.md",
+            md_content_str,
+        )
+
+    if f_dump_content_list:
+        make_func = pipeline_union_make if is_pipeline else vlm_union_make
+        content_list = make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir)
+        md_writer.write_string(
+            f"{pdf_file_name}_content_list.json",
+            json.dumps(content_list, ensure_ascii=False, indent=4),
+        )
+
+    if f_dump_middle_json:
+        md_writer.write_string(
+            f"{pdf_file_name}_middle.json",
+            json.dumps(middle_json, ensure_ascii=False, indent=4),
+        )
+
+    if f_dump_model_output:
+        md_writer.write_string(
+            f"{pdf_file_name}_model.json",
+            json.dumps(model_output, ensure_ascii=False, indent=4),
+        )
+
+    logger.info(f"local output dir is {local_md_dir}")
+
+
+def parse_pdf_stream(
+        file_stream,
+        output_dir,
+        file_name_prefix="output",
+        lang="ch",
+        start_page_id=0,
+        end_page_id=None
+):
+    """
+    Parse a PDF or image stream using vlm-vllm-engine backend.
+
+    Args:
+        file_stream: File-like object (io.read) or bytes
+        output_dir: Output directory
+        file_name_prefix: Prefix for output files
+        lang: Language hint
+        start_page_id: Start page index
+        end_page_id: End page index
+    """
+    os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
+    backend = "vlm-vllm-engine"
+
+    if hasattr(file_stream, "read"):
+        file_bytes = file_stream.read()
     else:
-        print(md_file_path)
+        file_bytes = file_stream
+
+    # Check suffix and convert image to pdf if needed
+    suffix = guess_suffix_by_bytes(file_bytes)
+    image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
+
+    if suffix in image_suffixes:
+        file_bytes = images_bytes_to_pdf_bytes(file_bytes)
+
+    do_parse(
+        output_dir=output_dir,
+        pdf_file_names=[file_name_prefix],
+        pdf_bytes_list=[file_bytes],
+        p_lang_list=[lang],
+        backend=backend,
+        parse_method="vlm",
+        start_page_id=start_page_id,
+        end_page_id=end_page_id
+    )
+    print(f"【DEBUG-HY】: {file_name_prefix} parse it done", file=sys.stderr, flush=True)
+    # 解析完成之后，需要重新解析为pdf文件
+    # 从目标文件夹进行转换
+    file_path = os.path.join(os.path.join(output_dir, file_name_prefix), f"{file_name_prefix}.md")
+    print(f"【DEBUG-HY】: {file_path} is target md path", file=sys.stderr, flush=True)
+    try:
+        outpath = convert_md_to_pdf(file_path)
+    except Exception as e:
+        print(f"【DEBUG-HY】: {e} is convert md to pdf error", file=sys.stderr, flush=True)
+        return None
+    print(f"【DEBUG-HY】: {outpath} is target pdf path", file=sys.stderr, flush=True)
+    # 从输出路径读取pdf文件返回
+    with open(outpath, "rb") as f:
+        pdf_bytes = f.read()
+    print(f"【DEBUG-HY】: {len(pdf_bytes)} is target pdf bytes len", file=sys.stderr, flush=True)
+    return pdf_bytes
+
+
+
+
+if __name__ == "__main__":
+    os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
+    with open("/home/hit802/docs/二次纤维角质化及其纸页损伤研究.pdf", "rb") as f:
+        parse_pdf_stream(
+            f,
+            output_dir="/home/hit802/RAG1/ragflow/rag/utils",
+            file_name_prefix="output",
+            lang="ch",
+            start_page_id=0,
+            end_page_id=None
+        )

@@ -28,6 +28,7 @@ from io import BytesIO
 from common.decorator import singleton
 from common import settings
 import sys
+from .pdf_utils import is_scanned_pdf_from_stream, parse_pdf_stream,convert_md_to_pdf
 
 def convert_to_pdf(file_path):
     """
@@ -211,35 +212,107 @@ class RAGFlowMinio:
     def get(self, bucket, filename, tenant_id=None):
         for _ in range(1):
             try:
-                r = self.conn.get_object(bucket, filename)
-                print(f"【DEBUG-HY】: get {bucket}/{filename}, type is {type(r)}", file=sys.stderr, flush=True)
-                content = r.read()
-                save_dir = "/home/hit802/temp_docs"
-                save_path = os.path.join(save_dir, filename)
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                with open(save_path, "wb") as f:
-                    f.write(content)
-                ext = os.path.splitext(filename)[1].lower()
-                if ext in [".doc", ".docx"]:
+                base, ext = os.path.splitext(filename)
+                ext = ext.lower()
+                pdf_cache_name = base + ".pdf"
+
+                if ext == ".pdf":
+                    # PDF：先查缓存（同名 .pdf），命中直接返回；否则读原对象并写入缓存
+                    r = self.conn.get_object(bucket, filename)
+                    print(f"【DEBUG-HY】: get {bucket}/{filename}, type is {type(r)}", file=sys.stderr, flush=True)
+                    content = r.read()
+                    # 判断文件是否是扫描文件
+                    is_scan = is_scanned_pdf_from_stream(content)
+                    if is_scan:
+                        # 是扫描件，需要进行扫面件流程
+                        print(f"【DEBUG-HY】: {base} is scanned pdf, need to parse it", file=sys.stderr, flush=True)
+                        # 解析扫描件
+                        print(f"【DEBUG-HY】: {base} start to parse it", file=sys.stderr, flush=True)
+                        content = parse_pdf_stream(content,"temp_pdf",base)
+                    try:
+                        r.close()
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(r, "release_conn"):
+                            r.release_conn()
+                    except Exception:
+                        pass
+                    try:
+                        if is_scan:
+                            self.conn.put_object(bucket, pdf_cache_name, BytesIO(content), len(content))
+                    except Exception:
+                        pass
+                    return content
+
+                elif ext in [".doc", ".docx"]:
+                    # DOC/DOCX：优先查同名 .pdf 缓存；未命中则读取原对象并转换为 PDF，写回缓存并返回 PDF 二进制
+                    try:
+                        cr = self.conn.get_object(bucket, pdf_cache_name)
+                        content = cr.read()
+                        try:
+                            cr.close()
+                        except Exception:
+                            pass
+                        try:
+                            if hasattr(cr, "release_conn"):
+                                cr.release_conn()
+                        except Exception:
+                            pass
+                        return content
+                    except Exception:
+                        pass
+
+                    r = self.conn.get_object(bucket, filename)
+                    print(f"【DEBUG-HY】: get {bucket}/{filename}, type is {type(r)}", file=sys.stderr, flush=True)
+                    orig_bytes = r.read()
+                    save_dir = "/home/hit802/temp_docs"
+                    save_path = os.path.join(save_dir, filename)
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                    with open(save_path, "wb") as f:
+                        f.write(orig_bytes)
+                    pdf_bytes = None
                     try:
                         pdf_path = convert_to_pdf(save_path)
                         if pdf_path and os.path.exists(pdf_path):
                             with open(pdf_path, "rb") as pf:
-                                content = pf.read()
+                                pdf_bytes = pf.read()
                         else:
                             print(f"【DEBUG-HY】DOC/DOCX→PDF fallback to original for {save_path}", file=sys.stderr, flush=True)
                     except Exception:
                         print(f"【DEBUG-HY】Fail to convert {save_path} to PDF", file=sys.stderr, flush=True)
-                try:
-                    r.close()
-                except Exception:
-                    pass
-                try:
-                    if hasattr(r, "release_conn"):
-                        r.release_conn()
-                except Exception:
-                    pass
-                return content
+                    try:
+                        r.close()
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(r, "release_conn"):
+                            r.release_conn()
+                    except Exception:
+                        pass
+                    if pdf_bytes:
+                        try:
+                            self.conn.put_object(bucket, pdf_cache_name, BytesIO(pdf_bytes), len(pdf_bytes))
+                        except Exception:
+                            pass
+                        return pdf_bytes
+                    return orig_bytes
+
+                else:
+                    # 其他类型：保持原有读取逻辑
+                    r = self.conn.get_object(bucket, filename)
+                    print(f"【DEBUG-HY】: get {bucket}/{filename}, type is {type(r)}", file=sys.stderr, flush=True)
+                    content = r.read()
+                    try:
+                        r.close()
+                    except Exception:
+                        pass
+                    try:
+                        if hasattr(r, "release_conn"):
+                            r.release_conn()
+                    except Exception:
+                        pass
+                    return content
             except Exception:
                 print(f"【DEBUG-HY】Fail to get {bucket}/{filename}", file=sys.stderr, flush=True)
                 self.__open__()

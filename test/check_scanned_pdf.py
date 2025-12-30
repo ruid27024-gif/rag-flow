@@ -44,13 +44,10 @@ def identify_pdf_type_from_stream(pdf_bytes):
 
     doc.close()
 
-    if is_scanned_structure:
-        return "扫描型/双层 PDF (底层为全页图像，肉眼看很模糊)"
-    else:
-        return "原生矢量 PDF (由软件排版生成，文字清晰且无底层全页大图)"
+    return is_scanned_structure
 
 # 使用示例：
-with open("/home/hit802/RAG1/ragflow/test/二次纤维角质化及其纸页损伤研究.pdf", "rb") as f:
+with open("/home/hit802/docs/二次纤维角质化及其纸页损伤研究.pdf", "rb") as f:
     pdf_data = f.read()
     result = identify_pdf_type_from_stream(pdf_data)
     print(result)

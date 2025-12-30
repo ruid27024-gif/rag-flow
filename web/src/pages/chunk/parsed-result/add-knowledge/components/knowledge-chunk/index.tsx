@@ -3,7 +3,7 @@ import {
   useSwitchChunk,
 } from '@/hooks/use-chunk-request';
 import classNames from 'classnames';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChunkCard from './components/chunk-card';
 import CreatingModal from './components/chunk-creating-modal';
@@ -57,7 +57,7 @@ const Chunk = () => {
     handleSetAvailable,
   } = useFetchNextChunkList();
   const { handleChunkCardClick, selectedChunkId } = useHandleChunkCardClick();
-  const isPdf = documentInfo?.type === 'pdf';
+  const isPdf = true; // documentInfo?.type === 'pdf';
   const { data: dataset } = useFetchKnowledgeBaseConfiguration();
 
   const { t } = useTranslation();
@@ -162,20 +162,21 @@ const Chunk = () => {
   const { highlights, setWidthAndHeight } =
     useGetChunkHighlights(selectedChunkId);
 
-  const fileType = useMemo(() => {
-    switch (documentInfo?.type) {
-      case 'doc':
-        return documentInfo?.name.split('.').pop() || 'doc';
-      case 'visual':
-        return documentInfo?.name.split('.').pop() || 'visual';
-      case 'docx':
-      case 'txt':
-      case 'md':
-      case 'pdf':
-        return documentInfo?.type;
-    }
-    return 'unknown';
-  }, [documentInfo]);
+  const fileType = 'pdf';
+  // const fileType = useMemo(() => {
+  //   switch (documentInfo?.type) {
+  //     case 'doc':
+  //       return documentInfo?.name.split('.').pop() || 'doc';
+  //     case 'visual':
+  //       return documentInfo?.name.split('.').pop() || 'visual';
+  //     case 'docx':
+  //     case 'txt':
+  //     case 'md':
+  //     case 'pdf':
+  //       return documentInfo?.type;
+  //   }
+  //   return 'unknown';
+  // }, [documentInfo]);
 
   return (
     <>
