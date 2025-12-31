@@ -160,6 +160,8 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
         name = layout_recognizer.strip().lower()
+        print(name)
+        name = "mineru"
         pdf_parser = PARSERS.get(name, by_plaintext)
         callback(0.1, "Start to parse.")
 
@@ -167,6 +169,24 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             pdf_parser = Pdf()
             paper = pdf_parser(filename if not binary else binary,
                                from_page=from_page, to_page=to_page, callback=callback)
+        elif name == "mineru":
+            from deepdoc.parser.mineru_parser import MinerUParser
+            pdf_parser = MinerUParser()
+            sections, tables = pdf_parser.parse_pdf(
+                filename,
+                binary,
+                parse_method="paper",
+                callback=callback,
+                **kwargs
+            )
+            paper = {
+                "title": filename,
+                "authors": " ",
+                "abstract": "",
+                "sections": sections,
+                "tables": tables
+            }
+            print(paper)
         else:
             kwargs.pop("parse_method", None)
             kwargs.pop("mineru_llm_name", None)

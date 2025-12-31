@@ -1,0 +1,966 @@
+{
+    "title": "The 8th International Conference on Information Technology and Quantitative Management",
+    "authors": "(ITQM2020&2021)",
+    "abstract": "object detection techniques are the foundation for the artificial intelligence field. this research paper gives a brief overview@@1\t38.0\t488.0\t286.3\t299.7##",
+    "sections": [
+        [
+            "of the You Only Look Once (YOLO) algorithm and its subsequent advanced versions. Through the analysis, we reach many@@1\t38.0\t485.7\t298.7\t309.7##",
+            "text-3"
+        ],
+        [
+            "remarks and insightful results. The results show the differences and similarities among the YOLO versions and between@@1\t38.7\t486.3\t309.7\t320.3##",
+            "text-3"
+        ],
+        [
+            "YOLO and Convolutional Neural Networks (CNNs). The central insight is the YOLO algorithm improvement is still@@1\t38.0\t487.0\t319.7\t330.3##",
+            "text-3"
+        ],
+        [
+            "ongoing.This article briefly describes the development process of the YOLO algorithm, summarizes the methods of target@@1\t38.7\t487.0\t332.0\t343.0##",
+            "text-3"
+        ],
+        [
+            "recognition and feature selection, and provides literature support for the targeted picture news and feature extraction in the@@1\t38.7\t487.0\t343.0\t353.7##",
+            "text-3"
+        ],
+        [
+            "financial and other fields. Besides, this paper contributes a lot to YOLO and other object detection literature.@@1\t38.0\t429.0\t353.7\t364.7##",
+            "text-3"
+        ],
+        [
+            "① 2021 The Authors. Published by Elsevier B.V.@@1\t38.7\t215.0\t371.3\t381.7##",
+            "text-4"
+        ],
+        [
+            "This is an open access article under the CC BY-NC-ND license (https://creativecommons.org/licenses/by-nc-nd/4.0)@@1\t39.3\t458.7\t381.7\t392.3##",
+            "text-4"
+        ],
+        [
+            "Peer-review under responsibility of the scientific committee of the The 8th International Conference on Information Technology@@1\t38.7\t505.7\t391.7\t402.3##",
+            "text-4"
+        ],
+        [
+            "and Quantitative Management (ITQM 2020 & 2021)@@1\t38.7\t229.7\t401.7\t412.7##",
+            "text-4"
+        ],
+        [
+            "Keywords: Review; Yolo; Object Detection; Public Data Analysis@@1\t38.0\t251.3\t418.0\t428.7##",
+            "text-5"
+        ],
+        [
+            "1. Introduction@@1\t37.3\t104.3\t450.3\t462.0##",
+            "title-4"
+        ],
+        [
+            "You Only Look Once (YOLO) is a viral and widely used algorithm [1]. YOLO is famous for its object@@1\t49.7\t488.0\t473.7\t486.7##",
+            "text-6"
+        ],
+        [
+            "detection characteristic. In 2015, Redmon et al. gave the introduction of the first YOLO version [2]. In the past@@1\t38.0\t487.0\t486.7\t500.0##",
+            "text-6"
+        ],
+        [
+            "years, scholars have published several YOLO subsequent versions described as YOLO V2, YOLO V3, YOLO@@1\t38.0\t486.3\t500.0\t510.7##",
+            "text-6"
+        ],
+        [
+            "V4, and YOLO V5 [3-10]. There are a few revised-limited versions, such as YOLO-LITE [11-12]. This research@@1\t37.0\t488.0\t510.0\t523.3##",
+            "text-6"
+        ],
+        [
+            "paper only focused on the five main YOLO versions.@@1\t35.7\t252.0\t521.7\t537.0##",
+            "text-6"
+        ],
+        [
+            "This paper will compare the main differences among the five YOLO versions from both conceptual designs@@1\t51.0\t486.3\t536.3\t547.3##",
+            "text-7"
+        ],
+        [
+            "and implementations. The YOLO versions are improving, and it is essential to understand the main motivations,@@1\t37.0\t486.3\t546.3\t559.7##",
+            "text-7"
+        ],
+        [
+            "features development, limitations, and even relationships for the versions. This reviewing paper will be@@1\t38.0\t488.0\t559.7\t572.7##",
+            "text-7"
+        ],
+        [
+            "meaningful and insightful for object detection researchers, especially for beginners.@@1\t37.0\t374.3\t570.3\t583.7##",
+            "text-7"
+        ],
+        [
+            "The following first section will give a version comparing from the technique perspective along with the version@@1\t49.7\t488.0\t582.0\t596.0##",
+            "text-8"
+        ],
+        [
+            "similarities. The second section describes them through public data. The insightful results are displayed using@@1\t38.7\t487.0\t596.7\t607.7##",
+            "text-8"
+        ],
+        [
+            "both figures and tabular. The two primary analyses are focused on the YOLO trends and YOLO-related queries.@@1\t38.0\t485.7\t608.3\t619.3##",
+            "text-8"
+        ],
+        [
+            "2. Yolo Algorithm Developments@@2\t38.0\t178.7\t74.3\t85.0##",
+            "title-0"
+        ],
+        [
+            "2.1Main Differences (Features)@@2\t36.3\t190.3\t95.0\t108.3##",
+            "title-1"
+        ],
+        [
+            "The core of the YOLO target detection algorithm lies in the model's small size and fast calculation speed. The@@2\t51.0\t487.0\t110.7\t121.7##",
+            "text-0"
+        ],
+        [
+            "structure of YOLO is straightforward. It can directly output the position and category of the bounding box through@@2\t38.0\t487.0\t121.7\t134.7##",
+            "text-0"
+        ],
+        [
+            "the neural network. The speed of YOLO is fast because YOLO only needs to put the picture into the network to@@2\t36.3\t487.0\t132.3\t145.3##",
+            "text-0"
+        ],
+        [
+            "get the final detection result, so YOLO can also realize the time detection of video. YOLO directly uses the global@@2\t38.7\t486.3\t146.3\t157.0##",
+            "text-0"
+        ],
+        [
+            "image for detection, which can encode the global information and reduce the error of detecting the background@@2\t38.7\t486.3\t158.7\t169.3##",
+            "text-0"
+        ],
+        [
+            "as the object. YOLO has a strong generalization ability because YOLO can learn highly generalized features to@@2\t37.0\t487.0\t169.3\t182.7##",
+            "text-0"
+        ],
+        [
+            "be transferred to other fields. It converts the problem of target detection into a regression problem, but detection@@2\t36.3\t488.0\t180.3\t194.3##",
+            "text-0"
+        ],
+        [
+            "accuracy needs to be improved. YOLO's test results are poor for objects that are very close to each other and in@@2\t37.0\t488.7\t193.3\t206.7##",
+            "text-0"
+        ],
+        [
+            "groups. This poor performance is because only two boxes in the grid are predicted and only belong to a new class@@2\t38.0\t487.0\t206.7\t217.3##",
+            "text-0"
+        ],
+        [
+            "of objects of the same category, so an abnormal aspect ratio appears, and other conditions, such as weak@@2\t37.0\t488.7\t217.3\t230.7##",
+            "text-0"
+        ],
+        [
+            "generalization ability.@@2\t36.3\t125.3\t229.0\t242.3##",
+            "text-0"
+        ],
+        [
+            "Due to the loss function, the positioning error is the main reason for improving the detection efficiency.@@2\t50.3\t485.7\t242.3\t253.0##",
+            "text-1"
+        ],
+        [
+            "Especially the handling of large and small objects needs to be strengthened. In the implementation, the most@@2\t38.7\t487.0\t254.7\t265.3##",
+            "text-1"
+        ],
+        [
+            "important thing is how to design the loss function so that these three aspects can be well balanced. YOLO uses@@2\t38.0\t487.0\t266.3\t277.0##",
+            "text-1"
+        ],
+        [
+            "multiple lower sampling layers, and the target features learned from the network are not exhaustive so that the@@2\t38.0\t487.0\t278.7\t289.3##",
+            "text-1"
+        ],
+        [
+            "detection effect will be improved.@@2\t38.0\t173.3\t290.3\t301.0##",
+            "text-1"
+        ],
+        [
+            "The original YOLO architecture consists of 24 convolution layers, followed by two fully connected layers.@@2\t51.7\t485.7\t300.3\t313.3##",
+            "text-2"
+        ],
+        [
+            "YOLO predict multiple bounding boxes per grid cell but those bounding boxes having highest Intersection Over@@2\t38.0\t488.0\t312.0\t325.0##",
+            "text-2"
+        ],
+        [
+            "Union (IOU) with the ground truth is selected, which is known as non-maxima suppression [13].@@2\t38.0\t426.0\t325.0\t338.3##",
+            "text-2"
+        ],
+        [
+            "YOLO has two defects: one is inaccurate positioning, and the other is the lower recall rate compared with the@@2\t48.7\t488.0\t336.0\t349.0##",
+            "text-3"
+        ],
+        [
+            "method based on area recommendations. Therefore, YOLO V2 mainly improves in these two aspects. Besides,@@2\t38.7\t485.7\t350.7\t361.3##",
+            "text-3"
+        ],
+        [
+            "YOLO V2 does not deepen or broaden the network but simplifies the network.@@2\t38.7\t352.7\t362.3\t373.0##",
+            "text-3"
+        ],
+        [
+            "Two improvements of YOLO V2: Better and Faster.@@2\t50.3\t260.7\t373.0\t384.7##",
+            "text-4"
+        ],
+        [
+            "2.2Better@@2\t37.3\t82.0\t399.3\t410.0##",
+            "title-2"
+        ],
+        [
+            "2.2.1Batchnormalization@@2\t38.7\t143.7\t425.0\t435.7##",
+            "title-3"
+        ],
+        [
+            "It is equivalent to standardizing the input of each layer, speeding up the convergence rate, deleting the loss,@@2\t48.7\t486.3\t447.3\t460.3##",
+            "text-5"
+        ],
+        [
+            "and increasing mAP by 2%.@@2\t37.0\t150.7\t460.7\t473.7##",
+            "text-5"
+        ],
+        [
+            "2.2.2High-resolutionclassifier@@2\t38.7\t163.0\t485.3\t496.0##",
+            "title-4"
+        ],
+        [
+            "The original YOLO network uses 224x224 pixels before training and then uses 448x448 pixels in detection.@@2\t51.7\t485.7\t508.3\t519.3##",
+            "text-6"
+        ],
+        [
+            "When switching from the classification model to the detection model, the model adapts to image classification.@@2\t38.7\t485.7\t521.0\t531.7##",
+            "text-6"
+        ],
+        [
+            "YOLO V2 divides pre-training into two steps: from the beginning, train the network with 224x224 (160 epochs)@@2\t39.3\t486.3\t532.3\t543.3##",
+            "text-6"
+        ],
+        [
+            "pixels, then adjust the pixels to 448x448 and train for ten epochs.@@2\t38.0\t299.3\t545.0\t555.7##",
+            "text-6"
+        ],
+        [
+            "2.2.3Finefeatures@@2\t37.3\t115.3\t565.7\t578.7##",
+            "title-5"
+        ],
+        [
+            "The most important thing is to add a layer: through the layer. The function of this layer is to connect the 26x26@@2\t51.0\t487.0\t592.0\t603.0##",
+            "text-7"
+        ],
+        [
+            "feature map of the previous layer with the 13x13 feature map of this layer because of the 13x13 feature. It is@@2\t39.3\t487.0\t604.3\t615.3##",
+            "text-7"
+        ],
+        [
+            "sufficient to predict large objects, but predicting small objects is not necessarily effective and easy to understand@@2\t39.3\t484.7\t617.0\t627.7##",
+            "text-7"
+        ],
+        [
+            "Smaller objects may eventually disappear after multiple layers of convolution and merging. Therefore, the larger@@2\t37.0\t488.0\t627.0\t640.0##",
+            "text-7"
+        ],
+        [
+            "functions of the previous layer should be merged.@@3\t39.3\t235.7\t74.3\t85.0##",
+            "text-0"
+        ],
+        [
+            "2.2.4Multi-scale training@@3\t37.3\t143.0\t95.0\t108.3##",
+            "title-0"
+        ],
+        [
+            "This network training method enables the same network to detect images of different resolutions. Although@@3\t49.7\t487.0\t119.3\t132.3##",
+            "text-1"
+        ],
+        [
+            "the training speed is slower when the input size is large, the training speed is faster when the input size is small,@@3\t38.0\t487.0\t133.0\t146.3##",
+            "text-1"
+        ],
+        [
+            "multi-scale. Training can improve accuracy, so there is a good balance between accuracy and speed.@@3\t38.7\t437.7\t146.3\t157.0##",
+            "text-1"
+        ],
+        [
+            "2.3Faster@@3\t36.3\t105.0\t168.0\t181.0##",
+            "title-1"
+        ],
+        [
+            "2.3.1Darknet-19@@3\t38.0\t122.0\t192.7\t202.7##",
+            "title-2"
+        ],
+        [
+            "In YOLO, the training network used is based on GooleNet. Here, the author makes a simple comparison@@3\t49.3\t487.0\t216.0\t226.7##",
+            "text-3"
+        ],
+        [
+            "between GooleNet and VGG16.In terms of computational complexity (8.25 billion operations and 30.69 billion@@3\t38.0\t487.0\t229.0\t240.0##",
+            "text-3"
+        ],
+        [
+            "operations), GooleNet is superior to VGG16. The former in ImageNet is slightly lower than the latter (88% vs.@@3\t38.7\t486.3\t240.7\t251.7##",
+            "text-3"
+        ],
+        [
+            "90%). In YOLO V2, the author uses a new classification model, Darknet-19, as the primary network@@3\t38.7\t441.3\t253.0\t264.0##",
+            "text-3"
+        ],
+        [
+            "Table 6 is the final network structure: Darknet-19 only needs 5.58 billion operations. The network contains@@3\t51.0\t487.0\t264.7\t275.7##",
+            "text-4"
+        ],
+        [
+            "19 convolutional layers and five maximum pooling layers, and in YOLO. The GooleNet used in V1 has 24@@3\t38.0\t488.7\t276.3\t289.3##",
+            "text-4"
+        ],
+        [
+            "convolutional layers and two complete connection layers. Therefore, the convolution and convolution operations@@3\t38.7\t487.0\t289.3\t300.3##",
+            "text-4"
+        ],
+        [
+            "in Darknet-19 are less than those used in GoogleNet. Overall, YOLO is the key to reducing the amount of@@3\t37.0\t488.0\t301.0\t312.0##",
+            "text-4"
+        ],
+        [
+            "calculation. Finally, the average pooling layer is used to replace the entire connection layer for prediction.@@3\t37.0\t461.0\t312.7\t323.7##",
+            "text-4"
+        ],
+        [
+            "2.3.2TrainingforClassification@@3\t38.7\t184.7\t337.3\t348.3##",
+            "title-3"
+        ],
+        [
+            "The classification training here is all pre-training on ImageNet, which mainly includes two steps. The data set@@3\t49.7\t488.0\t359.0\t372.3##",
+            "text-5"
+        ],
+        [
+            "is ImageNet, 160 Epochs are trained, the input image size is 224x224, and the initial learning rate is 0.1. Standard@@3\t38.7\t485.7\t373.7\t384.7##",
+            "text-5"
+        ],
+        [
+            "data increment methods are used during the training process, such as random cropping, rotation, and chroma and@@3\t38.0\t488.0\t384.7\t397.7##",
+            "text-5"
+        ],
+        [
+            "brightness adjustments.@@3\t37.3\t131.3\t396.3\t407.0##",
+            "text-5"
+        ],
+        [
+            "Then fine-tune the network: At this time, using a 448x448 input, all parameters remain unchanged except for@@3\t51.0\t486.3\t409.3\t420.3##",
+            "text-6"
+        ],
+        [
+            "the epoch and the learning rate. Here, the learning rate is changed to O.o01, and training is performed ten times.@@3\t36.3\t483.3\t419.3\t432.7##",
+            "text-6"
+        ],
+        [
+            "The results show that the accuracy of top-1 and top-5 after fine-tuning are 76.5% and 93.3%, respectively@@3\t51.0\t484.7\t432.7\t443.3##",
+            "text-7"
+        ],
+        [
+            "According to the original training method, the accuracy of Darknet-19's top-1 and top-5 is 72.9% and 91.2%@@3\t39.3\t473.3\t445.7\t456.7##",
+            "text-7"
+        ],
+        [
+            "2.3.3TrainingforDetection@@3\t38.7\t168.7\t469.0\t480.0##",
+            "title-4"
+        ],
+        [
+            "First, delete the last convolution layer, and then add three convolution layers 33. Each convolution layer has@@3\t50.3\t487.0\t493.0\t504.0##",
+            "text-8"
+        ],
+        [
+            "1024 filters, and each convolution layer is connected to 11 convolution layers. The category probabilities of the@@3\t39.3\t486.3\t505.3\t516.3##",
+            "text-8"
+        ],
+        [
+            "two boxes corresponding to this cell are the same, but in YOLO V2, the category probabilities belong to this box,@@3\t38.0\t486.3\t517.7\t528.7##",
+            "text-8"
+        ],
+        [
+            "and each box corresponds to a category probability instead of a grid.@@3\t36.3\t312.3\t527.7\t541.0##",
+            "text-8"
+        ],
+        [
+            "Compared with YOLO V2, YOLO V3 has two points: using multi-scale features for object detection and@@3\t50.3\t486.3\t541.0\t551.7##",
+            "text-9"
+        ],
+        [
+            "adjusting the basic network structure.@@3\t38.0\t188.0\t553.3\t564.3##",
+            "text-9"
+        ],
+        [
+            "On the one hand, YOL0 V3 adopts feature graphs of three scales (when the input is (416x416), (13×13),@@3\t48.7\t487.0\t563.3\t576.7##",
+            "text-10"
+        ],
+        [
+            "(26x26) and (52x52)). YOLO V3 uses three prior boxes for each position, so K-means is used to get nine prior@@3\t38.7\t487.0\t577.3\t588.3##",
+            "text-10"
+        ],
+        [
+            "boxes and divide them into three scale feature maps. Feature maps with larger-scale use smaller prior boxes.@@3\t36.3\t471.7\t587.3\t600.7##",
+            "text-10"
+        ],
+        [
+            "On the other hand, YOLO V3 feature extraction network used the residual model. Compared with Darknet-@@3\t51.0\t486.3\t601.3\t612.3##",
+            "text-11"
+        ],
+        [
+            "19 used by YOLO V2, it contained 53 convolution layers, so it was called Darknet-53.@@3\t38.7\t384.3\t613.7\t624.7##",
+            "text-11"
+        ],
+        [
+            "YOLO V4 style has a significant change, more focus on comparing data, and has a substantial improvement.@@3\t51.0\t486.3\t624.7\t637.7##",
+            "text-12"
+        ],
+        [
+            "The integrator characterizes it and finally achieves very high performance.@@4\t38.7\t335.7\t74.3\t85.0##",
+            "text-0"
+        ],
+        [
+            "We can summarize it like this: YOLO V4=CSP Darknet53+SPP+Pan+YOLO V3@@4\t51.0\t377.3\t86.0\t96.7##",
+            "text-1"
+        ],
+        [
+            "The main contributions are as follows:@@4\t51.0\t204.0\t98.3\t109.0##",
+            "text-2"
+        ],
+        [
+            "● An efficient and powerful target detection model is proposed. It allows everyone to train super-fast and@@4\t53.3\t488.7\t107.7\t123.0##",
+            "text-3"
+        ],
+        [
+            "accurate target detectors;@@4\t74.3\t175.7\t123.7\t134.0##",
+            "text-3"
+        ],
+        [
+            "· The influence of SOTA's bag-of-freebies and bag-of-specials methods was verified during detector@@4\t55.7\t486.3\t136.3\t147.0##",
+            "text-3"
+        ],
+        [
+            "training;@@4\t73.3\t110.0\t146.7\t158.3##",
+            "text-3"
+        ],
+        [
+            "· Improved SOTA methods to make them more efficient and suitable for single GPU training, including@@4\t55.0\t487.0\t160.3\t173.3##",
+            "text-3"
+        ],
+        [
+            "CBN, PAN, SAM, etc.@@4\t73.7\t164.7\t173.3\t184.3##",
+            "text-3"
+        ],
+        [
+            "It splits the current mainstream target detector frameworks: Input, Backbone, Neck, and Head. In the previous@@4\t48.7\t487.0\t185.7\t197.3##",
+            "text-4"
+        ],
+        [
+            "YOLO V3, one anchor point was responsible for one ground truth, while in YOLO V4, several anchor points@@4\t37.0\t488.0\t196.7\t209.7##",
+            "text-4"
+        ],
+        [
+            "were responsible for one ground truth. This means that the number of anchor frames remains unchanged, but the@@4\t38.7\t487.0\t211.3\t222.0##",
+            "text-4"
+        ],
+        [
+            "selection ratio of positive samples is increased, thereby alleviating the problem of imbalance between positive@@4\t38.0\t488.0\t223.0\t233.7##",
+            "text-4"
+        ],
+        [
+            "and negative samples. The advantage is that due to the range of the sigmoid function, the grid sensitivity is also@@4\t38.0\t486.3\t234.7\t245.3##",
+            "text-4"
+        ],
+        [
+            "eliminated as the open time interval, and the actual position of the boundary is not available. The CIOU@@4\t38.7\t486.3\t247.0\t257.7##",
+            "text-4"
+        ],
+        [
+            "(Complete Intersection over Union) loss function is adopted, which converges quickly and eliminates the problem@@4\t38.0\t487.0\t258.7\t271.7##",
+            "text-4"
+        ],
+        [
+            "of the bounding box containing ground truth. YOLO V4 provides a faster and more accurate advanced detector@@4\t37.0\t487.0\t269.3\t282.3##",
+            "text-4"
+        ],
+        [
+            "compared to all available alternatives. The original concept of a detector based on a single-stage anchor has@@4\t38.7\t486.3\t283.3\t294.0##",
+            "text-4"
+        ],
+        [
+            "proven its feasibility. We have verified many features and chose to use these features to improve the accuracy of@@4\t38.0\t488.0\t295.0\t305.7##",
+            "text-4"
+        ],
+        [
+            "classifiers and detectors. YOLO V4 can be used as a best practice for future research and development.@@4\t38.7\t450.7\t307.3\t318.0##",
+            "text-4"
+        ],
+        [
+            "Multiple network architectures of YOLO V5 are more flexible to use, have a very lightweight model size, and@@4\t51.0\t487.0\t319.0\t329.7##",
+            "text-5"
+        ],
+        [
+            "are on par with the YOLO V4 benchmark in terms of accuracy. However, people still have reservations about@@4\t38.7\t487.0\t331.3\t342.0##",
+            "text-5"
+        ],
+        [
+            "YOLO V5 because it is less innovative than YOLO V4, but it has some performance improvements, with the@@4\t38.7\t487.0\t343.0\t353.7##",
+            "text-5"
+        ],
+        [
+            "following significant advantages:@@4\t36.3\t172.3\t353.0\t366.0##",
+            "text-5"
+        ],
+        [
+            "· The PyTorch framework is user-friendly and easy to train your data set, making it easier to put into@@4\t55.7\t471.7\t367.7\t378.3##",
+            "text-6"
+        ],
+        [
+            "production than the Darknet framework used in YOLO V4;@@4\t74.3\t312.3\t380.0\t391.0##",
+            "text-6"
+        ],
+        [
+            "· Easy to read code, integration of a large number of computer vision technology, is conducive to@@4\t54.0\t459.3\t391.7\t404.7##",
+            "text-6"
+        ],
+        [
+            "learning and reference;@@4\t74.3\t167.0\t404.7\t415.7##",
+            "text-6"
+        ],
+        [
+            "· Easy to configure the environment, model training is very fast, and batch reasoning produces real-time@@4\t55.7\t484.0\t418.0\t428.7##",
+            "text-6"
+        ],
+        [
+            "results.@@4\t72.7\t103.7\t431.0\t442.0##",
+            "text-6"
+        ],
+        [
+            "YOLO V5 provides each batch of training data through the data loader and enhances the training data@@4\t49.7\t487.0\t441.0\t454.3##",
+            "text-7"
+        ],
+        [
+            "simultaneously. The data loader performs three types of data enhancement: scaling, color space adjustment, and@@4\t38.0\t487.0\t455.0\t466.0##",
+            "text-7"
+        ],
+        [
+            "mosaic enhancement.@@4\t37.3\t124.7\t466.7\t477.7##",
+            "text-7"
+        ],
+        [
+            "The data proves that Mosaic enhancement can indeed effectively solve the most troublesome small object@@4\t51.0\t486.3\t480.0\t490.7##",
+            "text-8"
+        ],
+        [
+            "problem in the model training. That is, the small object detected is not as accurate as of the large object. But it@@4\t37.0\t488.0\t490.0\t503.0##",
+            "text-8"
+        ],
+        [
+            "must also be admitted that the naming of YOLO V5 is controversial, and its implementation is not static and has@@4\t38.0\t486.3\t504.0\t514.7##",
+            "text-8"
+        ],
+        [
+            "not been fully completed. Now it leaves us more room.@@4\t36.3\t259.0\t514.0\t526.3##",
+            "text-8"
+        ],
+        [
+            "Main improvement measures of YOLO network from V1 to V5:@@4\t51.0\t308.7\t535.7\t546.3##",
+            "text-9"
+        ],
+        [
+            "·YOLO: The grid division is responsible for detection, confidence loss;@@4\t54.0\t358.0\t546.3\t559.7##",
+            "text-10"
+        ],
+        [
+            "· YOLO V2: Anchor with K-means added, two-stage training, full convolutional network;@@4\t55.7\t428.3\t560.3\t571.3##",
+            "text-10"
+        ],
+        [
+            "· YOLO V3: Multi-scale detection by using FPN;@@4\t55.7\t268.3\t574.3\t585.0##",
+            "text-10"
+        ],
+        [
+            "YOLO V4: SPP, MISH activation function, data enhancement Mosaic/Mixup, GIOU(Generalized@@4\t73.3\t487.0\t587.3\t598.3##",
+            "text-10"
+        ],
+        [
+            "Intersection over Union) loss function;@@4\t73.3\t230.3\t599.0\t610.0##",
+            "text-10"
+        ],
+        [
+            "YOLO V5: Flexible control of model size, application of Hardswish activation function, and data@@4\t71.0\t488.0\t612.3\t625.3##",
+            "text-10"
+        ],
+        [
+            "enhancement.@@4\t73.7\t130.0\t624.3\t635.3##",
+            "text-10"
+        ],
+        [
+            "2.4Relationship@@5\t36.7\t108.3\t71.0\t84.3##",
+            "title-0"
+        ],
+        [
+            "Because YOLO and YOLO V2 are not effective in detecting small targets, multi-scale detection is added@@5\t57.3\t479.3\t95.3\t108.3##",
+            "text-0"
+        ],
+        [
+            "to YOLO V3. YOLO V3 is a well-received master of the previous generations. YOLO V4 sorted out and tried@@5\t38.0\t480.0\t109.0\t120.0##",
+            "text-0"
+        ],
+        [
+            "all possible optimizations in the entire process and found the best effect in each permutation and combination.@@5\t38.0\t479.3\t120.7\t131.7##",
+            "text-0"
+        ],
+        [
+            "YOLOv4 runs twice faster than EfficientDet with comparable performance. Improves YOLOv3's AP and FPS@@5\t38.0\t482.3\t130.7\t144.0##",
+            "text-0"
+        ],
+        [
+            "by 10% and 12%, respectively [15]. YOLO V5 can flexibly control models from 10+M to 200+M, and its small@@5\t37.0\t488.0\t142.3\t153.3##",
+            "text-0"
+        ],
+        [
+            "model is very impressive. The overall network diagrams of YOLO V3 to YOLO V5 are similar, but they also@@5\t36.3\t477.7\t154.0\t167.3##",
+            "text-0"
+        ],
+        [
+            "focus on detecting objects of different sizes from three different scales.@@5\t38.7\t322.3\t166.3\t177.3##",
+            "text-0"
+        ],
+        [
+            "3. Public Data Insights@@5\t36.3\t136.0\t202.7\t213.7##",
+            "title-1"
+        ],
+        [
+            "This section gives a brief overview of the YOLO versions through the public data. In 2015, the YOLO@@5\t49.3\t488.0\t226.7\t240.0##",
+            "text-1"
+        ],
+        [
+            "algorithm was published, which is used for object detection. YOLO, a new approach to object detection. Prior@@5\t38.0\t488.0\t239.0\t252.3##",
+            "text-1"
+        ],
+        [
+            "work on object detection repurposes classififiers to perform detection [14]. YOLO's performance was@@5\t37.0\t488.0\t250.0\t263.0##",
+            "text-1"
+        ],
+        [
+            "competitive, but it still has room for improvement. The first subsection presents the algorithm trends. The second@@5\t38.7\t486.3\t264.0\t274.7##",
+            "text-1"
+        ],
+        [
+            "one gives more details about people's insights. Both subsections use numerical data and text show the YOLO is@@5\t38.7\t487.0\t275.7\t286.3##",
+            "text-1"
+        ],
+        [
+            "still ongoing and keeps updating. All the data is collected from GOOGLE (www.google.com) open dataset (we@@5\t38.7\t488.0\t288.0\t298.7##",
+            "text-1"
+        ],
+        [
+            "have deleted the YOLO V1 results in this section due to the noise).@@5\t36.3\t307.0\t298.0\t311.0##",
+            "text-1"
+        ],
+        [
+            "3.1Trends@@5\t38.0\t82.0\t322.7\t333.7##",
+            "title-2"
+        ],
+        [
+            "This subsection has collected the publication data for displaying the trends. Table 1 gives us the academic@@5\t50.3\t487.0\t344.3\t357.7##",
+            "text-2"
+        ],
+        [
+            "research paper numbers of each version. The breakdown illustrates the research paper number has increasing a@@5\t39.3\t486.3\t358.3\t369.3##",
+            "text-2"
+        ],
+        [
+            "lot in the year 2019 and year 2020. Besides, YOLO V3 and V2 versions have attracted most of the researcher's@@5\t38.7\t486.3\t370.0\t380.7##",
+            "text-2"
+        ],
+        [
+            "eyes, although the time fact can be another element. V4 and V5 versions' number is less because they are very@@5\t38.0\t486.3\t380.7\t394.0##",
+            "text-2"
+        ],
+        [
+            "new.@@5\t38.0\t57.3\t394.7\t404.0##",
+            "text-2"
+        ],
+        [
+            "Fig. 1 presents the interests over time. The data is based on the web search performance, including news search,@@5\t50.3\t488.7\t558.7\t569.7##",
+            "text-3"
+        ],
+        [
+            "image search, and YouTube search. The scale is a relative measurement. The highest point is 1o0, and the lowest@@5\t38.7\t488.0\t571.3\t582.0##",
+            "text-3"
+        ],
+        [
+            "is zero. For example, a value of 50 means that the term is half as popular. Statistically, the value of zero means@@5\t37.0\t487.0\t581.3\t594.3##",
+            "text-3"
+        ],
+        [
+            "there data maybe not enough or people are not interested in this topic.@@5\t36.3\t317.7\t593.0\t606.0##",
+            "text-3"
+        ],
+        [
+            "The figure shows that the V2 and V3 versions are more prevalent most of the time. However, after April 2020,@@5\t50.3\t487.0\t606.0\t619.3##",
+            "text-4"
+        ],
+        [
+            "V4 and V5 are getting more popular. This result matches the numerical results from previous Table 1.@@5\t37.0\t447.7\t617.0\t630.0##",
+            "text-4"
+        ],
+        [
+            "3.2Public queries@@6\t37.3\t112.3\t312.7\t325.0##",
+            "title-0"
+        ],
+        [
+            "This subsection gives us more details about the public's interest. We use Google and YouTube as the baseline@@6\t50.3\t487.0\t336.0\t346.7##",
+            "text-0"
+        ],
+        [
+            "platforms to compare the four YOLO versions. According to the search keyword analysis. Table 2 and Table 3@@6\t38.7\t486.3\t349.0\t360.0##",
+            "text-0"
+        ],
+        [
+            "summarized the top ten queries for each of them.@@6\t38.0\t234.3\t361.3\t372.3##",
+            "text-0"
+        ],
+        [
+            "The top ten queries in Table 3 give us more details about what the researchers care. One of the insights is the@@7\t51.0\t487.0\t387.7\t398.7##",
+            "text-2"
+        ],
+        [
+            "versions comparing. Many researchers care about the difference among the several YOLO versions. Also, many@@7\t37.0\t487.0\t399.3\t412.7##",
+            "text-2"
+        ],
+        [
+            "people want to know what is the code or tutorial, which is implementation-oriented.@@7\t36.3\t374.3\t412.7\t423.3##",
+            "text-2"
+        ],
+        [
+            "4. Conclusion@@7\t38.7\t98.3\t437.3\t446.7##",
+            "title-0"
+        ],
+        [
+            "This paper gives us a review of the YOLO versions. Here we draw the following remarks. First, the YOLO@@7\t49.7\t488.0\t458.3\t471.3##",
+            "text-3"
+        ],
+        [
+            "version has a lot of differences. However, they still have some features in common. Hence, they are still similar.@@7\t38.7\t486.3\t472.0\t483.0##",
+            "text-3"
+        ],
+        [
+            "Second. The YOLO versions are still very new, have a lot of room for future research. Especially for scenario@@7\t38.0\t487.0\t484.3\t495.3##",
+            "text-3"
+        ],
+        [
+            "implementations.@@7\t37.0\t108.3\t497.0\t507.0##",
+            "text-3"
+        ],
+        [
+            "There is still room for future improvement. This paper can focus more on the implementations comparing,@@7\t48.7\t486.3\t506.0\t519.3##",
+            "text-4"
+        ],
+        [
+            "such as scenario analysis. Further, the research for YOLO V1 is very limited in this paper. For example, in the@@7\t38.0\t487.0\t521.0\t531.7##",
+            "text-4"
+        ],
+        [
+            "trend subsection, both the figure and tabular have ignored YOLO V1. Future research can do better on this point.@@7\t38.0\t487.0\t532.3\t543.3##",
+            "text-4"
+        ],
+        [
+            "Fundingstatement@@7\t38.0\t120.7\t558.0\t569.0##",
+            "title-1"
+        ],
+        [
+            "This research has been partially supported by grants from the National Natural Science Foundation of China@@7\t51.0\t487.0\t569.7\t580.3##",
+            "text-5"
+        ],
+        [
+            "(Nos. 71774134, U1811462). This research is also supported by the Fundamental Research Funds for the Central@@7\t38.0\t488.0\t581.3\t594.3##",
+            "text-5"
+        ],
+        [
+            "Universities,Southwest Minzu University(Grant Number 2020NGD04,and 2018NZD02).@@7\t38.7\t395.0\t593.7\t604.3##",
+            "text-5"
+        ],
+        [
+            "References@@8\t37.3\t86.7\t73.3\t83.3##",
+            "title-0"
+        ],
+        [
+            "[1] Sultana, F., Sufian, A., & Dutta, P. (2020). A review of object detection models based on convolutional neural network. Intelligent@@8\t55.7\t488.0\t94.3\t105.3##",
+            "text-0"
+        ],
+        [
+            "Computing: Image Processing Based Applications, 1-16.@@8\t74.3\t253.7\t104.3\t114.7##",
+            "text-0"
+        ],
+        [
+            "Zhiqiang, W., & Jun, L. (2017, July). A review of object detection based on convolutional neural network. In 2017 36th Chinese[2]@@8\t72.0\t75.7\t116.5\t125.7##",
+            "text-0"
+        ],
+        [
+            "Control Conference (CCC) (pp. 11104-11109). IEEE.@@8\t74.3\t239.0\t126.0\t137.0##",
+            "text-0"
+        ],
+        [
+            "[3]Zhao, Z. Q., Zheng, P., Xu, S. T., & Wu, X. (2019). Object detection with deep learning: A review. IEEE transactions on neural@@8\t55.0\t488.0\t137.0\t147.0##",
+            "text-0"
+        ],
+        [
+            "networks and learning systems, 30(11), 3212-3232.@@8\t74.3\t240.3\t147.7\t158.0##",
+            "text-0"
+        ],
+        [
+            "[4] Zou, X. (2019, August). A Review of Object Detection Techniques. In 2019 International Conference on Smart Grid and Electrical@@8\t55.0\t488.0\t158.0\t168.7##",
+            "text-0"
+        ],
+        [
+            "Automation (ICSGEA)(pp.251-254). IEEE@@8\t73.3\t208.0\t168.7\t178.7##",
+            "text-0"
+        ],
+        [
+            "[5]Laroca, R., Severo, E., Zanlorensi, L. A., Oliveira, L. S., Goncalves, G. R., Schwartz, W. R., & Menotti, D. (2018, July). A robust real-@@8\t55.0\t487.0\t178.0\t189.0##",
+            "text-0"
+        ],
+        [
+            "time automatic license plate recognition based on the YOLO detector. In 2018 International Joint Conference on Neural@@8\t73.3\t488.0\t188.7\t199.7##",
+            "text-0"
+        ],
+        [
+            "Networks (IJCNN) (pp. 1-10). IEEE.@@8\t73.7\t184.7\t199.0\t209.7##",
+            "text-0"
+        ],
+        [
+            "[6]Tian, Y., Yang, G., Wang, Z., Wang, H., Li, E., & Liang, Z. (2019). Apple detection during different growth stages in orchards using@@8\t55.0\t488.0\t210.7\t221.3##",
+            "text-0"
+        ],
+        [
+            "the improved YOL0-V3 model. Computers and electronics in agriculture, 157, 417-426.@@8\t73.3\t356.3\t219.7\t230.7##",
+            "text-0"
+        ],
+        [
+            "Jamtsho, Y., Riyamongkol, P., & Waranusast, R. (2021). Real-time license plate detection for non-helmeted motorcyclist using[7]@@8\t71.0\t75.7\t232.2\t241.3##",
+            "text-0"
+        ],
+        [
+            "YOLO. ICT Express, 7(1), 104-109.@@8\t73.3\t182.3\t242.3\t252.3##",
+            "text-0"
+        ],
+        [
+            "[8]Han, J., Liao, Y., Zhang, J., Wang, S., & Li, S. (2018). Target fusion detection of LiDAR and camera based on the improved YOLO@@8\t55.7\t488.0\t253.0\t263.0##",
+            "text-0"
+        ],
+        [
+            "algorithm. Mathematics, 6(10), 213.@@8\t74.3\t192.7\t264.0\t274.0##",
+            "text-0"
+        ],
+        [
+            "[9] Lin, J. P., & Sun, M. T. (2018, November). A YOLO-based traffic counting system. In 2018 Conference on Technologies and@@8\t55.0\t488.0\t273.3\t284.0##",
+            "text-0"
+        ],
+        [
+            "Applications of Artificial Intelligence (TAAl) (pp. 82-85). IEEE.@@8\t74.3\t270.7\t284.7\t295.0##",
+            "text-0"
+        ],
+        [
+            "[10] Lu, J., Ma, C., Li, L., Xing, X., Zhang, Y., Wang, Z., & Xu, J. (2018). A vehicle detection method for aerial image based on YOLO.@@8\t55.0\t487.0\t294.0\t305.0##",
+            "text-0"
+        ],
+        [
+            "Journal of Computer and Communications, 6(11), 98-107.@@8\t74.3\t261.3\t305.7\t315.7##",
+            "text-0"
+        ],
+        [
+            "[11] Huang, R., Pedoeem, J., & Chen, C. (2018, December). YOLO-LITE: a real-time object detection algorithm optimized for non-GPU@@8\t55.7\t487.0\t316.7\t326.7##",
+            "text-0"
+        ],
+        [
+            "computers. In 2018 IEEE International Conference on Big Data (Big Data) (pp. 2503-2510). IEEE.@@8\t74.3\t382.7\t327.3\t337.3##",
+            "text-0"
+        ],
+        [
+            "[12] Gong, B., Ergu, D., Cai, Y., & Ma, B. (2020). A Method for Wheat Head Detection Based on YOLO V4.@@8\t55.0\t398.3\t336.0\t346.7##",
+            "text-0"
+        ],
+        [
+            "[13] Jamtsho, Y. , Riyamongkol, P., & Waranusast, R. . (2019). Real-time bhutanese license plate localization using yolo. ICT Express,@@8\t55.0\t487.0\t346.7\t357.7##",
+            "text-0"
+        ],
+        [
+            "6(2).@@8\t73.3\t89.7\t359.0\t368.3##",
+            "text-0"
+        ],
+        [
+            "[14] Redmon, J., Divvala, S., Girshick, R. , & Farhadi, A.. (2016). You only look once: unified, real-time object detection.@@8\t55.7\t452.3\t369.3\t379.3##",
+            "text-0"
+        ],
+        [
+            "[15] Bochkovskiy, A. , Wang, C. Y., & Liao, H. . (2020). Yolov4: optimal speed and accuracy of object detection.@@8\t55.0\t420.7\t378.3\t389.3##",
+            "text-0"
+        ]
+    ],
+    "tables": [
+        [
+            [
+                "<PIL.Image.Image image mode=RGB size=1217x639 at 0x7445CC504B90>",
+                [
+                    "Fig. 1. Weekly trends for YOLO versions in the past five years\nWEEKLYTRENDSINTHEPASTFIVEYEARS\n120\n100\n80\n60\nYOLOV5:(Worldwide)\nYOLOV2:(Wor"
+                ]
+            ],
+            [
+                [
+                    5,
+                    58.578094482421875,
+                    464.4007975260417,
+                    71.87649536132812,
+                    284.87668863932294
+                ]
+            ]
+        ],
+        [
+            [
+                "<PIL.Image.Image image mode=RGB size=1251x276 at 0x744664321820>",
+                "<table><caption> Table 1. YOLO versions breakdown by years</caption>\n<tr><th></th><th  >YOLOV2</th><th  >YOLOV3</th><th  >YOLOV4</th><th  >YOLOV5</th><th  >Total</th></tr>\n<tr><td  >2016</td><td  >0</td><td  >0</td><td  >0</td><td  >0</td><td  >0</td></tr>\n<tr><td  >2017</td><td  >5</td><td  >0</td><td  >0</td><td  >0</td><td  >5</td></tr>\n<tr><td  >2018</td><td  >47</td><td  >19</td><td  >0</td><td  >0</td><td  >66</td></tr>\n<tr><td  >2019</td><td  >48</td><td  >210</td><td  >0</td><td  >0</td><td  >258</td></tr>\n<tr><td  >2020</td><td  >36</td><td  >496</td><td  >81</td><td  >13</td><td  >626</td></tr>\n<tr><td  >Total</td><td  >136</td><td  >725</td><td  >81</td><td  >13</td><td  >955</td></tr>\n</table>"
+            ],
+            [
+                [
+                    4,
+                    37.99250030517578,
+                    454.8806966145833,
+                    438.1318359375,
+                    530.1260579427084
+                ]
+            ]
+        ],
+        [
+            [
+                "<PIL.Image.Image image mode=RGB size=1005x733 at 0x7445CC5700E0>",
+                "<table><caption> Table 2. Top ten queries for each YOLO version (V2 and V3)</caption>\n<tr><th  >YOLO V2</th><th colspan=2 >YOLOV3</th></tr>\n<tr><th  >GOOGLE YOUTUBE</th><th  >GOOGLE</th><th  >YOUTUBE</th></tr>\n<tr><td  >yolo v2 yolo v2</td><td  >yolo v3</td><td  >yolo v3</td></tr>\n<tr><td  > yolo v2 paper yolo v2 matlab</td><td  >yolo v3 paper</td><td  >yolo v3 vs v4</td></tr>\n<tr><td  >yolo v2 yolo v2 object   architecture detection</td><td  >yolo v3 github</td><td  >yolo v3 training </td></tr>\n<tr><td  >yolo v2 github yolo v2 pytorch</td><td  >yolo v3 pytorch</td><td  >yolo v3 demo</td></tr>\n<tr><td  >yolo v2 pytorch yolo v2 loss function</td><td  >yolo v3 vs v4 </td><td  >yolo v3 object detection</td></tr>\n<tr><td  >yolo v2 matlab yolo v2 vs v3</td><td  >yolo v3 architecture</td><td  >yolov3tutorial</td></tr>\n<tr><td  >yolo v2 vs v3 yolov2explained</td><td  >yolov3vsv4vs v5</td><td  >yolo v3 colab</td></tr>\n<tr><td  >yolo v2 loss yolov2algorithm function</td><td  >yolov3weights</td><td  >yolo v3 in hindi</td></tr>\n<tr><td  >yolov2explained yolo v2 tiny</td><td  >yolo v3 tensorflow</td><td  >yolov3custom dataset</td></tr>\n<tr><td  >yolo v2 algorithm   yolo v2</td><td  >yolo v3 object</td><td  >yolo v3 code</td></tr>\n<tr><td  >tensorflow</td><td  >detection</td><td></td></tr>\n</table>"
+            ],
+            [
+                [
+                    5,
+                    95.16103108723958,
+                    430.0386149088542,
+                    405.3162027994792,
+                    621.9399820963541
+                ],
+                [
+                    6,
+                    96.52235921223958,
+                    430.523193359375,
+                    70.39910888671875,
+                    98.13648478190105
+                ]
+            ]
+        ],
+        [
+            [
+                "<PIL.Image.Image image mode=RGB size=1004x722 at 0x7445DC4BA840>",
+                "<table><caption> Table 3. Top ten queries for each YOLO version (V4 and V5)</caption>\n<tr><th colspan=2 >YOLOV4</th><th colspan=2 >YOLOV5</th></tr>\n<tr><th  >GOOGLE</th><th  >YOUTUBE</th><th  >GOOGLE</th><th  >YOUTUBE</th></tr>\n<tr><td  >yolo v4</td><td  > yolo v4</td><td  >yolo v5</td><td  >yolo v5</td></tr>\n<tr><td  > yolo v4 alexeyab</td><td  >yolo v4 tutorial</td><td  >yolo v5 github</td><td  >yolov5vsv4</td></tr>\n<tr><td  >yolo v4 github</td><td  >yolo v4 demo</td><td  >yolo v5 paper</td><td  >yolo v5 tutorial</td></tr>\n<tr><td  >yolo v4 pytorch</td><td  >yolo v4 video</td><td  >yolo v5 tutorial</td><td  >yolo v5 object detection</td></tr>\n<tr><td  >yolo v4 tiny</td><td  >yolov4colab</td><td  >yolo v5 vs v4</td><td  >yolo v5 colab</td></tr>\n<tr><td  >yolo v4 vs v5</td><td  >yolo v4 tiny</td><td  >yolo v5 architecture</td><td  >yolo v5 demo</td></tr>\n<tr><td  >yolo v4 tensorflow</td><td  >yolo v4 google colab</td><td  >yolo v5 darknet</td><td  >yolo v5 video</td></tr>\n<tr><td  >yolo v4 tutorial</td><td  >yolo v4 object detection</td><td  >yolo v5 tensorflow</td><td  >yolo v5 pytorch</td></tr>\n<tr><td  >yolo v4 python</td><td  >yolo v4 training</td><td  >yolov5 tensorflow github</td><td  >yolo v5 paper</td></tr>\n<tr><td  >yolo v4 training</td><td  >yolov4 tensorflow</td><td  >yolo v5 tensorrt</td><td  >yolov5 architecture</td></tr>\n</table>"
+            ],
+            [
+                [
+                    6,
+                    95.2467041015625,
+                    429.9576822916667,
+                    133.42207845052084,
+                    373.9148763020833
+                ]
+            ]
+        ]
+    ]
+}

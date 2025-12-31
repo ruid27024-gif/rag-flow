@@ -222,13 +222,14 @@ class RAGFlowMinio:
                     print(f"【DEBUG-HY】: get {bucket}/{filename}, type is {type(r)}", file=sys.stderr, flush=True)
                     content = r.read()
                     # 判断文件是否是扫描文件
-                    is_scan = is_scanned_pdf_from_stream(content)
-                    if is_scan:
-                        # 是扫描件，需要进行扫面件流程
-                        print(f"【DEBUG-HY】: {base} is scanned pdf, need to parse it", file=sys.stderr, flush=True)
-                        # 解析扫描件
-                        print(f"【DEBUG-HY】: {base} start to parse it", file=sys.stderr, flush=True)
-                        content = parse_pdf_stream(content,"temp_pdf",base)
+                    # is_scan = is_scanned_pdf_from_stream(content)
+                    # is_scan = False
+                    # if is_scan:
+                    #     # 是扫描件，需要进行扫面件流程
+                    #     print(f"【DEBUG-HY】: {base} is scanned pdf, need to parse it", file=sys.stderr, flush=True)
+                    #     # 解析扫描件
+                    #     print(f"【DEBUG-HY】: {base} start to parse it", file=sys.stderr, flush=True)
+                    #     content = parse_pdf_stream(content,"temp_pdf",base)
                     try:
                         r.close()
                     except Exception:

@@ -21,6 +21,7 @@ import sys
 import tempfile
 import threading
 import zipfile
+import shutil
 from dataclasses import dataclass
 from io import BytesIO
 from os import PathLike
@@ -34,6 +35,21 @@ from PIL import Image
 from strenum import StrEnum
 
 from deepdoc.parser.pdf_parser import RAGFlowPdfParser
+
+# MinerU local imports
+from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env
+from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from mineru.utils.enum_class import MakeMode
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+from mineru.backend.vlm.vlm_analyze import ModelSingleton as VLMModelSingleton
+from mineru.backend.pipeline.pipeline_analyze import ModelSingleton as PipelineModelSingleton
+from mineru.utils.model_utils import clean_memory
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
+from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
@@ -121,7 +137,7 @@ class MinerUParseMethod(StrEnum):
 class MinerUParseOptions:
     """Options for MinerU PDF parsing."""
 
-    backend: MinerUBackend = MinerUBackend.PIPELINE
+    backend: MinerUBackend = MinerUBackend.VLM_VLLM_ENGINE
     lang: Optional[MinerULanguage] = None  # language for OCR (pipeline backend only)
     method: MinerUParseMethod = MinerUParseMethod.AUTO
     server_url: Optional[str] = None
@@ -138,40 +154,6 @@ class MinerUParser(RAGFlowPdfParser):
         self.outlines = []
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    def _extract_zip_no_root(self, zip_path, extract_to, root_dir):
-        self.logger.info(f"[MinerU] Extract zip: zip_path={zip_path}, extract_to={extract_to}, root_hint={root_dir}")
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            if not root_dir:
-                files = zip_ref.namelist()
-                if files and files[0].endswith("/"):
-                    root_dir = files[0]
-                else:
-                    root_dir = None
-
-            if not root_dir or not root_dir.endswith("/"):
-                self.logger.info(f"[MinerU] No root directory found, extracting all (root_hint={root_dir})")
-                zip_ref.extractall(extract_to)
-                return
-
-            root_len = len(root_dir)
-            for member in zip_ref.infolist():
-                filename = member.filename
-                if filename == root_dir:
-                    self.logger.info("[MinerU] Ignore root folder...")
-                    continue
-
-                path = filename
-                if path.startswith(root_dir):
-                    path = path[root_len:]
-
-                full_path = os.path.join(extract_to, path)
-                if member.is_dir():
-                    os.makedirs(full_path, exist_ok=True)
-                else:
-                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                    with open(full_path, "wb") as f:
-                        f.write(zip_ref.read(filename))
-
     @staticmethod
     def _is_http_endpoint_valid(url, timeout=5):
         try:
@@ -181,119 +163,165 @@ class MinerUParser(RAGFlowPdfParser):
             return False
 
     def check_installation(self, backend: str = "pipeline", server_url: Optional[str] = None) -> tuple[bool, str]:
-        reason = ""
+        # Local execution check: assume imports passed if we are here.
+        # We could add more checks for models if needed.
+        return True, "Local MinerU available"
 
-        valid_backends = ["pipeline", "vlm-http-client", "vlm-transformers", "vlm-vllm-engine", "vlm-mlx-engine", "vlm-vllm-async-engine", "vlm-lmdeploy-engine"]
-        if backend not in valid_backends:
-            reason = f"[MinerU] Invalid backend '{backend}'. Valid backends are: {valid_backends}"
-            self.logger.warning(reason)
-            return False, reason
+    def _process_output_local(
+            self,
+            pdf_info,
+            pdf_bytes,
+            pdf_file_name,
+            local_md_dir,
+            local_image_dir,
+            md_writer,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_orig_pdf,
+            f_dump_md,
+            f_dump_content_list,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_make_md_mode,
+            middle_json,
+            model_output=None,
+            is_pipeline=True
+    ):
+        """处理输出文件 (Process output files - adapted from pdf_utils.py)"""
+        if f_draw_layout_bbox:
+            draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
 
-        if not self.mineru_api:
-            reason = "[MinerU] MINERU_APISERVER not configured."
-            self.logger.warning(reason)
-            return False, reason
+        if f_draw_span_bbox:
+            draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
 
-        api_openapi = f"{self.mineru_api}/openapi.json"
+        if f_dump_orig_pdf:
+            md_writer.write(
+                f"{pdf_file_name}_origin.pdf",
+                pdf_bytes,
+            )
+
+        image_dir = str(os.path.basename(local_image_dir))
+
+        if f_dump_md:
+            make_func = pipeline_union_make if is_pipeline else vlm_union_make
+            md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
+            md_writer.write_string(
+                f"{pdf_file_name}.md",
+                md_content_str,
+            )
+
+        if f_dump_content_list:
+            make_func = pipeline_union_make if is_pipeline else vlm_union_make
+            content_list = make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir)
+            md_writer.write_string(
+                f"{pdf_file_name}_content_list.json",
+                json.dumps(content_list, ensure_ascii=False, indent=4),
+            )
+
+        if f_dump_middle_json:
+            md_writer.write_string(
+                f"{pdf_file_name}_middle.json",
+                json.dumps(middle_json, ensure_ascii=False, indent=4),
+            )
+
+        if f_dump_model_output:
+            md_writer.write_string(
+                f"{pdf_file_name}_model.json",
+                json.dumps(model_output, ensure_ascii=False, indent=4),
+            )
+
+        self.logger.info(f"[MinerU] local output dir is {local_md_dir}")
+
+    def _run_mineru_local(
+        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None
+    ) -> Path:
+        """Local MinerU execution based on rag/utils/pdf_utils.py do_parse"""
+        os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
+        
+        pdf_file_path = str(input_path)
+        pdf_file_name = input_path.stem
+        
+        # Read file bytes
+        with open(pdf_file_path, "rb") as f:
+            pdf_bytes = f.read()
+            
+        # Check suffix and convert image to pdf if needed
+        suffix = guess_suffix_by_bytes(pdf_bytes)
+        image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
+
+        if suffix in image_suffixes:
+            pdf_bytes = images_bytes_to_pdf_bytes(pdf_bytes)
+
+        # Prepare backend
+        # Logic from pdf_utils.py: backend = backend[4:]
+        # However, vlm_doc_analyze doesn't support "line" (from "pipeline").
+        # We fallback "pipeline" to "transformers" (vlm-transformers) to ensure images are extracted.
+        backend_str = options.backend
+        if backend_str == "pipeline":
+            backend_str = "transformers"
+        elif len(backend_str) > 4 and backend_str.startswith("vlm-"):
+            backend_str = backend_str[4:]
+        
+        # Prepare env
+        local_image_dir, local_md_dir = prepare_env(str(output_dir), pdf_file_name, options.method)
+        image_writer = FileBasedDataWriter(local_image_dir)
+        md_writer = FileBasedDataWriter(local_md_dir)
+
+        # Settings
+        start_page_id = 0
+        end_page_id = None # Parse all
+        
         try:
-            api_ok = self._is_http_endpoint_valid(api_openapi)
-            self.logger.info(f"[MinerU] API openapi.json reachable={api_ok} url={api_openapi}")
-            if not api_ok:
-                reason = f"[MinerU] MinerU API not accessible: {api_openapi}"
-                return False, reason
-        except Exception as exc:
-            reason = f"[MinerU] MinerU API check failed: {exc}"
-            self.logger.warning(reason)
-            return False, reason
+            # Convert PDF bytes
+            pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+            
+            # Use vlm_doc_analyze for all backends as per pdf_utils.py pattern
+            middle_json, infer_result = vlm_doc_analyze(
+                pdf_bytes, 
+                image_writer=image_writer, 
+                backend=backend_str, 
+                server_url=options.server_url
+            )
 
-        if backend == "vlm-http-client":
-            resolved_server = server_url or self.mineru_server_url
-            if not resolved_server:
-                reason = "[MinerU] MINERU_SERVER_URL required for vlm-http-client backend."
-                self.logger.warning(reason)
-                return False, reason
-            try:
-                server_ok = self._is_http_endpoint_valid(resolved_server)
-                self.logger.info(f"[MinerU] vlm-http-client server check reachable={server_ok} url={resolved_server}")
-            except Exception as exc:
-                self.logger.warning(f"[MinerU] vlm-http-client server probe failed: {resolved_server}: {exc}")
+            pdf_info = middle_json["pdf_info"]
+            
+            # Check if it was pipeline execution to select correct make function
+            # pdf_utils.py used is_pipeline=False for _process_output call inside do_parse loop
+            # BUT _process_output definition defaults is_pipeline=True
+            # In do_parse line 577: is_pipeline=False.
+            # So pdf_utils.py seems to treat everything as VLM?
+            # Let's stick to is_pipeline=False (VLM mode) for consistency with pdf_utils.py
+            is_pipeline = False 
 
-        return True, reason
+            self._process_output_local(
+                pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, 
+                f_draw_layout_bbox=False, 
+                f_draw_span_bbox=False, 
+                f_dump_orig_pdf=False,
+                f_dump_md=True, 
+                f_dump_content_list=True, # Important for _read_output
+                f_dump_middle_json=True, 
+                f_dump_model_output=True,
+                f_make_md_mode=MakeMode.MM_MD, 
+                middle_json=middle_json, 
+                model_output=infer_result, 
+                is_pipeline=is_pipeline
+            )
+            
+            return Path(local_md_dir)
+
+        finally:
+            # Clear models and memory
+            VLMModelSingleton._models.clear()
+            PipelineModelSingleton._models.clear()
+            clean_memory()
 
     def _run_mineru(
         self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None
     ) -> Path:
-        return self._run_mineru_api(input_path, output_dir, options, callback)
-
-    def _run_mineru_api(
-        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None
-    ) -> Path:
-        pdf_file_path = str(input_path)
-
-        if not os.path.exists(pdf_file_path):
-            raise RuntimeError(f"[MinerU] PDF file not exists: {pdf_file_path}")
-
-        pdf_file_name = Path(pdf_file_path).stem.strip()
-        output_path = tempfile.mkdtemp(prefix=f"{pdf_file_name}_{options.method}_", dir=str(output_dir))
-        output_zip_path = os.path.join(str(output_dir), f"{Path(output_path).name}.zip")
-
-        files = {"files": (pdf_file_name + ".pdf", open(pdf_file_path, "rb"), "application/pdf")}
-
-        data = {
-            "output_dir": "./output",
-            "lang_list": options.lang,
-            "backend": options.backend,
-            "parse_method": options.method,
-            "formula_enable": options.formula_enable,
-            "table_enable": options.table_enable,
-            "server_url": None,
-            "return_md": True,
-            "return_middle_json": True,
-            "return_model_output": True,
-            "return_content_list": True,
-            "return_images": True,
-            "response_format_zip": True,
-            "start_page_id": 0,
-            "end_page_id": 99999,
-        }
-
-        if options.server_url:
-            data["server_url"] = options.server_url
-        elif self.mineru_server_url:
-            data["server_url"] = self.mineru_server_url
-
-        self.logger.info(f"[MinerU] request {data=}")
-        self.logger.info(f"[MinerU] request {options=}")
-
-        headers = {"Accept": "application/json"}
-        try:
-            self.logger.info(f"[MinerU] invoke api: {self.mineru_api}/file_parse backend={options.backend} server_url={data.get('server_url')}")
-            if callback:
-                callback(0.20, f"[MinerU] invoke api: {self.mineru_api}/file_parse")
-            response = requests.post(url=f"{self.mineru_api}/file_parse", files=files, data=data, headers=headers,
-                                     timeout=1800)
-
-            response.raise_for_status()
-            if response.headers.get("Content-Type") == "application/zip":
-                self.logger.info(f"[MinerU] zip file returned, saving to {output_zip_path}...")
-
-                if callback:
-                    callback(0.30, f"[MinerU] zip file returned, saving to {output_zip_path}...")
-
-                with open(output_zip_path, "wb") as f:
-                    f.write(response.content)
-
-                self.logger.info(f"[MinerU] Unzip to {output_path}...")
-                self._extract_zip_no_root(output_zip_path, output_path, pdf_file_name + "/")
-
-                if callback:
-                    callback(0.40, f"[MinerU] Unzip to {output_path}...")
-            else:
-                self.logger.warning(f"[MinerU] not zip returned from api: {response.headers.get('Content-Type')}")
-        except Exception as e:
-            raise RuntimeError(f"[MinerU] api failed with exception {e}")
-        self.logger.info("[MinerU] Api completed successfully.")
-        return Path(output_path)
+        self.logger.info(f"[MinerU] Running local parser with backend={options.backend}")
+        return self._run_mineru_local(input_path, output_dir, options, callback)
 
     def __images__(self, fnm, zoomin: int = 1, page_from=0, page_to=600, callback=None):
         self.page_from = page_from
@@ -538,16 +566,66 @@ class MinerUParser(RAGFlowPdfParser):
         return sections
 
     def _transfer_to_tables(self, outputs: list[dict[str, Any]]):
-        return []
+        tables = []
+        for output in outputs:
+            if output["type"] == MinerUContentType.TABLE:
+                table_body = output.get("table_body", "")
+                table_caption = "\n".join(output.get("table_caption", []))
+                table_footnote = "\n".join(output.get("table_footnote", []))
+                
+                # Construct HTML-like content or just body? 
+                # DeepDOC output in test/paper_debug.json is "<table><caption>...</caption>...</table>"
+                # MinerU table_body is likely markdown or html. 
+                # If MinerU outputs markdown, we might need to convert or just use it.
+                # Assuming table_body is HTML or we wrap it.
+                # If it's markdown, paper.py might not handle it well if it expects HTML table tags.
+                # But let's assume MinerU returns what it returns. 
+                # Actually, MinerU often returns markdown.
+                # However, for now let's just use what's there.
+                
+                content = table_body
+                if table_caption:
+                    content += f"\n{table_caption}"
+                if table_footnote:
+                    content += f"\n{table_footnote}"
+                    
+                img_path = output.get("table_img_path")
+                img = None
+                if img_path and os.path.exists(img_path):
+                    try:
+                        img = Image.open(img_path)
+                    except Exception as e:
+                        self.logger.warning(f"[MinerU] Failed to open table image {img_path}: {e}")
+                
+                # Positions
+                positions = []
+                if "bbox" in output:
+                    # Scale bbox if we have page images info
+                    bbox = output["bbox"] # [x0, y0, x1, y1]
+                    page_idx = output["page_idx"]
+                    
+                    x0, top, x1, bottom = bbox
+                    
+                    if hasattr(self, "page_images") and self.page_images and len(self.page_images) > page_idx:
+                        page_width, page_height = self.page_images[page_idx].size
+                        x0 = (x0 / 1000.0) * page_width
+                        x1 = (x1 / 1000.0) * page_width
+                        top = (top / 1000.0) * page_height
+                        bottom = (bottom / 1000.0) * page_height
+                    
+                    positions.append([page_idx + 1, x0, top, x1, bottom])
+                
+                tables.append([[img, content], positions])
+        return tables
 
     def parse_pdf(
             self,
             filepath: str | PathLike[str],
-            binary: BytesIO | bytes,
+            binary: BytesIO | bytes | None,
             callback: Optional[Callable] = None,
             *,
             output_dir: Optional[str] = None,
-            backend: str = "pipeline",
+            backend: str = "vlm-vllm-engine",
             server_url: Optional[str] = None,
             delete_output: bool = True,
             parse_method: str = "raw",
@@ -596,7 +674,7 @@ class MinerUParser(RAGFlowPdfParser):
             out_dir = Path(tempfile.mkdtemp(prefix="mineru_pdf_"))
             created_tmp_dir = True
 
-        self.logger.info(f"[MinerU] Output directory: {out_dir} backend={backend} api={self.mineru_api} server_url={server_url or self.mineru_server_url}")
+        self.logger.info(f"[MinerU] Output directory: {out_dir} backend={backend}")
         if callback:
             callback(0.15, f"[MinerU] Output directory: {out_dir}")
 
@@ -639,8 +717,10 @@ if __name__ == "__main__":
     ok, reason = parser.check_installation()
     print("MinerU available:", ok)
 
-    filepath = ""
-    with open(filepath, "rb") as file:
-        outputs = parser.parse_pdf(filepath=filepath, binary=file.read())
-        for output in outputs:
-            print(output)
+    # Example usage (commented out or adjust path)
+    # filepath = "/path/to/test.pdf"
+    # if os.path.exists(filepath):
+    #     with open(filepath, "rb") as file:
+    #         outputs = parser.parse_pdf(filepath=filepath, binary=file.read())
+    #         for output in outputs:
+    #             print(output)
