@@ -71,6 +71,7 @@ def vision_figure_parser_pdf_wrapper(tbls, callback=None, **kwargs):
                 isinstance(item[0][1], list)
             )
         figures_data = [item for item in tbls if is_figure_item(item)]
+        print(f"【DEBUG-HY】figures_data={figures_data}")
         try:
             docx_vision_parser = VisionFigureParser(vision_model=vision_model, figures_data=figures_data, **kwargs)
             boosted_figures = docx_vision_parser(callback=callback)
@@ -95,10 +96,9 @@ class VisionFigureParser:
         self.figures = []
         self.descriptions = []
         self.positions = []
-
         for item in figures_data:
             # position
-            if len(item) == 2 and isinstance(item[0], tuple) and len(item[0]) == 2 and isinstance(item[1], list) and isinstance(item[1][0], tuple) and len(item[1][0]) == 5:
+            if len(item) == 2 and isinstance(item[0], tuple) and len(item[0]) == 2 and isinstance(item[1], list) and (isinstance(item[1][0], tuple) or isinstance(item[1][0], list)) and len(item[1][0]) == 5:
                 img_desc = item[0]
                 assert len(img_desc) == 2 and isinstance(img_desc[0], Image.Image) and isinstance(img_desc[1], list), "Should be (figure, [description])"
                 self.figures.append(img_desc[0])

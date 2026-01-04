@@ -137,7 +137,7 @@ class MinerUParseMethod(StrEnum):
 class MinerUParseOptions:
     """Options for MinerU PDF parsing."""
 
-    backend: MinerUBackend = MinerUBackend.VLM_VLLM_ENGINE
+    backend: MinerUBackend = MinerUBackend.PIPELINE
     lang: Optional[MinerULanguage] = None  # language for OCR (pipeline backend only)
     method: MinerUParseMethod = MinerUParseMethod.AUTO
     server_url: Optional[str] = None
@@ -546,6 +546,8 @@ class MinerUParser(RAGFlowPdfParser):
                     if not section.strip():
                         section = "FAILED TO PARSE TABLE"
                 case MinerUContentType.IMAGE:
+                    # Skip images here as they are handled in tables for VLM processing
+                    # continue
                     section = "".join(output.get("image_caption", [])) + "\n" + "".join(
                         output.get("image_footnote", []))
                 case MinerUContentType.EQUATION:
@@ -568,34 +570,43 @@ class MinerUParser(RAGFlowPdfParser):
     def _transfer_to_tables(self, outputs: list[dict[str, Any]]):
         tables = []
         for output in outputs:
-            if output["type"] == MinerUContentType.TABLE:
-                table_body = output.get("table_body", "")
-                table_caption = "\n".join(output.get("table_caption", []))
-                table_footnote = "\n".join(output.get("table_footnote", []))
-                
-                # Construct HTML-like content or just body? 
-                # DeepDOC output in test/paper_debug.json is "<table><caption>...</caption>...</table>"
-                # MinerU table_body is likely markdown or html. 
-                # If MinerU outputs markdown, we might need to convert or just use it.
-                # Assuming table_body is HTML or we wrap it.
-                # If it's markdown, paper.py might not handle it well if it expects HTML table tags.
-                # But let's assume MinerU returns what it returns. 
-                # Actually, MinerU often returns markdown.
-                # However, for now let's just use what's there.
-                
-                content = table_body
-                if table_caption:
-                    content += f"\n{table_caption}"
-                if table_footnote:
-                    content += f"\n{table_footnote}"
-                    
-                img_path = output.get("table_img_path")
+            if output["type"] in [MinerUContentType.TABLE, MinerUContentType.IMAGE]:
+                content = ""
                 img = None
+                
+                if output["type"] == MinerUContentType.TABLE:
+                    table_body = output.get("table_body", "")
+                    table_caption = "\n".join(output.get("table_caption", []))
+                    table_footnote = "\n".join(output.get("table_footnote", []))
+                    
+                    content = table_body
+                    if table_caption:
+                        content += f"\n{table_caption}"
+                    if table_footnote:
+                        content += f"\n{table_footnote}"
+                        
+                    img_path = output.get("table_img_path")
+                else: # IMAGE
+                    # For images, we want the caption as initial content
+                    # The VLM will add more description later if configured
+                    image_caption = "\n".join(output.get("image_caption", []))
+                    image_footnote = "\n".join(output.get("image_footnote", []))
+                    image_text = output.get("text", "")
+
+                    if image_text:
+                        content += f"{image_text}"
+                    if image_caption:
+                        content += f"\n{image_caption}" if content else f"{image_caption}"
+                    if image_footnote:
+                        content += f"\n{image_footnote}"
+                        
+                    img_path = output.get("img_path")
+
                 if img_path and os.path.exists(img_path):
                     try:
-                        img = Image.open(img_path)
+                        img = Image.open(img_path).convert('RGB')
                     except Exception as e:
-                        self.logger.warning(f"[MinerU] Failed to open table image {img_path}: {e}")
+                        self.logger.warning(f"[MinerU] Failed to open image {img_path}: {e}")
                 
                 # Positions
                 positions = []
@@ -613,9 +624,13 @@ class MinerUParser(RAGFlowPdfParser):
                         top = (top / 1000.0) * page_height
                         bottom = (bottom / 1000.0) * page_height
                     
-                    positions.append([page_idx + 1, x0, top, x1, bottom])
+                    positions.append([page_idx, x0, x1, top, bottom])
                 
-                tables.append([[img, content], positions])
+                final_content = content
+                if output["type"] == MinerUContentType.IMAGE:
+                    final_content = [content] if content else []
+                
+                tables.append(((img, final_content), positions))
         return tables
 
     def parse_pdf(
@@ -625,7 +640,7 @@ class MinerUParser(RAGFlowPdfParser):
             callback: Optional[Callable] = None,
             *,
             output_dir: Optional[str] = None,
-            backend: str = "vlm-vllm-engine",
+            backend: str = None,
             server_url: Optional[str] = None,
             delete_output: bool = True,
             parse_method: str = "raw",
@@ -637,6 +652,9 @@ class MinerUParser(RAGFlowPdfParser):
         created_tmp_dir = False
 
         parser_cfg = kwargs.get('parser_config', {})
+        if backend is None:
+            backend = parser_cfg.get('mineru_backend', 'vlm-vllm-engine')
+
         lang = parser_cfg.get('mineru_lang') or kwargs.get('lang', 'English')
         mineru_lang_code = LANGUAGE_TO_MINERU_MAP.get(lang, 'ch')  # Defaults to Chinese if not matched
         mineru_method_raw_str = parser_cfg.get('mineru_parse_method', 'auto')
@@ -675,6 +693,7 @@ class MinerUParser(RAGFlowPdfParser):
             created_tmp_dir = True
 
         self.logger.info(f"[MinerU] Output directory: {out_dir} backend={backend}")
+        print(f"【DEBUG-HY】: [MinerU] Output directory: {out_dir} backend={backend}", file=sys.stderr)
         if callback:
             callback(0.15, f"[MinerU] Output directory: {out_dir}")
 

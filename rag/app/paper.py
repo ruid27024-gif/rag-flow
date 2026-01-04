@@ -147,6 +147,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         Only pdf is supported.
         The abstract of the paper will be sliced as an entire chunk, and will not be sliced partly.
     """
+    import json
     parser_config = kwargs.get(
         "parser_config", {
             "chunk_token_num": 512, "delimiter": "\n!?。；！？", "layout_recognize": "DeepDOC"})
@@ -164,11 +165,14 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         name = "mineru"
         pdf_parser = PARSERS.get(name, by_plaintext)
         callback(0.1, "Start to parse.")
-
+        #todo-zm 根据二进制文件的类型选择使用deepdoc还是mineru解析
         if name == "deepdoc":
             pdf_parser = Pdf()
             paper = pdf_parser(filename if not binary else binary,
                                from_page=from_page, to_page=to_page, callback=callback)
+            # 将这paper的内容写入到一个json文件中
+            with open(f"{filename}_deepdoc.json", "w") as f:
+                json.dump(paper, f, ensure_ascii=False, indent=4, default=lambda o: f"<{o.__class__.__name__}>")
         elif name == "mineru":
             from deepdoc.parser.mineru_parser import MinerUParser
             pdf_parser = MinerUParser()
@@ -186,7 +190,6 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
                 "sections": sections,
                 "tables": tables
             }
-            print(paper)
         else:
             kwargs.pop("parse_method", None)
             kwargs.pop("mineru_llm_name", None)
@@ -213,8 +216,14 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             }
 
         tbls=paper["tables"]
+        # print(tbls)
         tbls=vision_figure_parser_pdf_wrapper(tbls=tbls,callback=callback,**kwargs)
         paper["tables"] = tbls
+
+        if name == "mineru":
+            # 将这paper的内容写入到一个json文件中
+            with open(f"{filename}_mineru.json", "w") as f:
+                json.dump(paper, f, ensure_ascii=False, indent=4, default=lambda o: f"<{o.__class__.__name__}>")
     else:
         raise NotImplementedError("file type not supported yet(pdf supported)")
 
