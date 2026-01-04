@@ -176,9 +176,10 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         elif name == "mineru":
             from deepdoc.parser.mineru_parser import MinerUParser
             pdf_parser = MinerUParser()
-            sections, tables = pdf_parser.parse_pdf(
-                filename,
-                binary,
+            sections, tables = pdf_parser(
+                filename if not binary else binary,
+                from_page=from_page,
+                to_page=to_page,
                 parse_method="paper",
                 callback=callback,
                 **kwargs

@@ -233,7 +233,8 @@ class MinerUParser(RAGFlowPdfParser):
         self.logger.info(f"[MinerU] local output dir is {local_md_dir}")
 
     def _run_mineru_local(
-        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None
+        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None,
+        from_page: int = 0, to_page: int = 100000
     ) -> Path:
         """Local MinerU execution based on rag/utils/pdf_utils.py do_parse"""
         os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
@@ -268,8 +269,8 @@ class MinerUParser(RAGFlowPdfParser):
         md_writer = FileBasedDataWriter(local_md_dir)
 
         # Settings
-        start_page_id = 0
-        end_page_id = None # Parse all
+        start_page_id = from_page
+        end_page_id = to_page - 1 if to_page < 100000 else None # Parse all
         
         try:
             # Convert PDF bytes
@@ -318,10 +319,11 @@ class MinerUParser(RAGFlowPdfParser):
             clean_memory()
 
     def _run_mineru(
-        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None
+        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None,
+        from_page: int = 0, to_page: int = 100000
     ) -> Path:
         self.logger.info(f"[MinerU] Running local parser with backend={options.backend}")
-        return self._run_mineru_local(input_path, output_dir, options, callback)
+        return self._run_mineru_local(input_path, output_dir, options, callback, from_page, to_page)
 
     def __images__(self, fnm, zoomin: int = 1, page_from=0, page_to=600, callback=None):
         self.page_from = page_from
@@ -337,7 +339,7 @@ class MinerUParser(RAGFlowPdfParser):
             self.logger.exception(e)
 
     def _line_tag(self, bx):
-        pn = [bx["page_idx"] + 1]
+        pn = [bx["page_idx"] + 1 + getattr(self, "page_from", 0)]
         positions = bx.get("bbox", (0, 0, 0, 0))
         x0, top, x1, bott = positions
 
@@ -567,7 +569,7 @@ class MinerUParser(RAGFlowPdfParser):
                 sections.append((section, self._line_tag(output)))
         return sections
 
-    def _transfer_to_tables(self, outputs: list[dict[str, Any]]):
+    def _transfer_to_tables(self, outputs: list[dict[str, Any]], from_page: int = 0):
         tables = []
         for output in outputs:
             if output["type"] in [MinerUContentType.TABLE, MinerUContentType.IMAGE]:
@@ -624,7 +626,7 @@ class MinerUParser(RAGFlowPdfParser):
                         top = (top / 1000.0) * page_height
                         bottom = (bottom / 1000.0) * page_height
                     
-                    positions.append([page_idx, x0, x1, top, bottom])
+                    positions.append([page_idx + from_page, x0, x1, top, bottom])
                 
                 final_content = content
                 if output["type"] == MinerUContentType.IMAGE:
@@ -644,6 +646,8 @@ class MinerUParser(RAGFlowPdfParser):
             server_url: Optional[str] = None,
             delete_output: bool = True,
             parse_method: str = "raw",
+            from_page: int = 0,
+            to_page: int = 100000,
             **kwargs,
     ) -> tuple:
         import shutil
@@ -697,7 +701,7 @@ class MinerUParser(RAGFlowPdfParser):
         if callback:
             callback(0.15, f"[MinerU] Output directory: {out_dir}")
 
-        self.__images__(pdf, zoomin=1)
+        self.__images__(pdf, zoomin=1, page_from=from_page, page_to=to_page)
 
         try:
             options = MinerUParseOptions(
@@ -710,13 +714,13 @@ class MinerUParser(RAGFlowPdfParser):
                 formula_enable=enable_formula,
                 table_enable=enable_table,
             )
-            final_out_dir = self._run_mineru(pdf, out_dir, options, callback=callback)
+            final_out_dir = self._run_mineru(pdf, out_dir, options, callback=callback, from_page=from_page, to_page=to_page)
             outputs = self._read_output(final_out_dir, pdf.stem, method=mineru_method_raw_str, backend=backend)
             self.logger.info(f"[MinerU] Parsed {len(outputs)} blocks from PDF.")
             if callback:
                 callback(0.75, f"[MinerU] Parsed {len(outputs)} blocks from PDF.")
 
-            return self._transfer_to_sections(outputs, parse_method), self._transfer_to_tables(outputs)
+            return self._transfer_to_sections(outputs, parse_method), self._transfer_to_tables(outputs,from_page)
         finally:
             if temp_pdf and temp_pdf.exists():
                 try:
@@ -729,6 +733,12 @@ class MinerUParser(RAGFlowPdfParser):
                     shutil.rmtree(out_dir)
                 except Exception:
                     pass
+
+    def __call__(self, filename, binary=None, from_page=0, to_page=100000, callback=None, **kwargs):
+        if isinstance(filename, (bytes, BytesIO)):
+            binary = filename
+            filename = "mineru_temp.pdf"
+        return self.parse_pdf(filename, binary, callback=callback, from_page=from_page, to_page=to_page, **kwargs)
 
 
 if __name__ == "__main__":
