@@ -26,6 +26,7 @@ import numpy as np
 from rag.app.naive import by_plaintext, PARSERS
 from common.parser_config_utils import normalize_layout_recognizer
 import sys
+from rag.utils.pdf_utils import is_scanned_pdf_from_stream
 
 
 class Pdf(PdfParser):
@@ -162,10 +163,13 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
 
         name = layout_recognizer.strip().lower()
         print(name)
-        name = "mineru"
+        name = "deepdoc"
         pdf_parser = PARSERS.get(name, by_plaintext)
         callback(0.1, "Start to parse.")
         #todo-zm 根据二进制文件的类型选择使用deepdoc还是mineru解析
+        is_scanned = is_scanned_pdf_from_stream(binary) if binary else False
+        if is_scanned:
+            name = "mineru"
         if name == "deepdoc":
             pdf_parser = Pdf()
             paper = pdf_parser(filename if not binary else binary,

@@ -1,0 +1,524 @@
+{
+    "title": "",
+    "authors": "",
+    "abstract": "",
+    "sections": [
+        [
+            "[23]檀文文,卢棚,赵丽文.CB-SwinUNet：基于多尺度增强与特征融合的医学图@@1\t85.0\t500.7\t112.3\t124.7##",
+            "text-0"
+        ],
+        [
+            "像分割算法研究[J/OL].计算机应用与软件,1-8[2025-12-@@1\t108.0\t400.3\t131.7\t144.0##",
+            "text-0"
+        ],
+        [
+            "18].https://link.cnki.net/urlid/31.1260.TP.20250616.1552.005@@1\t109.0\t416.3\t151.0\t163.0##",
+            "text-0"
+        ],
+        [
+            "[24] Wang Z, Zheng J Q, Zhang Y, et al. Mamba-UNet: UNet-like pure visual@@1\t85.0\t471.3\t171.0\t183.3##",
+            "text-1"
+        ],
+        [
+            "mamba for medical image segmentation[J]. arXiv preprint arXiv:2402.05079,@@1\t106.3\t496.0\t189.3\t204.3##",
+            "text-1"
+        ],
+        [
+            "2024.@@1\t106.3\t135.7\t208.0\t221.0##",
+            "text-0"
+        ],
+        [
+            "[25]Gu A, Dao T. Mamba: Linear-time sequence modeling with selective state@@1\t85.0\t477.7\t228.0\t240.3##",
+            "text-2"
+        ],
+        [
+            "spaces[C]//First conference on language modeling. 2024.@@1\t105.3\t392.3\t246.3\t261.3##",
+            "text-0"
+        ],
+        [
+            "[26]谭仲夏,刘奇坤,蒋翠玲,等.FRFTMamba-UNet：一种基于分数域的脑卒中医@@1\t84.0\t504.0\t265.0\t279.7##",
+            "text-0"
+        ],
+        [
+            "学图像分割模型[J/OL].计算机工程,1-21[2025-12-@@1\t108.0\t368.7\t285.0\t297.3##",
+            "text-3"
+        ],
+        [
+            "18].https://doi.0rg/10.19678/j.issn.1000-3428.0252062.@@1\t109.0\t383.7\t305.3\t317.7##",
+            "text-0"
+        ],
+        [
+            "[27]薛国强,王可庆,张强.基于 Mamba-HL-UNet 的一种医学超声图像分割方法@@1\t85.0\t498.7\t323.7\t336.0##",
+            "text-4"
+        ],
+        [
+            "[J].软件工程,2025,28(06):50-54.D0I:10.19644/j.cnki.issn2096-@@1\t107.3\t428.0\t343.0\t355.3##",
+            "text-4"
+        ],
+        [
+            "1472.2025.006.010.@@1\t107.3\t205.7\t362.3\t373.7##",
+            "text-0"
+        ],
+        [
+            "[28]Li B, Weinberger K Q, Belongie S, et al. Language-driven semantic@@1\t84.3\t447.3\t379.7\t394.7##",
+            "text-5"
+        ],
+        [
+            "segmentation[J]. arXiv preprint arXiv:2201.03546, 2022.@@1\t106.3\t392.3\t400.0\t415.0##",
+            "text-0"
+        ],
+        [
+            "[29]Ranftl R, Bochkovskiy A, Koltun V. Vision transformers for dense@@1\t86.0\t439.3\t420.0\t431.7##",
+            "text-6"
+        ],
+        [
+            "prediction[C]/Proceedings of the IEEE/CVF international conference on@@1\t105.3\t473.0\t437.7\t452.7##",
+            "text-6"
+        ],
+        [
+            "computer vision. 2021: 12179-12188.@@1\t105.3\t296.0\t457.0\t472.0##",
+            "text-0"
+        ],
+        [
+            "[30] Han K, Wang Y, Guo J, et al. ParameterNet: parameters are all you need for@@1\t84.0\t486.3\t476.3\t491.3##",
+            "text-7"
+        ],
+        [
+            "large-scale visual pretraining of mobile networks[CJ//Proceedings of the@@1\t107.3\t469.7\t497.3\t509.7##",
+            "text-7"
+        ],
+        [
+            "IEEE/CVF conference on computer vision and pattern recognition. 2024:@@1\t106.3\t473.0\t515.0\t529.7##",
+            "text-7"
+        ],
+        [
+            "15751-15761.@@1\t107.3\t176.3\t534.0\t546.3##",
+            "text-0"
+        ],
+        [
+            "[31] Al-Dhabyani W, Gomaa M, Khaled H, et al. Dataset of breast ultrasound@@1\t84.0\t472.3\t552.7\t567.3##",
+            "text-8"
+        ],
+        [
+            "images[J]. Data in brief, 2020, 28: 104863.@@1\t107.3\t321.7\t572.7\t585.0##",
+            "text-0"
+        ],
+        [
+            "[32]Zhuang Z, Li N, Joseph RajAN, et al. An RDAU-NET model for lesion@@1\t84.0\t465.0\t591.0\t606.0##",
+            "text-0"
+        ],
+        [
+            "segmentation in breast ultrasound images[J]. PloS one, 2019, 14(8): e0221535.@@1\t106.3\t502.3\t610.3\t625.3##",
+            "text-0"
+        ],
+        [
+            "[33]Pedraza L, Vargas C, Narvaez F, et al. An open access thyroid ultrasound image@@1\t84.3\t506.7\t629.0\t643.7##",
+            "text-9"
+        ],
+        [
+            "database[C]//10th International symposium on medical information processing@@1\t107.3\t500.7\t649.0\t661.3##",
+            "text-9"
+        ],
+        [
+            "and analysis. SPIE, 2015, 9287: 188-193.@@1\t107.3\t313.7\t669.3\t680.7##",
+            "text-9"
+        ],
+        [
+            "[34]Gong H, Chen G, Wang R, et al. Multi-task learning for thyroid nodule@@1\t85.0\t463.3\t688.7\t700.7##",
+            "text-11"
+        ],
+        [
+            "segmentation with thyroid region prior[C]//2021 IEEE 18th international@@1\t105.3\t474.0\t707.0\t722.0##",
+            "text-11"
+        ],
+        [
+            "symposium on biomedical imaging (ISB1). IEEE, 2021: 257-261.@@1\t105.3\t434.0\t726.3\t741.0##",
+            "text-0"
+        ],
+        [
+            "[35]Gong H, Chen J, Chen G, et al. Thyroid region prior guided attention for@@2\t84.0\t471.3\t111.3\t126.3##",
+            "text-0"
+        ],
+        [
+            "ultrasound segmentation of thyroid nodules[J]. Computers in biology and@@2\t108.0\t474.0\t132.3\t144.7##",
+            "text-0"
+        ],
+        [
+            "medicine, 2023, 155: 106389.@@2\t108.0\t255.0\t151.7\t164.0##",
+            "text-0"
+        ],
+        [
+            "[36]Michard H, Luvison B, Pham Q C, et al. AW-Net: Automatic muscle structure@@2\t85.0\t497.0\t171.0\t183.3##",
+            "text-1"
+        ],
+        [
+            "analysis on B-mode ultrasound images for injury prevention[C]//Proceedings of@@2\t105.3\t509.3\t188.7\t203.3##",
+            "text-1"
+        ],
+        [
+            "the 12th ACM International Conference on Bioinformatics, Computational@@2\t107.3\t480.0\t208.7\t221.0##",
+            "text-1"
+        ],
+        [
+            "Biology, and Health Informatics. 2021: 1-9.@@2\t106.3\t327.0\t227.0\t242.0##",
+            "text-0"
+        ],
+        [
+            "[37] Cronin N. Automated analysis of musculoskeletal ultrasound images using deep@@2\t83.3\t507.7\t245.7\t260.3##",
+            "text-0"
+        ],
+        [
+            "learning[J]. 2020.@@2\t107.3\t195.0\t266.7\t279.0##",
+            "text-0"
+        ],
+        [
+            "[38]Cunningham R, Sanchez M B, May G, et al. Estimating full regional skeletal@@2\t86.0\t491.7\t286.0\t298.3##",
+            "text-3"
+        ],
+        [
+            "muscle fibre orientation from B-mode ultrasound images using convolutional.@@2\t107.3\t496.0\t303.3\t318.3##",
+            "text-3"
+        ],
+        [
+            "residual, and deconvolutional neural networks[J]. Journal of Imaging, 2018,@@2\t104.7\t487.3\t322.0\t336.7##",
+            "text-3"
+        ],
+        [
+            "4(2): 29.@@2\t106.3\t150.7\t343.0\t355.3##",
+            "text-0"
+        ],
+        [
+            "[39]Leclerc S, Smistad E, Pedrosa J, et al. Deep learning for segmentation using an@@2\t83.3\t504.0\t360.3\t375.3##",
+            "text-0"
+        ],
+        [
+            "open large-scale dataset in 2D echocardiography[J]. IEEE transactions on@@2\t106.3\t477.7\t380.7\t395.7##",
+            "text-4"
+        ],
+        [
+            "medical imaging, 2019, 38(9): 2198-2210.@@2\t108.0\t319.7\t400.7\t413.0##",
+            "text-0"
+        ],
+        [
+            "[40] Yang J, Ding X, Zheng Z, et al. Graphecho: Graph-driven unsupervised domain@@2\t86.0\t505.0\t420.0\t432.3##",
+            "text-0"
+        ],
+        [
+            "adaptation for echocardiogram video segmentation[C]//Proceedings of the@@2\t107.3\t477.7\t439.3\t451.7##",
+            "text-5"
+        ],
+        [
+            "IEEE/CVF international conference on computer vision. 2023: 11878-11887.@@2\t106.3\t493.3\t457.0\t472.0##",
+            "text-0"
+        ],
+        [
+            "[41]Kiranyaz S, Degerli A, Hamid T, et al. Left ventricular wall motion estimation@@2\t86.0\t498.7\t477.0\t489.3##",
+            "text-6"
+        ],
+        [
+            "by active polynomials for acute myocardial infarction detection[J]. IEEE@@2\t105.3\t473.0\t495.7\t510.3##",
+            "text-6"
+        ],
+        [
+            "Access, 2020, 8: 210301-210317.@@2\t108.0\t274.7\t515.7\t528.0##",
+            "text-0"
+        ],
+        [
+            "[42]Li C, Liu X, Li W, et al. U-kan makes strong backbone for medical image@@2\t83.3\t475.7\t532.3\t547.3##",
+            "text-0"
+        ],
+        [
+            "segmentation and generation[C]//Proceedings of the AAAI Conference on@@2\t106.3\t478.3\t553.3\t568.3##",
+            "text-7"
+        ],
+        [
+            "Artificial Intelligence. 2025, 39(5): 4652-4660.@@2\t107.3\t344.7\t572.0\t586.7##",
+            "text-0"
+        ],
+        [
+            "[43] Valanarasu J M J, Patel V M. Unext: Mlp-based rapid medical image@@2\t82.3\t452.7\t588.3\t606.0##",
+            "text-0"
+        ],
+        [
+            "segmentation network[C]//International conference on medical image@@2\t106.3\t455.3\t610.3\t625.3##",
+            "text-8"
+        ],
+        [
+            "computing and computer-assisted intervention. Cham: Springer Nature@@2\t105.3\t461.7\t629.7\t644.7##",
+            "text-8"
+        ],
+        [
+            "Switzerland, 2022: 23-33.@@2\t107.3\t236.7\t650.0\t661.3##",
+            "text-0"
+        ],
+        [
+            "[44]Liu Z, Wang Y, Vaidya S, et al. Kan: Kolmogorov-arnold networks[J]. arXiv@@2\t85.0\t489.0\t669.3\t681.3##",
+            "text-10"
+        ],
+        [
+            "preprint arXiv:2404.19756, 2024.@@2\t105.3\t275.3\t687.7\t702.7##",
+            "text-0"
+        ],
+        [
+            "[45]Lin X, Xiang Y, Yu L, et al. Beyond adapting SAM: Towards end-to-end@@2\t86.0\t470.3\t707.7\t720.0##",
+            "text-9"
+        ],
+        [
+            "ultrasound image segmentation via auto promptinglCJ//International@@2\t108.0\t448.3\t727.0\t739.3##",
+            "text-9"
+        ],
+        [
+            "Conference on Medical Image Computing and Computer-Assisted Intervention.@@3\t105.3\t506.0\t110.7\t125.3##",
+            "text-0"
+        ],
+        [
+            "Cham: Springer Nature Switzerland, 2024: 24-34.@@3\t106.3\t357.0\t130.7\t145.7##",
+            "text-0"
+        ],
+        [
+            "[46] Trockman A, Kolter J Z. Patches are all you need?[J]. arXiv preprint@@3\t83.3\t452.7\t149.0\t164.0##",
+            "text-1"
+        ],
+        [
+            "arXiv:2201.09792,2022.@@3\t107.3\t231.3\t170.0\t182.3##",
+            "text-0"
+        ],
+        [
+            "[47] Tang F, Wang L, Ning C, et al. Cmu-net: a strong convmixer-based medical@@3\t84.0\t487.3\t188.7\t203.3##",
+            "text-0"
+        ],
+        [
+            "ultrasound image segmentation network[C]//2023 IEEE 20th international@@3\t106.3\t479.3\t208.0\t222.7##",
+            "text-2"
+        ],
+        [
+            "symposium on biomedical imaging (ISBI). IEEE, 2023: 1-5.@@3\t107.3\t408.3\t228.0\t240.3##",
+            "text-2"
+        ],
+        [
+            "[48]Lewis P, Perez E, Piktus A, et al. Retrieval-augmented generation for@@3\t83.3\t454.3\t245.7\t260.7##",
+            "text-0"
+        ],
+        [
+            "knowledge-intensive nlp tasks[J]. Advances in neural information processing@@3\t104.7\t493.3\t265.0\t279.7##",
+            "text-3"
+        ],
+        [
+            "systems, 2020, 33: 9459-9474.@@3\t105.3\t261.3\t284.3\t299.0##",
+            "text-0"
+        ],
+        [
+            "[49]Oord A, Li Y, Vinyals O. Representation learning with contrastive predictive@@3\t86.0\t490.7\t305.3\t317.7##",
+            "text-4"
+        ],
+        [
+            "coding[J]. arXiv preprint arXiv:1807.03748, 2018.@@3\t105.3\t361.3\t322.7\t337.7##",
+            "text-0"
+        ],
+        [
+            "[50]Chen J, Xiao S, Zhang P, et al. Bge m3-embedding: Multi-lingual, multi-@@3\t85.0\t472.3\t342.0\t357.0##",
+            "text-5"
+        ],
+        [
+            "functionality, multi-granularity text embeddings through self-knowledge@@3\t106.3\t470.3\t361.3\t376.3##",
+            "text-5"
+        ],
+        [
+            "distillation[J]. arXiv preprint arXiv:2402.03216, 2024.@@3\t106.3\t381.0\t380.7\t395.7##",
+            "text-0"
+        ],
+        [
+            "[51] Khattab O, Singhvi A, Maheshwari P, et al. Dspy: Compiling declarative@@3\t83.3\t471.3\t398.3\t413.0##",
+            "text-0"
+        ],
+        [
+            "language model calls into self-improving pipelines[J]. arXiv preprint@@3\t104.7\t454.7\t416.7\t433.3##",
+            "text-6"
+        ],
+        [
+            "arXiv:2310.03714,2023.@@3\t107.3\t231.3\t438.7\t450.7##",
+            "text-6"
+        ],
+        [
+            "[52] Pryzant R, Iter D, Li J, et al. Automatic prompt optimization with\" gradient@@3\t85.0\t485.3\t457.0\t472.0##",
+            "text-7"
+        ],
+        [
+            "descent\" and beam search[J]. arXiv preprint arXiv:2305.03495, 2023.@@3\t106.3\t455.3\t476.3\t491.3##",
+            "text-0"
+        ],
+        [
+            "哈尔滨工业大学学位论文原创性声明和使用权限@@4\t110.0\t485.3\t112.3\t127.3##",
+            "title-0"
+        ],
+        [
+            "学位论文原创性声明@@4\t229.3\t366.0\t182.3\t194.7##",
+            "title-1"
+        ],
+        [
+            "本人郑重声明：此处所提交的学位论文《基于文本引导的多数据集超声图@@4\t110.7\t508.7\t222.0\t233.3##",
+            "text-0"
+        ],
+        [
+            "像分割系统的设计与实现》，是本人在导师指导下，在哈尔滨工业大学攻读学@@4\t86.0\t509.3\t242.0\t254.3##",
+            "text-0"
+        ],
+        [
+            "位期间独立进行研究工作所取得的成果，且学位论文中除已标注引用文献的部@@4\t86.0\t509.3\t261.3\t273.7##",
+            "text-0"
+        ],
+        [
+            "分外不包含他人完成或已发表的研究成果。对本学位论文的研究工作做出重要@@4\t86.7\t509.3\t280.7\t293.0##",
+            "text-0"
+        ],
+        [
+            "贡献的个人和集体，均已在文中以明确方式注明。@@4\t86.0\t350.7\t300.0\t312.3##",
+            "text-0"
+        ],
+        [
+            "日期：@@4\t245.3\t279.0\t336.7\t350.0##",
+            "text-1"
+        ],
+        [
+            "作者签名：@@4\t167.3\t225.0\t337.7\t350.0##",
+            "text-1"
+        ],
+        [
+            "2026年1月日@@4\t311.0\t397.0\t337.7\t350.0##",
+            "text-1"
+        ],
+        [
+            "学位论文使用权限@@4\t234.7\t358.0\t417.3\t432.3##",
+            "title-2"
+        ],
+        [
+            "学位论文是研究生在哈尔滨工业大学攻读学位期间完成的成果，知识产权@@4\t115.3\t509.3\t458.7\t470.0##",
+            "text-2"
+        ],
+        [
+            "归属哈尔滨工业大学。学位论文的使用权限如下:@@4\t86.0\t351.7\t478.0\t490.3##",
+            "text-2"
+        ],
+        [
+            "(1)学校可以采用影印、缩印或其他复制手段保存研究生上交的学位论文，@@4\t110.7\t501.3\t497.3\t509.7##",
+            "text-3"
+        ],
+        [
+            "并向国家图书馆报送学位论文；（2）学校可以将学位论文部分或全部内容编入@@4\t86.0\t508.7\t516.7\t529.0##",
+            "text-3"
+        ],
+        [
+            "有关数据库进行检索和提供相应阅览服务；（3）研究生毕业后发表与此学位论@@4\t86.0\t509.3\t536.7\t548.3##",
+            "text-3"
+        ],
+        [
+            "文研究成果相关的学术论文和其他成果时，应征得导师同意，且第一署名单位@@4\t86.0\t509.3\t556.0\t567.3##",
+            "text-3"
+        ],
+        [
+            "为哈尔滨工业大学。@@4\t86.0\t189.7\t575.3\t587.7##",
+            "text-3"
+        ],
+        [
+            "保密论文在保密期内遵守有关保密规定，解密后适用于此使用权限规定。@@4\t111.7\t499.7\t594.7\t607.0##",
+            "text-4"
+        ],
+        [
+            "本人知悉学位论文的使用权限，并将遵守有关规定。@@4\t110.7\t389.0\t614.0\t626.3##",
+            "text-5"
+        ],
+        [
+            "2026年1月日@@4\t305.7\t391.7\t650.0\t662.3##",
+            "text-6"
+        ],
+        [
+            "作者签名：@@4\t178.0\t234.7\t650.7\t663.0##",
+            "text-6"
+        ],
+        [
+            "日期：@@4\t258.7\t292.3\t650.7\t663.0##",
+            "text-6"
+        ],
+        [
+            "导师签名：@@4\t179.0\t234.0\t687.7\t700.0##",
+            "text-7"
+        ],
+        [
+            "日期：@@4\t258.7\t311.0\t687.7\t700.0##",
+            "text-7"
+        ],
+        [
+            "2026年1月日@@4\t305.7\t392.3\t687.7\t700.0##",
+            "text-7"
+        ],
+        [
+            "的雪都，个中情绪，自然难以陈说。@@5\t86.0\t276.3\t179.0\t191.3##",
+            "text-0"
+        ],
+        [
+            "首先要感谢我的导师张英涛老师，大三进组，直到研三，一路前行，老师@@5\t110.7\t509.3\t199.0\t210.7##",
+            "text-1"
+        ],
+        [
+            "像一盏明灯，在生活学业各个方面，对我多有指点与提携，当我对于未来的规@@5\t86.0\t509.3\t217.7\t229.0##",
+            "text-1"
+        ],
+        [
+            "划迷茫的时候，老师给了我很多建议。在离家很远的哈尔滨，老师仿佛是我在@@5\t86.0\t508.7\t236.7\t248.3##",
+            "text-1"
+        ],
+        [
+            "这里的长辈，成为老师的学生是件很幸运的事情。@@5\t85.0\t351.7\t255.3\t267.7##",
+            "text-1"
+        ],
+        [
+            "同时感恩我的家人，我今年二十四岁，而我的父母，在这个年纪已经有了@@5\t111.7\t508.7\t275.3\t286.7##",
+            "text-2"
+        ],
+        [
+            "一个三岁的小孩，他们把我照顾的很好，当然，我的祖母一直也很宠溺我，从@@5\t85.0\t509.3\t293.0\t305.3##",
+            "text-2"
+        ],
+        [
+            "童年到现在，我一直拥有一个幸福的家庭，写到这里，有些怀念我的祖父，我@@5\t85.0\t509.3\t313.0\t325.3##",
+            "text-2"
+        ],
+        [
+            "想祖父大抵也是开心的。@@5\t86.0\t214.3\t332.3\t344.7##",
+            "text-2"
+        ],
+        [
+            "同时需要一并感谢的还有我的师姐陈晓丹及同门陈睿奕，师姐对我的照拂，@@5\t110.0\t506.7\t351.7\t363.0##",
+            "text-3"
+        ],
+        [
+            "自本科起至今，学业生活，皆有涉及。读研期间没什么朋友，睿奕是良友，一@@5\t86.7\t509.3\t371.0\t382.3##",
+            "text-3"
+        ],
+        [
+            "路同行，常有学业探讨，互相监督，对我多有帮助，很多时候想一想，如果没@@5\t85.0\t509.3\t390.3\t401.7##",
+            "text-3"
+        ],
+        [
+            "有朋友同行，这一路倒也不太容易。@@5\t86.7\t278.3\t409.7\t421.0##",
+            "text-3"
+        ],
+        [
+            "感谢我的女朋友蒋一冉，终于能够在论文里感谢女朋友了，一个如春风般@@5\t110.7\t509.3\t429.0\t440.3##",
+            "text-4"
+        ],
+        [
+            "的女孩子在 23年的冬天吹进我的世界，约莫着也是这个时候，窗外飘雪了，暖@@5\t86.0\t510.3\t447.3\t459.7##",
+            "text-4"
+        ],
+        [
+            "暖的，今天是个好天气。@@5\t85.0\t214.3\t465.7\t478.0##",
+            "text-4"
+        ],
+        [
+            "且先前行，诸事顺利，自有归处。@@5\t110.7\t288.7\t486.0\t497.3##",
+            "text-5"
+        ]
+    ],
+    "tables": []
+}

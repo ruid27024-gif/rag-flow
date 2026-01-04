@@ -367,13 +367,14 @@ class MinerUParser(RAGFlowPdfParser):
             return
 
         page_count = len(self.page_images)
+        page_from = getattr(self, "page_from", 0)
 
         filtered_poss = []
         for pns, left, right, top, bottom in poss:
             if not pns:
                 self.logger.warning("[MinerU] Empty page index list in crop; skipping this position.")
                 continue
-            valid_pns = [p for p in pns if 0 <= p < page_count]
+            valid_pns = [p for p in pns if 0 <= p - page_from < page_count]
             if not valid_pns:
                 self.logger.warning(f"[MinerU] All page indices {pns} out of range for {page_count} pages; skipping.")
                 continue
@@ -393,13 +394,13 @@ class MinerUParser(RAGFlowPdfParser):
         poss.insert(0, ([first_page_idx], pos[1], pos[2], max(0, pos[3] - 120), max(pos[3] - GAP, 0)))
         pos = poss[-1]
         last_page_idx = pos[0][-1]
-        if not (0 <= last_page_idx < page_count):
+        if not (0 <= last_page_idx - page_from < page_count):
             self.logger.warning(
                 f"[MinerU] Last page index {last_page_idx} out of range for {page_count} pages; skipping crop.")
             if need_position:
                 return None, None
             return
-        last_page_height = self.page_images[last_page_idx].size[1]
+        last_page_height = self.page_images[last_page_idx - page_from].size[1]
         poss.append(
             (
                 [last_page_idx],
@@ -418,36 +419,36 @@ class MinerUParser(RAGFlowPdfParser):
                 bottom = top + 2
 
             for pn in pns[1:]:
-                if 0 <= pn - 1 < page_count:
-                    bottom += self.page_images[pn - 1].size[1]
+                if 0 <= pn - 1 - page_from < page_count:
+                    bottom += self.page_images[pn - 1 - page_from].size[1]
                 else:
                     self.logger.warning(
                         f"[MinerU] Page index {pn}-1 out of range for {page_count} pages during crop; skipping height accumulation.")
 
-            if not (0 <= pns[0] < page_count):
+            if not (0 <= pns[0] - page_from < page_count):
                 self.logger.warning(
                     f"[MinerU] Base page index {pns[0]} out of range for {page_count} pages during crop; skipping this segment.")
                 continue
 
-            img0 = self.page_images[pns[0]]
+            img0 = self.page_images[pns[0] - page_from]
             x0, y0, x1, y1 = int(left), int(top), int(right), int(min(bottom, img0.size[1]))
             crop0 = img0.crop((x0, y0, x1, y1))
             imgs.append(crop0)
             if 0 < ii < len(poss) - 1:
-                positions.append((pns[0] + self.page_from, x0, x1, y0, y1))
+                positions.append((pns[0], x0, x1, y0, y1))
 
             bottom -= img0.size[1]
             for pn in pns[1:]:
-                if not (0 <= pn < page_count):
+                if not (0 <= pn - page_from < page_count):
                     self.logger.warning(
                         f"[MinerU] Page index {pn} out of range for {page_count} pages during crop; skipping this page.")
                     continue
-                page = self.page_images[pn]
+                page = self.page_images[pn - page_from]
                 x0, y0, x1, y1 = int(left), 0, int(right), int(min(bottom, page.size[1]))
                 cimgp = page.crop((x0, y0, x1, y1))
                 imgs.append(cimgp)
                 if 0 < ii < len(poss) - 1:
-                    positions.append((pn + self.page_from, x0, x1, y0, y1))
+                    positions.append((pn, x0, x1, y0, y1))
                 bottom -= page.size[1]
 
         if not imgs:
@@ -569,7 +570,7 @@ class MinerUParser(RAGFlowPdfParser):
                 sections.append((section, self._line_tag(output)))
         return sections
 
-    def _transfer_to_tables(self, outputs: list[dict[str, Any]], from_page: int = 0):
+    def _transfer_to_tables(self, outputs: list[dict[str, Any]]):
         tables = []
         for output in outputs:
             if output["type"] in [MinerUContentType.TABLE, MinerUContentType.IMAGE]:
@@ -626,7 +627,7 @@ class MinerUParser(RAGFlowPdfParser):
                         top = (top / 1000.0) * page_height
                         bottom = (bottom / 1000.0) * page_height
                     
-                    positions.append([page_idx + from_page, x0, x1, top, bottom])
+                    positions.append([page_idx + getattr(self, "page_from", 0), x0, x1, top, bottom])
                 
                 final_content = content
                 if output["type"] == MinerUContentType.IMAGE:
@@ -720,7 +721,7 @@ class MinerUParser(RAGFlowPdfParser):
             if callback:
                 callback(0.75, f"[MinerU] Parsed {len(outputs)} blocks from PDF.")
 
-            return self._transfer_to_sections(outputs, parse_method), self._transfer_to_tables(outputs,from_page)
+            return self._transfer_to_sections(outputs, parse_method), self._transfer_to_tables(outputs)
         finally:
             if temp_pdf and temp_pdf.exists():
                 try:
