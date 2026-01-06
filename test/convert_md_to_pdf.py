@@ -330,7 +330,7 @@ def _parse_markdown(md_text: str, base_dir: str, max_width: float, styles):
             img = None
         if img:
             story.append(_scale_image_component(img, max_width))
-            story.append(Spacer(1, 0.2 * inch))
+            story.append(Spacer(1, 0.1 * inch))
 
     def is_caption_line(s: str) -> bool:
         return bool(re.match(r"^\s*图[\s\u200b]*\d+", s.strip()))
@@ -485,6 +485,7 @@ def _parse_markdown(md_text: str, base_dir: str, max_width: float, styles):
             if prev_incomplete and next_para_lines:
                 current_para_lines.extend(next_para_lines)
                 flush_paragraph_buffer()
+                story.append(Spacer(1, 0.2 * inch))
                 # Insert image first
                 if pass_src:
                     if re.match(r"^https?://", pass_src or ""):
@@ -513,11 +514,13 @@ def _parse_markdown(md_text: str, base_dir: str, max_width: float, styles):
                                 new_parts.append(re.sub(r"([\u4e00-\u9fa5])", r"\1" + "\u200b", part))
                         sanitized = "".join(new_parts)
                         story.append(Paragraph(sanitized, styles["Indented"]))
+                story.append(Spacer(1, 0.2 * inch))
                 i = t
                 continue
             else:
                 # Normal order: flush current text, then image at top of block, then caption (merged) or description lines
                 flush_paragraph_buffer()
+                story.append(Spacer(1, 0.2 * inch))
                 if pass_src:
                     if re.match(r"^https?://", pass_src or ""):
                         tmp_path2 = _download_remote_image(pass_src)
@@ -544,6 +547,7 @@ def _parse_markdown(md_text: str, base_dir: str, max_width: float, styles):
                                 new_parts.append(re.sub(r"([\u4e00-\u9fa5])", r"\1" + "\u200b", part))
                         sanitized = "".join(new_parts)
                         story.append(Paragraph(sanitized, styles["Indented"]))
+                story.append(Spacer(1, 0.2 * inch))
                 i = j
                 continue
 

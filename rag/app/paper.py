@@ -174,9 +174,6 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
             pdf_parser = Pdf()
             paper = pdf_parser(filename if not binary else binary,
                                from_page=from_page, to_page=to_page, callback=callback)
-            # 将这paper的内容写入到一个json文件中
-            with open(f"{filename}_deepdoc.json", "w") as f:
-                json.dump(paper, f, ensure_ascii=False, indent=4, default=lambda o: f"<{o.__class__.__name__}>")
         elif name == "mineru":
             from deepdoc.parser.mineru_parser import MinerUParser
             pdf_parser = MinerUParser()
@@ -225,10 +222,6 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         tbls=vision_figure_parser_pdf_wrapper(tbls=tbls,callback=callback,**kwargs)
         paper["tables"] = tbls
 
-        if name == "mineru":
-            # 将这paper的内容写入到一个json文件中
-            with open(f"{filename}_mineru.json", "w") as f:
-                json.dump(paper, f, ensure_ascii=False, indent=4, default=lambda o: f"<{o.__class__.__name__}>")
     else:
         raise NotImplementedError("file type not supported yet(pdf supported)")
 
