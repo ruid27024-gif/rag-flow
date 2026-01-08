@@ -38,6 +38,7 @@ from api.db.services.task_service import TaskService, queue_tasks, cancel_all_ta
 from common.metadata_utils import meta_filter, convert_conditions
 from api.utils.api_utils import check_duplicate_ids, construct_json_result, get_error_data_result, get_parser_config, get_result, server_error_response, token_required, \
     get_request_json
+from api.common.check_team_permission import check_kb_team_permission
 from rag.app.qa import beAdoc, rmPrefix
 from rag.app.tag import label_question
 from rag.nlp import rag_tokenizer, search
@@ -529,8 +530,9 @@ def list_docs(dataset_id, tenant_id):
                     type: string
                     description: Processing status.
     """
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
-      return get_error_data_result(message=f"You don't own the dataset {dataset_id}. ")
+    ok, kb = KnowledgebaseService.get_by_id(dataset_id)
+    if not ok or not check_kb_team_permission(kb, tenant_id):
+        return get_error_data_result(message=f"You don't own the dataset {dataset_id}. ")
 
     q = request.args
     document_id = q.get("id")
@@ -607,7 +609,8 @@ def list_docs(dataset_id, tenant_id):
 @manager.route("/datasets/<dataset_id>/metadata/summary", methods=["GET"])  # noqa: F821
 @token_required
 def metadata_summary(dataset_id, tenant_id):
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    ok, kb = KnowledgebaseService.get_by_id(dataset_id)
+    if not ok or not check_kb_team_permission(kb, tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}. ")
 
     try:

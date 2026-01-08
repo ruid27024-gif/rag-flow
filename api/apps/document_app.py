@@ -214,12 +214,11 @@ async def list_docs():
     kb_id = request.args.get("kb_id")
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
-    tenants = UserTenantService.query(user_id=current_user.id)
-    for tenant in tenants:
-        if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-            break
-    else:
-        return get_json_result(data=False, message="Only owner of dataset authorized for this operation.", code=RetCode.OPERATING_ERROR)
+    ok, kb = KnowledgebaseService.get_by_id(kb_id)
+    if not ok:
+        return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
+    if not check_kb_team_permission(kb, current_user.id):
+        return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
     keywords = request.args.get("keywords", "")
 
     page_number = int(request.args.get("page", 0))
@@ -288,12 +287,11 @@ async def get_filter():
     kb_id = req.get("kb_id")
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
-    tenants = UserTenantService.query(user_id=current_user.id)
-    for tenant in tenants:
-        if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-            break
-    else:
-        return get_json_result(data=False, message="Only owner of dataset authorized for this operation.", code=RetCode.OPERATING_ERROR)
+    ok, kb = KnowledgebaseService.get_by_id(kb_id)
+    if not ok:
+        return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
+    if not check_kb_team_permission(kb, current_user.id):
+        return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
 
     keywords = req.get("keywords", "")
 

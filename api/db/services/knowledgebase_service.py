@@ -18,7 +18,7 @@ from datetime import datetime
 from peewee import fn, JOIN
 
 from api.db import TenantPermission
-from api.db.db_models import DB, Document, Knowledgebase, User, UserTenant, UserCanvas
+from api.db.db_models import DB, Document, Knowledgebase, User, UserTenant, UserCanvas, AdminUser
 from api.db.services.common_service import CommonService
 from common.time_utils import current_timestamp, datetime_format
 from api.db.services import duplicate_name
@@ -74,6 +74,8 @@ class KnowledgebaseService(CommonService):
                 1. The dataset doesn't exist
                 2. The user is not the creator of the dataset
         """
+        if AdminUser.query(user_id=user_id):
+            return True
         # Check if a dataset can be deleted by a user
         docs = cls.model.select(
             cls.model.id).where(cls.model.id == kb_id, cls.model.created_by == user_id).paginate(0, 1)
@@ -136,7 +138,8 @@ class KnowledgebaseService(CommonService):
     def get_by_tenant_ids(cls, joined_tenant_ids, user_id,
                           page_number, items_per_page,
                           orderby, desc, keywords,
-                          parser_id=None
+                          parser_id=None,
+                          admin_bypass=False
                           ):
         # Get knowledge bases by tenant IDs with pagination and filtering
         # Args:
@@ -148,6 +151,7 @@ class KnowledgebaseService(CommonService):
         #     desc: Boolean indicating descending order
         #     keywords: Search keywords
         #     parser_id: Optional parser ID filter
+        #     admin_bypass: Bypass permission check if True
         # Returns:
         #     Tuple of (knowledge_base_list, total_count)
         fields = [
@@ -167,21 +171,24 @@ class KnowledgebaseService(CommonService):
             User.avatar.alias('tenant_avatar'),
             cls.model.update_time
         ]
+        
+        kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+        
+        if not admin_bypass:
+            kbs = kbs.where(
+                (
+                    (cls.model.tenant_id.in_(joined_tenant_ids)
+                     & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                    | (cls.model.tenant_id == user_id)
+                    | (cls.model.permission == TenantPermission.EVERYONE.value)
+                )
+            )
+            
+        kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
+        
         if keywords:
-            kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id)).where(
-                ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission ==
-                                                                TenantPermission.TEAM.value)) | (
-                    cls.model.tenant_id == user_id))
-                & (cls.model.status == StatusEnum.VALID.value),
-                (fn.LOWER(cls.model.name).contains(keywords.lower()))
-            )
-        else:
-            kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id)).where(
-                ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission ==
-                                                                TenantPermission.TEAM.value)) | (
-                    cls.model.tenant_id == user_id))
-                & (cls.model.status == StatusEnum.VALID.value)
-            )
+            kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
+            
         if parser_id:
             kbs = kbs.where(cls.model.parser_id == parser_id)
         if desc:
@@ -214,9 +221,12 @@ class KnowledgebaseService(CommonService):
         ]
         # find team kb and owned kb
         kbs = cls.model.select(*fields).where(
-            (cls.model.tenant_id.in_(tenant_ids) & (cls.model.permission ==TenantPermission.TEAM.value)) | (
-                cls.model.tenant_id == user_id
+            (
+                cls.model.tenant_id.in_(tenant_ids)
+                & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value]))
             )
+            | (cls.model.tenant_id == user_id)
+            | (cls.model.permission == TenantPermission.EVERYONE.value)
         )
         # sort by create_time asc
         kbs.order_by(cls.model.create_time.asc())
@@ -263,6 +273,7 @@ class KnowledgebaseService(CommonService):
             cls.model.language,
             cls.model.description,
             cls.model.permission,
+            cls.model.created_by,
             cls.model.doc_num,
             cls.model.token_num,
             cls.model.chunk_num,
@@ -432,7 +443,7 @@ class KnowledgebaseService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_list(cls, joined_tenant_ids, user_id,
-                 page_number, items_per_page, orderby, desc, id, name):
+                 page_number, items_per_page, orderby, desc, id, name, admin_bypass=False):
         # Get list of knowledge bases with filtering and pagination
         # Args:
         #     joined_tenant_ids: List of tenant IDs
@@ -443,6 +454,7 @@ class KnowledgebaseService(CommonService):
         #     desc: Boolean indicating descending order
         #     id: Optional ID filter
         #     name: Optional name filter
+        #     admin_bypass: Bypass permission check if True
         # Returns:
         #     List of knowledge bases
         #     Total count of knowledge bases
@@ -451,12 +463,18 @@ class KnowledgebaseService(CommonService):
             kbs = kbs.where(cls.model.id == id)
         if name:
             kbs = kbs.where(cls.model.name == name)
-        kbs = kbs.where(
-            ((cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission ==
-                                                            TenantPermission.TEAM.value)) | (
-                cls.model.tenant_id == user_id))
-            & (cls.model.status == StatusEnum.VALID.value)
-        )
+        
+        if not admin_bypass:
+            kbs = kbs.where(
+                (
+                    (cls.model.tenant_id.in_(joined_tenant_ids)
+                     & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                    | (cls.model.tenant_id == user_id)
+                    | (cls.model.permission == TenantPermission.EVERYONE.value)
+                )
+            )
+        
+        kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
 
         if desc:
             kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
@@ -477,6 +495,14 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     Boolean indicating accessibility
+        if AdminUser.query(user_id=user_id):
+            return True
+        
+        # Check if it's an EVERYONE permission KB first (optimization)
+        kb = cls.model.get_or_none(cls.model.id == kb_id)
+        if kb and kb.permission == TenantPermission.EVERYONE.value:
+            return True
+
         docs = cls.model.select(
             cls.model.id).join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)
                                ).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
@@ -494,8 +520,13 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     List containing dataset information
-        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)
-                                      ).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
+        if AdminUser.query(user_id=user_id):
+            kbs = cls.model.select().where(cls.model.id == kb_id).paginate(0, 1)
+        else:
+            kbs = cls.model.select().join(UserTenant, on=((UserTenant.tenant_id == Knowledgebase.tenant_id) & (UserTenant.user_id == user_id)), join_type=JOIN.LEFT_OUTER
+                                          ).where(cls.model.id == kb_id, 
+                                                  (UserTenant.id.is_null(False)) | (cls.model.permission == TenantPermission.EVERYONE.value)
+                                          ).paginate(0, 1)
         kbs = kbs.dicts()
         return list(kbs)
 
@@ -508,8 +539,13 @@ class KnowledgebaseService(CommonService):
         #     user_id: User ID
         # Returns:
         #     List containing dataset information
-        kbs = cls.model.select().join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)
-                                      ).where(cls.model.name == kb_name, UserTenant.user_id == user_id).paginate(0, 1)
+        if AdminUser.query(user_id=user_id):
+            kbs = cls.model.select().where(cls.model.name == kb_name).paginate(0, 1)
+        else:
+            kbs = cls.model.select().join(UserTenant, on=((UserTenant.tenant_id == Knowledgebase.tenant_id) & (UserTenant.user_id == user_id)), join_type=JOIN.LEFT_OUTER
+                                          ).where(cls.model.name == kb_name, 
+                                                  (UserTenant.id.is_null(False)) | (cls.model.permission == TenantPermission.EVERYONE.value)
+                                          ).paginate(0, 1)
         kbs = kbs.dicts()
         return list(kbs)
 

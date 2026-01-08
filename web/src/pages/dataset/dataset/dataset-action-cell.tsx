@@ -27,7 +27,8 @@ const FunctionMap = {
 export function DatasetActionCell({
   record,
   showRenameModal,
-}: { record: IDocumentInfo } & UseRenameDocumentShowType) {
+  readonly = false,
+}: { record: IDocumentInfo; readonly?: boolean } & UseRenameDocumentShowType) {
   const { id, run, type } = record;
   const isRunning = isParserRunning(run);
   const isVirtualDocument = type === DocumentType.Virtual;
@@ -55,7 +56,7 @@ export function DatasetActionCell({
         variant="transparent"
         className="border-none hover:bg-bg-card text-text-primary"
         size={'sm'}
-        disabled={isRunning}
+        disabled={isRunning || readonly}
         onClick={handleRename}
       >
         <PenLine />
@@ -97,18 +98,18 @@ export function DatasetActionCell({
           variant="transparent"
           className="border-none hover:bg-bg-card text-text-primary"
           onClick={onDownloadDocument}
-          disabled={isRunning}
+          disabled={isRunning || readonly}
           size={'sm'}
         >
           <Download />
         </Button>
       )}
-      <ConfirmDeleteDialog onOk={handleRemove}>
+      <ConfirmDeleteDialog onOk={handleRemove} hidden={readonly}>
         <Button
           variant="transparent"
           className="border-none hover:bg-bg-card text-text-primary"
           size={'sm'}
-          disabled={isRunning}
+          disabled={isRunning || readonly}
         >
           <Trash2 />
         </Button>

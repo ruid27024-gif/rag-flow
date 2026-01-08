@@ -345,6 +345,8 @@ export default {
       save: '保存',
       me: '只有我',
       team: '团队',
+      team_visible: '团队仅可见',
+      everyone: '所有人可见',
       cancel: '取消',
       methodTitle: '分块方法说明',
       methodExamples: '示例',

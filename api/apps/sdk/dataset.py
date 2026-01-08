@@ -20,7 +20,7 @@ import os
 import json
 from quart import request
 from peewee import OperationalError
-from api.db.db_models import File
+from api.db.db_models import File, AdminUser
 from api.db.services.document_service import DocumentService, queue_raptor_o_graphrag_tasks
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
@@ -446,17 +446,19 @@ def list_datasets(tenant_id):
         return get_error_argument_result(err)
 
     try:
+        is_admin = AdminUser.query(user_id=tenant_id)
         kb_id = request.args.get("id")
         name = args.get("name")
-        if kb_id:
-            kbs = KnowledgebaseService.get_kb_by_id(kb_id, tenant_id)
+        if not is_admin:
+            if kb_id:
+                kbs = KnowledgebaseService.get_kb_by_id(kb_id, tenant_id)
 
-            if not kbs:
-                return get_error_permission_result(message=f"User '{tenant_id}' lacks permission for dataset '{kb_id}'")
-        if name:
-            kbs = KnowledgebaseService.get_kb_by_name(name, tenant_id)
-            if not kbs:
-                return get_error_permission_result(message=f"User '{tenant_id}' lacks permission for dataset '{name}'")
+                if not kbs:
+                    return get_error_permission_result(message=f"User '{tenant_id}' lacks permission for dataset '{kb_id}'")
+            if name:
+                kbs = KnowledgebaseService.get_kb_by_name(name, tenant_id)
+                if not kbs:
+                    return get_error_permission_result(message=f"User '{tenant_id}' lacks permission for dataset '{name}'")
 
         tenants = TenantService.get_joined_tenants_by_user_id(tenant_id)
         kbs, total = KnowledgebaseService.get_list(
@@ -468,6 +470,7 @@ def list_datasets(tenant_id):
             args["desc"],
             kb_id,
             name,
+            admin_bypass=bool(is_admin),
         )
 
         response_data_list = []

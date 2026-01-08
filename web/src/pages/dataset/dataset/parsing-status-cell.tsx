@@ -46,11 +46,12 @@ export function ParsingStatusCell({
   showChangeParserModal,
   showSetMetaModal,
   showLog,
+  readonly = false,
 }: {
   record: IDocumentInfo;
   showLog: (record: IDocumentInfo) => void;
 } & UseChangeDocumentParserShowType &
-  UseSaveMetaShowType) {
+  UseSaveMetaShowType & { readonly?: boolean }) {
   const { t } = useTranslation();
   const {
     run,
@@ -91,44 +92,54 @@ export function ParsingStatusCell({
   return (
     <section className="flex gap-8 items-center">
       <div className="text-ellipsis w-[100px] flex items-center justify-between">
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="border-none truncate max-w-32 cursor-pointer px-2 py-1 rounded-sm hover:bg-bg-card">
-                  {pipeline_id
-                    ? pipeline_name || pipeline_id
-                    : parser_id === 'naive'
-                      ? 'general'
-                      : parser_id}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  {pipeline_id
-                    ? pipeline_name || pipeline_id
-                    : parser_id === 'naive'
-                      ? 'general'
-                      : parser_id}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onClick={handleShowChangeParserModal}>
-              {t('knowledgeDetails.dataPipeline')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleShowSetMetaModal}>
-              {t('knowledgeDetails.setMetaData')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {readonly ? (
+          <div className="border-none truncate max-w-32 px-2 py-1 rounded-sm">
+            {pipeline_id
+              ? pipeline_name || pipeline_id
+              : parser_id === 'naive'
+                ? 'general'
+                : parser_id}
+          </div>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="border-none truncate max-w-32 cursor-pointer px-2 py-1 rounded-sm hover:bg-bg-card">
+                    {pipeline_id
+                      ? pipeline_name || pipeline_id
+                      : parser_id === 'naive'
+                        ? 'general'
+                        : parser_id}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {pipeline_id
+                      ? pipeline_name || pipeline_id
+                      : parser_id === 'naive'
+                        ? 'general'
+                        : parser_id}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={handleShowChangeParserModal}>
+                {t('knowledgeDetails.dataPipeline')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleShowSetMetaModal}>
+                {t('knowledgeDetails.setMetaData')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {showParse && (
         <div className="flex items-center gap-3">
           <Separator orientation="vertical" className="h-2.5" />
-          {!isParserRunning(run) && (
+          {!isParserRunning(run) && !readonly && (
             <ConfirmDeleteDialog
               title={t(`knowledgeDetails.redo`, { chunkNum: chunk_num })}
               hidden={isZeroChunk || isRunning}
@@ -156,16 +167,18 @@ export function ParsingStatusCell({
                 <Progress value={p} className="h-1 flex-1 min-w-10" />
                 {p}%
               </div>
-              <div
-                className="cursor-pointer flex items-center gap-3"
-                onClick={
-                  isZeroChunk || isRunning
-                    ? handleOperationIconClick(false)
-                    : () => {}
-                }
-              >
-                {operationIcon}
-              </div>
+              {!readonly && (
+                <div
+                  className="cursor-pointer flex items-center gap-3"
+                  onClick={
+                    isZeroChunk || isRunning
+                      ? handleOperationIconClick(false)
+                      : () => {}
+                  }
+                >
+                  {operationIcon}
+                </div>
+              )}
             </>
           ) : (
             <ParsingCard

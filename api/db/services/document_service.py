@@ -29,7 +29,7 @@ from peewee import fn, Case, JOIN
 from api.constants import IMG_BASE64_PREFIX, FILE_NAME_LEN_LIMIT
 from api.db import PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES, FileType, UserTenantRole, CanvasCategory
 from api.db.db_models import DB, Document, Knowledgebase, Task, Tenant, UserTenant, File2Document, File, UserCanvas, \
-    User
+    User, AdminUser
 from api.db.db_utils import bulk_insert_into_db
 from api.db.services.common_service import CommonService
 from api.db.services.knowledgebase_service import KnowledgebaseService
@@ -497,6 +497,8 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def accessible(cls, doc_id, user_id):
+        if AdminUser.query(user_id=user_id):
+            return True
         docs = cls.model.select(
             cls.model.id).join(
             Knowledgebase, on=(
@@ -511,6 +513,8 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def accessible4deletion(cls, doc_id, user_id):
+        if AdminUser.query(user_id=user_id):
+            return True
         docs = cls.model.select(cls.model.id
                                 ).join(
             Knowledgebase, on=(

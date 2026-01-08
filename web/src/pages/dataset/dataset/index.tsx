@@ -10,9 +10,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { PermissionRole } from '@/constants/permission';
 import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchDocumentList } from '@/hooks/use-document-request';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { Upload } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -51,6 +53,7 @@ export default function Dataset() {
   const { data: dataSetData } = useFetchKnowledgeBaseConfiguration({
     refreshCount,
   });
+  const { data: userInfo } = useFetchUserInfo();
   const { filters, onOpenChange } = useSelectDatasetFilters();
 
   const {
@@ -69,10 +72,16 @@ export default function Dataset() {
     rowSelection,
     setRowSelection,
   });
+  const readonly =
+    (dataSetData?.permission === PermissionRole.TeamVisible &&
+      !dataSetData?.is_admin) ||
+    (dataSetData?.permission === PermissionRole.Everyone &&
+      dataSetData?.created_by !== userInfo?.id &&
+      !dataSetData?.is_admin);
   return (
     <>
       <div className="absolute top-4 right-5">
-        <Generate disabled={!(dataSetData.chunk_num > 0)} />
+        <Generate disabled={readonly || !(dataSetData.chunk_num > 0)} />
       </div>
       <section className="p-5 min-w-[880px]">
         <ListFilterBar
@@ -92,25 +101,27 @@ export default function Dataset() {
             </div>
           }
         >
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size={'sm'}>
-                <Upload />
-                {t('knowledgeDetails.addFile')}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56">
-              <DropdownMenuItem onClick={showDocumentUploadModal}>
-                {t('fileManager.uploadFile')}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={showCreateModal}>
-                {t('knowledgeDetails.emptyFiles')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {readonly || (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size={'sm'}>
+                  <Upload />
+                  {t('knowledgeDetails.addFile')}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56">
+                <DropdownMenuItem onClick={showDocumentUploadModal}>
+                  {t('fileManager.uploadFile')}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={showCreateModal}>
+                  {t('knowledgeDetails.emptyFiles')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </ListFilterBar>
-        {rowSelectionIsEmpty || (
+        {rowSelectionIsEmpty || readonly || (
           <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
         )}
         <DatasetTable
@@ -120,6 +131,7 @@ export default function Dataset() {
           rowSelection={rowSelection}
           setRowSelection={setRowSelection}
           loading={loading}
+          readonly={readonly}
         ></DatasetTable>
         {documentUploadVisible && (
           <FileUploadDialog

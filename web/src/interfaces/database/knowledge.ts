@@ -43,6 +43,7 @@ export interface IKnowledge {
   graphrag_task_finish_at: string;
   graphrag_task_id: string;
   connectors: IConnector[];
+  is_admin?: boolean;
 }
 
 export interface IKnowledgeResult {

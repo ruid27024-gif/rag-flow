@@ -24,13 +24,17 @@ import { UseSaveMetaShowType } from './use-save-meta';
 
 type UseDatasetTableColumnsType = UseChangeDocumentParserShowType &
   UseRenameDocumentShowType &
-  UseSaveMetaShowType & { showLog: (record: IDocumentInfo) => void };
+  UseSaveMetaShowType & {
+    showLog: (record: IDocumentInfo) => void;
+    readonly?: boolean;
+  };
 
 export function useDatasetTableColumns({
   showChangeParserModal,
   showRenameModal,
   showSetMetaModal,
   showLog,
+  readonly = false,
 }: UseDatasetTableColumnsType) {
   const { t } = useTranslation('translation', {
     keyPrefix: 'knowledgeDetails',
@@ -151,6 +155,7 @@ export function useDatasetTableColumns({
         return (
           <Switch
             checked={row.getValue('status') === '1'}
+            disabled={readonly}
             onCheckedChange={(e) => {
               setDocumentStatus({ status: e, documentId: id });
             }}
@@ -176,6 +181,7 @@ export function useDatasetTableColumns({
             showChangeParserModal={showChangeParserModal}
             showSetMetaModal={showSetMetaModal}
             showLog={showLog}
+            readonly={readonly}
           ></ParsingStatusCell>
         );
       },
@@ -191,6 +197,7 @@ export function useDatasetTableColumns({
           <DatasetActionCell
             record={record}
             showRenameModal={showRenameModal}
+            readonly={readonly}
           ></DatasetActionCell>
         );
       },

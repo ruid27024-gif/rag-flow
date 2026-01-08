@@ -16,13 +16,15 @@
 
 
 from api.db import TenantPermission
-from api.db.db_models import File, Knowledgebase
+from api.db.db_models import File, Knowledgebase, AdminUser
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_service import TenantService
 
 
 def check_kb_team_permission(kb: dict | Knowledgebase, other: str) -> bool:
+    if AdminUser.query(user_id=other):
+        return True
     kb = kb.to_dict() if isinstance(kb, Knowledgebase) else kb
 
     kb_tenant_id = kb["tenant_id"]
@@ -30,7 +32,10 @@ def check_kb_team_permission(kb: dict | Knowledgebase, other: str) -> bool:
     if kb_tenant_id == other:
         return True
 
-    if kb["permission"] != TenantPermission.TEAM:
+    if kb["permission"] == TenantPermission.EVERYONE:
+        return True
+
+    if kb["permission"] not in (TenantPermission.TEAM, TenantPermission.TEAM_VISIBLE):
         return False
 
     joined_tenants = TenantService.get_joined_tenants_by_user_id(other)
@@ -38,6 +43,8 @@ def check_kb_team_permission(kb: dict | Knowledgebase, other: str) -> bool:
 
 
 def check_file_team_permission(file: dict | File, other: str) -> bool:
+    if AdminUser.query(user_id=other):
+        return True
     file = file.to_dict() if isinstance(file, File) else file
 
     file_tenant_id = file["tenant_id"]

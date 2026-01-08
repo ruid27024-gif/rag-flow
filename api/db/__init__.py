@@ -28,6 +28,8 @@ class UserTenantRole(StrEnum):
 class TenantPermission(StrEnum):
     ME = 'me'
     TEAM = 'team'
+    TEAM_VISIBLE = 'team_visible'
+    EVERYONE = 'everyone'
 
 
 class SerializedType(IntEnum):
