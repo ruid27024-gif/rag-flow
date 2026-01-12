@@ -22,9 +22,11 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import Editor, { loader } from '@monaco-editor/react';
 import DOMPurify from 'dompurify';
+import { omit } from 'lodash';
 import { useEffect } from 'react';
 
 loader.config({ paths: { vs: '/vs' } });
@@ -38,6 +40,9 @@ export function SetMetaDialog({
   const { t } = useTranslation();
 
   const FormSchema = z.object({
+    author: z.string().optional(),
+    school: z.string().optional(),
+    publish_time: z.string().optional(),
     meta: z
       .string()
       .min(1, {
@@ -59,18 +64,51 @@ export function SetMetaDialog({
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
-    defaultValues: {},
+    defaultValues: {
+      author: '',
+      school: '',
+      source: '',
+      publish_time: '',
+      meta: '{}',
+    },
   });
 
   async function onSubmit(data: z.infer<typeof FormSchema>) {
-    const ret = await onOk?.(data.meta);
+    let metaObj = {};
+    try {
+      metaObj = JSON.parse(data.meta);
+    } catch (error) {
+      console.error(error);
+    }
+
+    const finalMeta = {
+      ...metaObj,
+      author: data.author,
+      school: data.school,
+      source: data.source,
+      publish_time: data.publish_time,
+    };
+
+    const ret = await onOk?.(JSON.stringify(finalMeta));
     if (ret) {
       hideModal?.();
     }
   }
 
   useEffect(() => {
-    form.setValue('meta', JSON.stringify(initialMetaData, null, 4));
+    if (initialMetaData) {
+      form.setValue('author', initialMetaData.author || '');
+      form.setValue('school', initialMetaData.school || '');
+      form.setValue('source', initialMetaData.source || '');
+      form.setValue('publish_time', initialMetaData.publish_time || '');
+      const rest = omit(initialMetaData, [
+        'author',
+        'school',
+        'source',
+        'publish_time',
+      ]);
+      form.setValue('meta', JSON.stringify(rest, null, 4));
+    }
   }, [form, initialMetaData]);
 
   return (
@@ -85,6 +123,45 @@ export function SetMetaDialog({
             className="space-y-6"
             id={TagRenameId}
           >
+            <FormField
+              control={form.control}
+              name="author"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>作者</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="请输入作者" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="school"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>学校</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="请输入学校" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="publish_time"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>发布日期</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="请输入发布日期" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="meta"
