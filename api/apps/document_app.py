@@ -267,13 +267,12 @@ async def list_docs():
                 if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
                     filtered_docs.append(doc)
             docs = filtered_docs
-
+        print(print(f"[DEBUG-HY] getting docs meta_info {docs}"))
         for doc_item in docs:
             if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
                 doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
             if doc_item.get("source_type"):
                 doc_item["source_type"] = doc_item["source_type"].split("/")[0]
-
         return get_json_result(data={"total": tol, "docs": docs})
     except Exception as e:
         return server_error_response(e)

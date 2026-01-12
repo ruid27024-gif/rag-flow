@@ -27,7 +27,7 @@ from functools import wraps
 
 from quart_auth import AuthUser
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-from peewee import InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField
+from peewee import AutoField, InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField
 from playhouse.migrate import MySQLMigrator, PostgresqlMigrator, migrate
 from playhouse.pool import PooledMySQLDatabase, PooledPostgresqlDatabase
 
@@ -567,7 +567,15 @@ def init_database_tables(alter_fields=[]):
     table_objs = []
     create_failed_list = []
     for name, obj in members:
-        if obj != DataBaseModel and issubclass(obj, DataBaseModel):
+        if obj in {BaseModel, DataBaseModel}:
+            continue
+        if not issubclass(obj, Model):
+            continue
+        if getattr(getattr(obj, "_meta", None), "database", None) != DB:
+            continue
+        if obj._meta.table_name in {"base_model", "data_base_model"}:
+            continue
+        if obj != DataBaseModel and issubclass(obj, Model):
             table_objs.append(obj)
 
             if not obj.table_exists():
@@ -1183,6 +1191,30 @@ class EvaluationResult(DataBaseModel):
 
     class Meta:
         db_table = "evaluation_results"
+
+
+class Group(Model):
+    group_id = CharField(max_length=32, primary_key=True)
+    group_name = CharField(max_length=255, null=True, help_text="Group name")
+    created_by = CharField(max_length=32, null=False, index=True)
+    created_time = BigIntegerField(null=True)
+
+    class Meta:
+        database = DB
+        db_table = "group"
+
+
+class UserGroup(Model):
+    id = AutoField(primary_key=True)
+    user_id = CharField(max_length=32, null=False, index=True)
+    group_id = CharField(max_length=32, null=False, index=True)
+    created_by = CharField(max_length=32, null=False, index=True)
+    created_time = BigIntegerField(null=False, index=True)
+
+    class Meta:
+        database = DB
+        db_table = "user_group"
+        indexes = ((("user_id", "group_id"), True),)
 
 
 class Memory(DataBaseModel):

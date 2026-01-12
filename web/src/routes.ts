@@ -60,6 +60,7 @@ export enum Routes {
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
+  AdminFiles = '/admin-files',
 }
 
 const routes = [
@@ -233,6 +234,17 @@ const routes = [
       {
         path: Routes.Files,
         component: `@/pages${Routes.Files}`,
+      },
+    ],
+  },
+  {
+    path: Routes.AdminFiles,
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: Routes.AdminFiles,
+        component: `@/pages${Routes.AdminFiles}`,
       },
     ],
   },

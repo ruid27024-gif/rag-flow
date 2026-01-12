@@ -66,11 +66,27 @@ async def _coerce_request_data() -> dict:
             payload = None
 
     if payload is None:
+        # Fallback to query arguments (request.args)
+        # This allows GET requests with query parameters to be validated
+        try:
+            payload = request.args.to_dict()
+        except Exception:
+            # If request.args access fails, ignore
+            pass
+
+    if payload is None:
         if last_error is not None:
             raise last_error
-        raise ValueError("No JSON body or form data found in request.")
+        # Only raise if truly empty (no json, no form, no args)
+        # But if it's an empty GET request, payload might be {} from to_dict()
+        # So we should be careful. 
+        # If payload is still None, it means we failed to get anything.
+        raise ValueError("No JSON body, form data, or query args found in request.")
 
     if isinstance(payload, dict):
+        # Merge query args if payload exists (optional, but good for hybrid requests)
+        if request.args:
+            payload.update(request.args.to_dict())
         return payload or {}
 
     if isinstance(payload, str):

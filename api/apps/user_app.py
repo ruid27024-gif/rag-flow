@@ -28,7 +28,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from api.apps.auth import get_auth_client
 from api.db import FileType, UserTenantRole
-from api.db.db_models import TenantLLM
+from api.db.db_models import TenantLLM, AdminUser
 from api.db.services.file_service import FileService
 from api.db.services.llm_service import get_init_tenant_llm
 from api.db.services.tenant_llm_service import TenantLLMService
@@ -603,7 +603,9 @@ async def user_profile():
               type: string
               description: User email.
     """
-    return get_json_result(data=current_user.to_dict())
+    data = current_user.to_dict()
+    data["is_admin_user"] = len(AdminUser.query(user_id=current_user.id)) > 0
+    return get_json_result(data=data)
 
 
 def rollback_user_registration(user_id):

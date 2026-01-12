@@ -26,6 +26,7 @@ import {
   MessageSquareText,
   Moon,
   Search,
+  Shield,
   Sun,
 } from 'lucide-react';
 import React, { useCallback, useMemo } from 'react';
@@ -47,7 +48,7 @@ export function Header() {
   const { setTheme, theme } = useTheme();
 
   const {
-    data: { language = 'English', avatar, nickname },
+    data: { language = 'English', avatar, nickname, is_admin_user },
   } = useFetchUserInfo();
 
   const handleItemClick = (key: string) => () => {
@@ -63,8 +64,8 @@ export function Header() {
     setTheme(theme === ThemeEnum.Dark ? ThemeEnum.Light : ThemeEnum.Dark);
   }, [setTheme, theme]);
 
-  const tagsData = useMemo(
-    () => [
+  const tagsData = useMemo(() => {
+    const list = [
       { path: Routes.Root, name: t('header.Root'), icon: House },
       { path: Routes.Datasets, name: t('header.dataset'), icon: Library },
       { path: Routes.Chats, name: t('header.chat'), icon: MessageSquareText },
@@ -72,9 +73,18 @@ export function Header() {
       { path: Routes.Agents, name: t('header.flow'), icon: Cpu },
       { path: Routes.Memories, name: t('header.Memories'), icon: Cpu },
       { path: Routes.Files, name: t('header.fileManager'), icon: File },
-    ],
-    [t],
-  );
+    ];
+
+    if (is_admin_user) {
+      list.push({
+        path: Routes.AdminFiles,
+        name: '管理员',
+        icon: Shield,
+      });
+    }
+
+    return list;
+  }, [t, is_admin_user]);
 
   const options = useMemo(() => {
     return tagsData.map((tag) => {

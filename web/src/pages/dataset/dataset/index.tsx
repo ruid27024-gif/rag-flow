@@ -74,6 +74,7 @@ export default function Dataset() {
   });
   const readonly =
     (dataSetData?.permission === PermissionRole.TeamVisible &&
+      dataSetData?.created_by !== userInfo?.id &&
       !dataSetData?.is_admin) ||
     (dataSetData?.permission === PermissionRole.Everyone &&
       dataSetData?.created_by !== userInfo?.id &&

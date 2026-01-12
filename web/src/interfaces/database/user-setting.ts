@@ -19,6 +19,7 @@ export interface IUserInfo {
   timezone: string;
   update_date: string;
   update_time: number;
+  is_admin_user?: boolean;
 }
 
 export type TaskExecutorElapsed = Record<string, number[]>;

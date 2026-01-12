@@ -460,9 +460,10 @@ def list_datasets(tenant_id):
                 if not kbs:
                     return get_error_permission_result(message=f"User '{tenant_id}' lacks permission for dataset '{name}'")
 
-        tenants = TenantService.get_joined_tenants_by_user_id(tenant_id)
+        from api.db.services.user_group_service import UserGroupService
+        tenants = UserGroupService.get_team_tenant_ids(tenant_id)
         kbs, total = KnowledgebaseService.get_list(
-            [m["tenant_id"] for m in tenants],
+            tenants,
             tenant_id,
             args["page"],
             args["page_size"],

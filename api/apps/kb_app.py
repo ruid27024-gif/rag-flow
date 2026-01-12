@@ -205,8 +205,8 @@ async def list_kbs():
     
     try:
         if not owner_ids:
-            tenants = TenantService.get_joined_tenants_by_user_id(current_user.id)
-            tenants = [m["tenant_id"] for m in tenants]
+            from api.db.services.user_group_service import UserGroupService
+            tenants = UserGroupService.get_team_tenant_ids(current_user.id)
             kbs, total = KnowledgebaseService.get_by_tenant_ids(
                 tenants, current_user.id, page_number,
                 items_per_page, orderby, desc, keywords, parser_id,

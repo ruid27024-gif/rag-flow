@@ -500,16 +500,22 @@ class KnowledgebaseService(CommonService):
         
         # Check if it's an EVERYONE permission KB first (optimization)
         kb = cls.model.get_or_none(cls.model.id == kb_id)
-        if kb and kb.permission == TenantPermission.EVERYONE.value:
+        if not kb:
+            return False
+
+        if kb.permission == TenantPermission.EVERYONE.value:
+            return True
+        
+        if kb.tenant_id == user_id:
             return True
 
-        docs = cls.model.select(
-            cls.model.id).join(UserTenant, on=(UserTenant.tenant_id == Knowledgebase.tenant_id)
-                               ).where(cls.model.id == kb_id, UserTenant.user_id == user_id).paginate(0, 1)
-        docs = docs.dicts()
-        if not docs:
-            return False
-        return True
+        if kb.permission in [TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value]:
+            from api.db.services.user_group_service import UserGroupService
+            team_tenant_ids = UserGroupService.get_team_tenant_ids(user_id)
+            if kb.tenant_id in team_tenant_ids:
+                return True
+        
+        return False
 
     @classmethod
     @DB.connection_context()
@@ -523,10 +529,21 @@ class KnowledgebaseService(CommonService):
         if AdminUser.query(user_id=user_id):
             kbs = cls.model.select().where(cls.model.id == kb_id).paginate(0, 1)
         else:
-            kbs = cls.model.select().join(UserTenant, on=((UserTenant.tenant_id == Knowledgebase.tenant_id) & (UserTenant.user_id == user_id)), join_type=JOIN.LEFT_OUTER
-                                          ).where(cls.model.id == kb_id, 
-                                                  (UserTenant.id.is_null(False)) | (cls.model.permission == TenantPermission.EVERYONE.value)
-                                          ).paginate(0, 1)
+            # Reimplement using accessible logic (python side or complex query)
+            # Since pagination is 0, 1, we can fetch one and check permissions.
+            kbs = cls.model.select().where(cls.model.id == kb_id).paginate(0, 1)
+            # We need to filter manually because we can't easily join on dynamic team logic
+            # Or construct the query.
+            # Query approach:
+            from api.db.services.user_group_service import UserGroupService
+            team_tenant_ids = UserGroupService.get_team_tenant_ids(user_id)
+            
+            kbs = kbs.where(
+                (cls.model.tenant_id.in_(team_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                | (cls.model.tenant_id == user_id)
+                | (cls.model.permission == TenantPermission.EVERYONE.value)
+            )
+
         kbs = kbs.dicts()
         return list(kbs)
 
@@ -542,10 +559,17 @@ class KnowledgebaseService(CommonService):
         if AdminUser.query(user_id=user_id):
             kbs = cls.model.select().where(cls.model.name == kb_name).paginate(0, 1)
         else:
-            kbs = cls.model.select().join(UserTenant, on=((UserTenant.tenant_id == Knowledgebase.tenant_id) & (UserTenant.user_id == user_id)), join_type=JOIN.LEFT_OUTER
-                                          ).where(cls.model.name == kb_name, 
-                                                  (UserTenant.id.is_null(False)) | (cls.model.permission == TenantPermission.EVERYONE.value)
-                                          ).paginate(0, 1)
+            from api.db.services.user_group_service import UserGroupService
+            team_tenant_ids = UserGroupService.get_team_tenant_ids(user_id)
+            
+            kbs = cls.model.select().where(
+                cls.model.name == kb_name,
+                (
+                    (cls.model.tenant_id.in_(team_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                    | (cls.model.tenant_id == user_id)
+                    | (cls.model.permission == TenantPermission.EVERYONE.value)
+                )
+            ).paginate(0, 1)
         kbs = kbs.dicts()
         return list(kbs)
 

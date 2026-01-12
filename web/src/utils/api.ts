@@ -4,6 +4,16 @@ const ExternalApi = `/api`;
 export { api_host };
 
 export default {
+  // group
+  list_group: `${api_host}/group/list`,
+  delete_group: `${api_host}/group/delete`,
+  new_group: `${api_host}/group/new`,
+  // user_group
+  list_group_members: (groupId: string) =>
+    `${api_host}/user_group/members?group_id=${groupId}`,
+  add_user_to_group: `${api_host}/user_group/new`,
+  remove_user_from_group: `${api_host}/user_group/delete`,
+  list_candidate_users: `${api_host}/user_group/candidates`,
   // user
   login: `${api_host}/user/login`,
   logout: `${api_host}/user/logout`,

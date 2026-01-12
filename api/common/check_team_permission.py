@@ -19,7 +19,7 @@ from api.db import TenantPermission
 from api.db.db_models import File, Knowledgebase, AdminUser
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.services.user_service import TenantService
+from api.db.services.user_group_service import UserGroupService
 
 
 def check_kb_team_permission(kb: dict | Knowledgebase, other: str) -> bool:
@@ -38,8 +38,8 @@ def check_kb_team_permission(kb: dict | Knowledgebase, other: str) -> bool:
     if kb["permission"] not in (TenantPermission.TEAM, TenantPermission.TEAM_VISIBLE):
         return False
 
-    joined_tenants = TenantService.get_joined_tenants_by_user_id(other)
-    return any(tenant["tenant_id"] == kb_tenant_id for tenant in joined_tenants)
+    team_tenant_ids = UserGroupService.get_team_tenant_ids(other)
+    return kb_tenant_id in team_tenant_ids
 
 
 def check_file_team_permission(file: dict | File, other: str) -> bool:
