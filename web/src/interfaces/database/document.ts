@@ -29,6 +29,9 @@ export interface IDocumentInfo {
   update_date: string;
   update_time: number;
   meta_fields?: Record<string, any>;
+  author?: string;
+  school?: string;
+  publish_time?: string;
 }
 
 export interface IParserConfig {

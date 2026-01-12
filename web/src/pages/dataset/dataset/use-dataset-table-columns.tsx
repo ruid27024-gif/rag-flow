@@ -126,6 +126,47 @@ export function useDatasetTableColumns({
       ),
     },
     {
+      id: 'metadata',
+      header: '来源信息',
+      cell: ({ row }) => (
+        <div className="flex flex-col gap-1 text-xs text-text-secondary">
+          {row.original.author && (
+            <div className="flex items-center gap-1">
+              <span className="font-medium">作者:</span>
+              <span
+                className="truncate max-w-[120px]"
+                title={row.original.author}
+              >
+                {row.original.author}
+              </span>
+            </div>
+          )}
+          {row.original.school && (
+            <div className="flex items-center gap-1">
+              <span className="font-medium">学校:</span>
+              <span
+                className="truncate max-w-[120px]"
+                title={row.original.school}
+              >
+                {row.original.school}
+              </span>
+            </div>
+          )}
+          {row.original.publish_time && (
+            <div className="flex items-center gap-1">
+              <span className="font-medium">发布日期:</span>
+              <span
+                className="truncate max-w-[120px]"
+                title={row.original.publish_time}
+              >
+                {row.original.publish_time}
+              </span>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
       accessorKey: 'source_from',
       header: t('source'),
       cell: ({ row }) => (

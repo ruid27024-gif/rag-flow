@@ -77,10 +77,30 @@ async def upload():
     err, files = await asyncio.to_thread(FileService.upload_document, kb, file_objs, current_user.id)
     if err:
         return get_json_result(data=files, message="\n".join(err), code=RetCode.SERVER_ERROR)
-
     if not files:
         return get_json_result(data=files, message="There seems to be an issue with your file format. Please verify it is correct and not corrupted.", code=RetCode.DATA_ERROR)
     files = [f[0] for f in files]  # remove the blob
+    # 如果上传完成，则对上传的每个文件进行作者信息解析任务
+    from api.db.db_utils import bulk_insert_into_db
+    from rag.utils.redis_conn import REDIS_CONN
+    from datetime import datetime
+    tasks = []
+    for file in files:
+        task = {
+            "id": get_uuid(),
+            "doc_id": file["id"],
+            "task_type": "parse_author_info",
+            "progress": 0.0,
+            "from_page": 0,
+            "to_page": 100000000,
+            "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        tasks.append(task)
+
+    if tasks:
+        bulk_insert_into_db(Task, tasks, True)
+        for task in tasks:
+            REDIS_CONN.queue_product(settings.get_svr_queue_name(0), message=task)
 
     return get_json_result(data=files)
 
@@ -273,6 +293,12 @@ async def list_docs():
                 doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
             if doc_item.get("source_type"):
                 doc_item["source_type"] = doc_item["source_type"].split("/")[0]
+            # 将字段的meta_fields字段解析出新的字段，并且整理为我们需要的作者、学校、论文发布时间
+            if doc_item.get("meta_fields"):
+                meta_fields = doc_item["meta_fields"]
+                doc_item["author"] = meta_fields.get("author", "")
+                doc_item["school"] = meta_fields.get("school", "")
+                doc_item["publish_time"] = meta_fields.get("publish_time", "")
         return get_json_result(data={"total": tol, "docs": docs})
     except Exception as e:
         return server_error_response(e)

@@ -50,6 +50,8 @@ import signal
 import exceptiongroup
 import faulthandler
 import numpy as np
+import pdfplumber
+from io import BytesIO
 from peewee import DoesNotExist
 from common.constants import LLMType, ParserType, PipelineTaskType
 from api.db.services.document_service import DocumentService
@@ -838,6 +840,81 @@ async def insert_es(task_id, task_tenant_id, task_dataset_id, chunks, progress_c
             return False
     return True
 
+async def parse_author_info(task: dict):
+    st = timer()
+    bucket, name = File2DocumentService.get_storage_address(doc_id=task["doc_id"])
+    print(f"【DEBUG-HY】: parse_author_info filename: {name}", file=sys.stderr, flush=True)
+    binary = await get_storage_binary(bucket, name)
+    logging.info("From minio({}) {}/{}".format(timer() - st, name, name))
+    # 获取前两页的信息
+    # 将其当多pdf处理，获取前两页作为图片
+    try:
+        images = []
+        with pdfplumber.open(BytesIO(binary)) as pdf:
+            for i in range(min(2, len(pdf.pages))):
+                page = pdf.pages[i]
+                # Convert to image
+                img = page.to_image(resolution=150).original
+                img_byte_arr = BytesIO()
+                img.save(img_byte_arr, format='JPEG')
+                images.append(img_byte_arr.getvalue())
+        
+        if not images:
+            logging.error(f"【DEBUG-HY】: No images extracted from {name}")
+            return
+
+        # Call VLM
+        tenant_id = task["tenant_id"]
+        # Use IMAGE2TEXT model type for VLM
+        cv_mdl = LLMBundle(tenant_id, LLMType.IMAGE2TEXT)
+        
+        prompt = """
+        请从提供的图片中提取以下信息，并以 JSON 格式返回：
+        - author: 作者
+        - publish_time: 发布时间
+        - school: 学校信息
+        
+        如果某项信息不存在，请填写 null。
+        只返回 JSON 内容，不要有任何解释。
+        """
+        
+        results = []
+        for img_bin in images:
+            ans = cv_mdl.describe_with_prompt(img_bin, prompt)
+            results.append(ans)
+        
+        # Usually first page has most info.
+        final_ans = results[0]
+        print(f"【DEBUG-HY】: VLM result: {final_ans}", file=sys.stderr, flush=True)
+        
+        # Parse JSON
+        try:
+            # Clean markdown if present
+            if "```json" in final_ans:
+                final_ans = final_ans.split("```json")[1].split("```")[0].strip()
+            elif "```" in final_ans:
+                final_ans = final_ans.split("```")[1].split("```")[0].strip()
+            
+            info = json.loads(final_ans)
+            
+            # Save to Document meta_fields
+             # First get existing meta_fields
+            success, doc = DocumentService.get_by_id(task["doc_id"])
+            meta_fields = doc.meta_fields if success and doc and doc.meta_fields else {}
+            meta_fields.update(info)
+            
+            DocumentService.update_by_id(task["doc_id"], {"meta_fields": meta_fields})
+            print(f"【DEBUG-HY】: Updated document {task['doc_id']} with info: {meta_fields}", file=sys.stderr, flush=True)
+            
+        except Exception as e:
+            logging.error(f"【DEBUG-HY】: Failed to parse JSON from VLM: {e}. Raw response: {final_ans}")
+
+    except Exception as e:
+        logging.error(f"【DEBUG-HY】: Error in parse_author_info: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
+    return
 
 @timeout(60*60*3, 1)
 async def do_handle_task(task):
@@ -845,6 +922,10 @@ async def do_handle_task(task):
 
     if task_type == "dataflow" and task.get("doc_id", "") == CANVAS_DEBUG_DOC_ID:
         await run_dataflow(task)
+        return
+    
+    if task_type == "parse_author_info":
+        await parse_author_info(task)
         return
 
     task_id = task["id"]
