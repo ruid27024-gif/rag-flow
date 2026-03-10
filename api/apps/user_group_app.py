@@ -8,6 +8,17 @@ from common.constants import RetCode
 
 
 def check_admin(user):
+    is_admin = AdminUser.query(user_id=user.id, role_level=1)
+    if not is_admin:
+        return get_json_result(
+            data=False,
+            message="Only admin users can perform this action.",
+            code=RetCode.OPERATING_ERROR,
+        )
+    return None
+
+
+def check_group_admin(user):
     is_admin = AdminUser.query(user_id=user.id)
     if not is_admin:
         return get_json_result(
@@ -16,6 +27,113 @@ def check_admin(user):
             code=RetCode.OPERATING_ERROR,
         )
     return None
+
+
+@manager.route("/my_group/members", methods=["GET"])  # noqa: F821
+@login_required
+async def list_my_group_members():
+    try:
+        error_response = check_group_admin(current_user)
+        if error_response:
+            return error_response
+
+        # Find current user's group
+        user_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
+        if not user_group:
+            return get_json_result(data=[])
+
+        group_id = user_group.group_id
+        
+        rows = list(
+            UserGroup.select(UserGroup.user_id, UserGroup.created_by, UserGroup.created_time).where(
+                UserGroup.group_id == group_id
+            )
+        )
+        user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
+        nickname_by_user_id = {}
+        if user_ids:
+            nickname_by_user_id = {
+                u.id: u.nickname
+                for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
+            }
+
+        data = [
+            {
+                "user_id": r.user_id,
+                "nickname": nickname_by_user_id.get(r.user_id),
+                "created_by": r.created_by,
+                "created_by_nickname": nickname_by_user_id.get(r.created_by),
+                "created_time": r.created_time,
+            }
+            for r in rows
+        ]
+        return get_json_result(data=data)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/my_group/members/add", methods=["POST"])  # noqa: F821
+@login_required
+@validate_request("user_id")
+async def add_member_to_my_group():
+    req = await get_request_json()
+    user_id = req["user_id"]
+    try:
+        error_response = check_group_admin(current_user)
+        if error_response:
+            return error_response
+
+        user_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
+        if not user_group:
+             return get_json_result(
+                code=RetCode.OPERATING_ERROR,
+                message="You do not have a group. Please create one first."
+            )
+        group_id = user_group.group_id
+
+        exists = UserGroup.get_or_none(
+            (UserGroup.user_id == user_id) & (UserGroup.group_id == group_id)
+        )
+        if exists:
+            return get_json_result(
+                code=RetCode.DATA_ERROR,
+                message="User already in group.",
+                data={"id": exists.id},
+            )
+
+        obj = UserGroupService.save(
+            user_id=user_id,
+            group_id=group_id,
+            created_by=current_user.id,
+        )
+        return get_json_result(data={"id": obj.id})
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/my_group/members/remove", methods=["POST"])  # noqa: F821
+@login_required
+@validate_request("user_id")
+async def remove_member_from_my_group():
+    req = await get_request_json()
+    user_id = req["user_id"]
+    try:
+        error_response = check_group_admin(current_user)
+        if error_response:
+            return error_response
+
+        user_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
+        if not user_group:
+             return get_json_result(
+                code=RetCode.OPERATING_ERROR,
+                message="You do not have a group."
+            )
+        group_id = user_group.group_id
+
+        deleted = UserGroupService.delete_by_user_group(user_id=user_id, group_id=group_id)
+        return get_json_result(data={"deleted": deleted})
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route("/new", methods=["POST"])  # noqa: F821
@@ -130,7 +248,7 @@ async def list_user_groups():
 @login_required
 async def list_candidate_users():
     try:
-        error_response = check_admin(current_user)
+        error_response = check_group_admin(current_user)
         if error_response:
             return error_response
 

@@ -15,19 +15,37 @@
 #
 
 
-from api.db import TenantPermission
-from api.db.db_models import File, Knowledgebase, AdminUser
+from api.db import TenantPermission, UserTenantRole
+from api.db.db_models import File, Knowledgebase, AdminUser, UserTenant, UserGroup
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_group_service import UserGroupService
 
 
 def check_kb_team_permission(kb: dict | Knowledgebase, other: str) -> bool:
-    if AdminUser.query(user_id=other):
+    if AdminUser.query(user_id=other, role_level=1):
         return True
+    
     kb = kb.to_dict() if isinstance(kb, Knowledgebase) else kb
-
     kb_tenant_id = kb["tenant_id"]
+
+    # Check for level 2 admin
+    if AdminUser.query(user_id=other, role_level=2):
+        # 1. Find the owner of this tenant
+        owner_record = UserTenant.select().where(
+            (UserTenant.tenant_id == kb_tenant_id) & 
+            (UserTenant.role == UserTenantRole.OWNER)
+        ).first()
+        
+        if owner_record:
+            owner_user_id = owner_record.user_id
+            
+            # 2. Check if current user (other) and owner are in the same group
+            my_group = UserGroup.select().where(UserGroup.user_id == other).first()
+            owner_group = UserGroup.select().where(UserGroup.user_id == owner_user_id).first()
+            
+            if my_group and owner_group and my_group.group_id == owner_group.group_id:
+                return True
 
     if kb_tenant_id == other:
         return True
@@ -43,7 +61,7 @@ def check_kb_team_permission(kb: dict | Knowledgebase, other: str) -> bool:
 
 
 def check_file_team_permission(file: dict | File, other: str) -> bool:
-    if AdminUser.query(user_id=other):
+    if AdminUser.query(user_id=other, role_level=1):
         return True
     file = file.to_dict() if isinstance(file, File) else file
 

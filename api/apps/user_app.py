@@ -28,7 +28,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from api.apps.auth import get_auth_client
 from api.db import FileType, UserTenantRole
-from api.db.db_models import TenantLLM, AdminUser
+from api.db.db_models import TenantLLM, AdminUser, User
 from api.db.services.file_service import FileService
 from api.db.services.llm_service import get_init_tenant_llm
 from api.db.services.tenant_llm_service import TenantLLMService
@@ -604,8 +604,153 @@ async def user_profile():
               description: User email.
     """
     data = current_user.to_dict()
-    data["is_admin_user"] = len(AdminUser.query(user_id=current_user.id)) > 0
+    admin_users = AdminUser.query(user_id=current_user.id)
+    data["is_admin_user"] = any(u.role_level == 1 for u in admin_users)
+    data["role_level"] = min([u.role_level for u in admin_users]) if admin_users else None
     return get_json_result(data=data)
+
+
+@manager.route("/group_admins", methods=["GET"])  # noqa: F821
+@login_required
+async def group_admins():
+    """
+    Get group administrators (role_level=2).
+    ---
+    tags:
+      - User
+    security:
+      - ApiKeyAuth: []
+    responses:
+      200:
+        description: List of group administrators.
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              nickname:
+                type: string
+    """
+    try:
+        users = (User
+                 .select(User.id, User.nickname)
+                 .join(AdminUser, on=(User.id == AdminUser.user_id))
+                 .where(AdminUser.role_level == 2))
+        res = [{"user_id": u.id, "nickname": u.nickname} for u in users]
+        return get_json_result(data=res)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/group_admin/candidates", methods=["GET"])  # noqa: F821
+@login_required
+async def group_admin_candidates():
+    """
+    Get candidates for group administrators (users not in AdminUser).
+    ---
+    tags:
+      - User
+    security:
+      - ApiKeyAuth: []
+    responses:
+      200:
+        description: List of candidate users.
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              nickname:
+                type: string
+    """
+    try:
+        # Find users who are NOT in AdminUser table
+        subquery = AdminUser.select(AdminUser.user_id)
+        users = User.select(User.id, User.nickname).where(User.id.not_in(subquery))
+        res = [{"user_id": u.id, "nickname": u.nickname} for u in users]
+        return get_json_result(data=res)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/group_admin/new", methods=["POST"])  # noqa: F821
+@login_required
+async def add_group_admin():
+    """
+    Add a group administrator.
+    ---
+    tags:
+      - User
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: body
+        name: body
+        description: User ID to add as group admin.
+        required: true
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: string
+    """
+    req = await get_request_json()
+    user_id = req.get("user_id")
+    if not user_id:
+        return get_json_result(data=False, message="user_id is required", code=RetCode.ARGUMENT_ERROR)
+
+    try:
+        if AdminUser.query(user_id=user_id):
+             return get_json_result(data=False, message="User is already an admin", code=RetCode.DATA_ERROR)
+        
+        AdminUser.insert(user_id=user_id, role_level=2).execute()
+        return get_json_result(data=True)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/group_admin/delete", methods=["POST"])  # noqa: F821
+@login_required
+async def delete_group_admin():
+    """
+    Remove a group administrator.
+    ---
+    tags:
+      - User
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: body
+        name: body
+        description: User ID to remove from group admins.
+        required: true
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: string
+    """
+    req = await get_request_json()
+    user_id = req.get("user_id")
+    if not user_id:
+        return get_json_result(data=False, message="user_id is required", code=RetCode.ARGUMENT_ERROR)
+
+    try:
+        # Only allow deleting role_level=2 to prevent accidental deletion of super admins (if any)
+        # Assuming role_level 2 is specific for group admins.
+        # Check if user is actually a group admin before deleting?
+        # Or just delete where user_id=... and role_level=2
+        rows = AdminUser.delete().where((AdminUser.user_id == user_id) & (AdminUser.role_level == 2)).execute()
+        if rows > 0:
+            return get_json_result(data=True)
+        else:
+            return get_json_result(data=False, message="User is not a group admin or not found", code=RetCode.DATA_ERROR)
+    except Exception as e:
+        return server_error_response(e)
 
 
 def rollback_user_registration(user_id):

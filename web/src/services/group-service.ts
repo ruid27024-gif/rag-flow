@@ -33,6 +33,32 @@ class GroupService {
   listCandidateUsers() {
     return request.get(api.list_candidate_users);
   }
+
+  getMyGroup() {
+    return request.get(api.my_group);
+  }
+
+  createMyGroup(groupName: string) {
+    return request.post(api.create_my_group, {
+      data: { group_name: groupName },
+    });
+  }
+
+  listMyGroupMembers() {
+    return request.get(api.my_group_members);
+  }
+
+  addMemberToMyGroup(userId: string) {
+    return request.post(api.add_member_to_my_group, {
+      data: { user_id: userId },
+    });
+  }
+
+  removeMemberFromMyGroup(userId: string) {
+    return request.post(api.remove_member_from_my_group, {
+      data: { user_id: userId },
+    });
+  }
 }
 
 export default new GroupService();

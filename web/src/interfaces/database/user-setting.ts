@@ -20,6 +20,7 @@ export interface IUserInfo {
   update_date: string;
   update_time: number;
   is_admin_user?: boolean;
+  role_level?: number;
 }
 
 export type TaskExecutorElapsed = Record<string, number[]>;

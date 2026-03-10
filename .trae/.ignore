@@ -1,0 +1,8 @@
+# 忽略debug-log目录、docker目录、eval目录下的内容、docs目录下的内容
+debug-log/
+docker/
+eval/
+docs/
+examples/
+temp_pdf/
+*md

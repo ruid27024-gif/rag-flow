@@ -48,6 +48,10 @@ const methods = {
     url: user_info,
     method: 'get',
   },
+  group_admins: {
+    url: api.group_admins,
+    method: 'get',
+  },
   get_tenant_info: {
     url: tenant_info,
     method: 'get',
@@ -131,6 +135,17 @@ const userService = registerServer<keyof typeof methods>(methods, request);
 export const getLoginChannels = () => request.get(api.login_channels);
 export const loginWithChannel = (channel: string) =>
   (window.location.href = api.login_channel(channel));
+
+export const listGroupAdmins = () => request.get(api.group_admins);
+
+export const listGroupAdminCandidates = () =>
+  request.get(api.group_admin_candidates);
+
+export const addGroupAdmin = (userId: string) =>
+  post(api.add_group_admin, { user_id: userId });
+
+export const removeGroupAdmin = (userId: string) =>
+  post(api.delete_group_admin, { user_id: userId });
 
 export const listTenantUser = (tenantId: string) =>
   request.get(api.listTenantUser(tenantId));

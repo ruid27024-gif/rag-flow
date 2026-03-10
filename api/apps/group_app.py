@@ -7,12 +7,86 @@ from common.constants import RetCode
 from peewee import fn
 
 def check_admin(user):
+    admin_user = AdminUser.query(user_id=user.id, role_level=1)
+    if not admin_user:
+        return get_json_result(
+            data=False, message='Only admin users can perform this action.', code=RetCode.OPERATING_ERROR
+        )
+    return None
+
+def check_group_admin(user):
     admin_user = AdminUser.query(user_id=user.id)
     if not admin_user:
         return get_json_result(
             data=False, message='Only admin users can perform this action.', code=RetCode.OPERATING_ERROR
         )
     return None
+
+@manager.route('/my_group', methods=['GET'])
+@login_required
+async def get_my_group():
+    try:
+        error_response = check_group_admin(current_user)
+        if error_response:
+            return error_response
+
+        user_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
+        if not user_group:
+            print(f"【DEBUG-HY】User {current_user.id} not in any user_group")
+            return get_json_result(data=None)
+
+        group = GroupService.get_or_none(group_id=user_group.group_id)
+        if not group:
+            print(f"【DEBUG-HY】Group {user_group.group_id} not found for user {current_user.id}")
+            return get_json_result(data=None)
+
+        # Calculate member count
+        member_count = UserGroup.select().where(UserGroup.group_id == group.group_id).count()
+
+        data = {
+            "id": group.group_id,
+            "group_name": group.group_name,
+            "created_by": group.created_by,
+            "create_time": group.created_time,
+            "member_count": member_count
+        }
+        return get_json_result(data=data)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route('/my_group/create', methods=['POST'])
+@login_required
+@validate_request("group_name")
+async def create_my_group():
+    req = await get_request_json()
+    group_name = req['group_name']
+    try:
+        error_response = check_group_admin(current_user)
+        if error_response:
+            return error_response
+
+        # Check if user is already in a group
+        if UserGroup.select().where(UserGroup.user_id == current_user.id).exists():
+             return get_json_result(
+                code=RetCode.DATA_ERROR,
+                message="You are already in a group."
+            )
+
+        group = GroupService.save(group_name=group_name, created_by=current_user.id)
+        
+        # Add current user to the group
+        from api.db.services.user_group_service import UserGroupService
+        UserGroupService.save(
+            user_id=current_user.id,
+            group_id=group.id,
+            created_by=current_user.id,
+        )
+        
+        return get_json_result(data={"group_id": group.id})
+    except Exception as e:
+        return server_error_response(e)
+
 
 @manager.route('/new', methods=['POST'])  # noqa: F821
 @login_required

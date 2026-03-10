@@ -497,8 +497,21 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def accessible(cls, doc_id, user_id):
-        if AdminUser.query(user_id=user_id):
+        if AdminUser.query(user_id=user_id, role_level=1):
             return True
+        
+        # Check for level 2 admin
+        if AdminUser.query(user_id=user_id, role_level=2):
+            from api.db.db_models import UserGroup
+            my_group = UserGroup.select().where(UserGroup.user_id == user_id).first()
+            doc = cls.model.get_by_id(doc_id)
+            if doc and my_group:
+                 e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+                 if e:
+                     owner_group = UserGroup.select().where(UserGroup.user_id == kb.tenant_id).first()
+                     if owner_group and owner_group.group_id == my_group.group_id:
+                         return True
+
         docs = cls.model.select(
             cls.model.id).join(
             Knowledgebase, on=(
@@ -513,8 +526,21 @@ class DocumentService(CommonService):
     @classmethod
     @DB.connection_context()
     def accessible4deletion(cls, doc_id, user_id):
-        if AdminUser.query(user_id=user_id):
+        if AdminUser.query(user_id=user_id, role_level=1):
             return True
+        
+        # Check for level 2 admin
+        if AdminUser.query(user_id=user_id, role_level=2):
+            from api.db.db_models import UserGroup
+            my_group = UserGroup.select().where(UserGroup.user_id == user_id).first()
+            doc = cls.model.get_by_id(doc_id)
+            if doc and my_group:
+                 e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+                 if e:
+                     owner_group = UserGroup.select().where(UserGroup.user_id == kb.tenant_id).first()
+                     if owner_group and owner_group.group_id == my_group.group_id:
+                         return True
+
         docs = cls.model.select(cls.model.id
                                 ).join(
             Knowledgebase, on=(

@@ -76,8 +76,10 @@ function buildQueryVariableOptionsByShowVariable(showVariable?: boolean) {
 
 export function KnowledgeBaseFormField({
   showVariable = false,
+  hideLabel = false,
 }: {
   showVariable?: boolean;
+  hideLabel?: boolean;
 }) {
   const form = useFormContext();
   const { t } = useTranslation();
@@ -134,9 +136,11 @@ export function KnowledgeBaseFormField({
       name="kb_ids"
       render={({ field }) => (
         <FormItem>
-          <FormLabel tooltip={t('chat.knowledgeBasesTip')}>
-            {t('chat.knowledgeBases')}
-          </FormLabel>
+          {!hideLabel && (
+            <FormLabel tooltip={t('chat.knowledgeBasesTip')}>
+              {t('chat.knowledgeBases')}
+            </FormLabel>
+          )}
           <FormControl>
             <MultiSelect
               options={options}

@@ -92,12 +92,31 @@ async def update():
             code=RetCode.AUTHENTICATION_ERROR
         )
     try:
-        is_admin = AdminUser.query(user_id=current_user.id)
-        if not is_admin and not KnowledgebaseService.query(
+        is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
+        if not is_admin:
+            # Check for level 2 admin
+            if AdminUser.query(user_id=current_user.id, role_level=2):
+                 # Find current user's group
+                from api.db.db_models import UserGroup
+                my_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
+                e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
+                
+                has_permission = False
+                if my_group and e:
+                     # Find KB owner's group
+                     owner_group = UserGroup.select().where(UserGroup.user_id == kb.tenant_id).first()
+                     if owner_group and owner_group.group_id == my_group.group_id:
+                         has_permission = True
+                
+                if not has_permission:
+                     return get_json_result(
+                        data=False, message='Only owner of dataset authorized for this operation.',
+                        code=RetCode.OPERATING_ERROR)
+            elif not KnowledgebaseService.query(
                 created_by=current_user.id, id=req["kb_id"]):
-            return get_json_result(
-                data=False, message='Only owner of dataset authorized for this operation.',
-                code=RetCode.OPERATING_ERROR)
+                    return get_json_result(
+                        data=False, message='Only owner of dataset authorized for this operation.',
+                        code=RetCode.OPERATING_ERROR)
 
         e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
         if not e:
@@ -201,7 +220,7 @@ async def list_kbs():
     req = await get_request_json()
     owner_ids = req.get("owner_ids", [])
     
-    is_admin = AdminUser.query(user_id=current_user.id)
+    is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
     
     try:
         if not owner_ids:
@@ -238,7 +257,7 @@ async def rm():
             code=RetCode.AUTHENTICATION_ERROR
         )
     try:
-        is_admin = AdminUser.query(user_id=current_user.id)
+        is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
         if not is_admin:
             kbs = KnowledgebaseService.query(
                 created_by=current_user.id, id=req["kb_id"])

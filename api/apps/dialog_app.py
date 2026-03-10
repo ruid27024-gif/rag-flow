@@ -21,11 +21,65 @@ from common.constants import StatusEnum
 from api.db.services.tenant_llm_service import TenantLLMService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_service import TenantService, UserTenantService
+from api.db.db_models import AdminUser
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from common.misc_utils import get_uuid
 from common.constants import RetCode
 from api.apps import login_required, current_user
+import os
+import json
+from common.file_utils import get_project_base_directory
 
+def check_admin(user):
+    admin_user = AdminUser.query(user_id=user.id, role_level=1)
+    if not admin_user:
+        return get_json_result(
+            data=False, message='Only admin users can perform this action.', code=RetCode.OPERATING_ERROR
+        )
+    return None
+
+@manager.route('/admin/config/get', methods=['GET'])  # noqa: F821
+@login_required
+def get_dialog_config():
+    error_response = check_admin(current_user)
+    if error_response:
+        return error_response
+        
+    try:
+        base_dir = get_project_base_directory()
+        conf_path = os.path.join(base_dir, 'conf', 'dialog_config.json')
+        
+        if not os.path.exists(conf_path):
+            return get_json_result(data={})
+            
+        with open(conf_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            return get_json_result(data=config)
+    except Exception as e:
+        return server_error_response(e)
+
+@manager.route('/admin/config/set', methods=['POST'])  # noqa: F821
+@login_required
+async def set_dialog_config():
+    error_response = check_admin(current_user)
+    if error_response:
+        return error_response
+
+    try:
+        req = await get_request_json()
+        base_dir = get_project_base_directory()
+        conf_dir = os.path.join(base_dir, 'conf')
+        conf_path = os.path.join(conf_dir, 'dialog_config.json')
+        
+        if not os.path.exists(conf_dir):
+            os.makedirs(conf_dir)
+            
+        with open(conf_path, 'w', encoding='utf-8') as f:
+            json.dump(req, f, ensure_ascii=False, indent=4)
+            
+        return get_json_result(data=True)
+    except Exception as e:
+        return server_error_response(e)
 
 @manager.route('/set', methods=['POST'])  # noqa: F821
 @validate_request("prompt_config")

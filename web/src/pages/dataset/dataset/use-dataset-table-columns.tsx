@@ -14,10 +14,9 @@ import { cn } from '@/lib/utils';
 import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
 import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/table-core';
-import { ArrowUpDown, MonitorUp } from 'lucide-react';
+import { ArrowUpDown, Edit, MonitorUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DatasetActionCell } from './dataset-action-cell';
-import { ParsingStatusCell } from './parsing-status-cell';
 import { UseChangeDocumentParserShowType } from './use-change-document-parser';
 import { UseRenameDocumentShowType } from './use-rename-document';
 import { UseSaveMetaShowType } from './use-save-meta';
@@ -129,7 +128,7 @@ export function useDatasetTableColumns({
       id: 'metadata',
       header: '来源信息',
       cell: ({ row }) => (
-        <div className="flex flex-col gap-1 text-xs text-text-secondary">
+        <div className="flex flex-col gap-1 text-xs text-text-secondary group relative min-h-[20px]">
           {row.original.author && (
             <div className="flex items-center gap-1">
               <span className="font-medium">作者:</span>
@@ -161,6 +160,18 @@ export function useDatasetTableColumns({
               >
                 {row.original.publish_time}
               </span>
+            </div>
+          )}
+          {!readonly && (
+            <div className="absolute right-0 top-0 hidden group-hover:block">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => showSetMetaModal(row.original)}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
             </div>
           )}
         </div>
@@ -210,22 +221,6 @@ export function useDatasetTableColumns({
       cell: ({ row }) => (
         <div className="capitalize">{row.getValue('chunk_num')}</div>
       ),
-    },
-    {
-      accessorKey: 'run',
-      header: t('Parse'),
-      // meta: { cellClassName: 'min-w-[20vw]' },
-      cell: ({ row }) => {
-        return (
-          <ParsingStatusCell
-            record={row.original}
-            showChangeParserModal={showChangeParserModal}
-            showSetMetaModal={showSetMetaModal}
-            showLog={showLog}
-            readonly={readonly}
-          ></ParsingStatusCell>
-        );
-      },
     },
     {
       id: 'actions',

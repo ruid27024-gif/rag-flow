@@ -18,7 +18,7 @@ from datetime import datetime
 from peewee import fn, JOIN
 
 from api.db import TenantPermission
-from api.db.db_models import DB, Document, Knowledgebase, User, UserTenant, UserCanvas, AdminUser
+from api.db.db_models import DB, Document, Knowledgebase, User, UserTenant, UserCanvas, AdminUser, UserGroup
 from api.db.services.common_service import CommonService
 from common.time_utils import current_timestamp, datetime_format
 from api.db.services import duplicate_name
@@ -74,8 +74,20 @@ class KnowledgebaseService(CommonService):
                 1. The dataset doesn't exist
                 2. The user is not the creator of the dataset
         """
-        if AdminUser.query(user_id=user_id):
+        if AdminUser.query(user_id=user_id, role_level=1):
             return True
+        
+        # Check for level 2 admin
+        if AdminUser.query(user_id=user_id, role_level=2):
+             # Find current user's group
+            my_group = UserGroup.select().where(UserGroup.user_id == user_id).first()
+            e, kb = cls.get_by_id(kb_id)
+            if my_group and e:
+                # Find KB owner's group
+                owner_group = UserGroup.select().where(UserGroup.user_id == kb.tenant_id).first()
+                if owner_group and owner_group.group_id == my_group.group_id:
+                    return True
+        
         # Check if a dataset can be deleted by a user
         docs = cls.model.select(
             cls.model.id).where(cls.model.id == kb_id, cls.model.created_by == user_id).paginate(0, 1)
@@ -175,14 +187,38 @@ class KnowledgebaseService(CommonService):
         kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
         
         if not admin_bypass:
-            kbs = kbs.where(
-                (
-                    (cls.model.tenant_id.in_(joined_tenant_ids)
-                     & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
-                    | (cls.model.tenant_id == user_id)
-                    | (cls.model.permission == TenantPermission.EVERYONE.value)
+            # Check for level 2 admin
+            if AdminUser.query(user_id=user_id, role_level=2):
+                 # Find current user's group
+                my_group = UserGroup.select().where(UserGroup.user_id == user_id).first()
+                if my_group:
+                    # Find all users in the same group
+                    group_members = UserGroup.select(UserGroup.user_id).where(UserGroup.group_id == my_group.group_id)
+                    member_ids = [m.user_id for m in group_members]
+                    
+                    kbs = kbs.where(
+                        (cls.model.tenant_id.in_(member_ids)) 
+                        | (cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                        | (cls.model.permission == TenantPermission.EVERYONE.value)
+                    )
+                else:
+                    kbs = kbs.where(
+                        (
+                            (cls.model.tenant_id.in_(joined_tenant_ids)
+                            & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                            | (cls.model.tenant_id == user_id)
+                            | (cls.model.permission == TenantPermission.EVERYONE.value)
+                        )
+                    )
+            else:
+                kbs = kbs.where(
+                    (
+                        (cls.model.tenant_id.in_(joined_tenant_ids)
+                        & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                        | (cls.model.tenant_id == user_id)
+                        | (cls.model.permission == TenantPermission.EVERYONE.value)
+                    )
                 )
-            )
             
         kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
         

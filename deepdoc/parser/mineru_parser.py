@@ -286,12 +286,6 @@ class MinerUParser(RAGFlowPdfParser):
 
             pdf_info = middle_json["pdf_info"]
             
-            # Check if it was pipeline execution to select correct make function
-            # pdf_utils.py used is_pipeline=False for _process_output call inside do_parse loop
-            # BUT _process_output definition defaults is_pipeline=True
-            # In do_parse line 577: is_pipeline=False.
-            # So pdf_utils.py seems to treat everything as VLM?
-            # Let's stick to is_pipeline=False (VLM mode) for consistency with pdf_utils.py
             is_pipeline = False 
 
             self._process_output_local(

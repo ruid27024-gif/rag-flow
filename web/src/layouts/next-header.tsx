@@ -15,6 +15,7 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useNavigateWithFromState } from '@/hooks/route-hook';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { Routes } from '@/routes';
+import { getAuthorization } from '@/utils/authorization-util';
 import { camelCase } from 'lodash';
 import {
   ChevronDown,
@@ -34,6 +35,8 @@ import { useTranslation } from 'react-i18next';
 import { useLocation } from 'umi';
 import { BellButton } from './bell-button';
 
+import message from '@/components/ui/message';
+
 const handleDocHelpCLick = () => {
   window.open('https://ragflow.io/docs/dev/category/guides', 'target');
 };
@@ -48,7 +51,7 @@ export function Header() {
   const { setTheme, theme } = useTheme();
 
   const {
-    data: { language = 'English', avatar, nickname, is_admin_user },
+    data: { language = 'English', avatar, nickname, is_admin_user, role_level },
   } = useFetchUserInfo();
 
   const handleItemClick = (key: string) => () => {
@@ -69,13 +72,19 @@ export function Header() {
       { path: Routes.Root, name: t('header.Root'), icon: House },
       { path: Routes.Datasets, name: t('header.dataset'), icon: Library },
       { path: Routes.Chats, name: t('header.chat'), icon: MessageSquareText },
+      {
+        path: 'create-dialog-api',
+        name: '新建对话',
+        icon: MessageSquareText,
+        isApi: true,
+      },
       { path: Routes.Searches, name: t('header.search'), icon: Search },
       { path: Routes.Agents, name: t('header.flow'), icon: Cpu },
       { path: Routes.Memories, name: t('header.Memories'), icon: Cpu },
       { path: Routes.Files, name: t('header.fileManager'), icon: File },
     ];
 
-    if (is_admin_user) {
+    if (is_admin_user || role_level === 2) {
       list.push({
         path: Routes.AdminFiles,
         name: '管理员',
@@ -84,7 +93,7 @@ export function Header() {
     }
 
     return list;
-  }, [t, is_admin_user]);
+  }, [t, is_admin_user, role_level]);
 
   const options = useMemo(() => {
     return tagsData.map((tag) => {
@@ -108,7 +117,27 @@ export function Header() {
   //   );
   // }, [pathname, tagsData]);
 
-  const handleChange = (path: SegmentedValue) => {
+  const handleChange = async (path: SegmentedValue) => {
+    if (path === 'create-dialog-api') {
+      try {
+        const response = await fetch('/v1/debug/create_dialog_from_config', {
+          method: 'POST',
+          headers: {
+            Authorization: getAuthorization() || '',
+          },
+        });
+        const res = await response.json();
+        if (res.retcode === 0 && res.data?.id) {
+          navigate(`${Routes.Chat}/${res.data.id}`);
+        } else {
+          message.error(res.msg || '新建对话失败！');
+        }
+      } catch (error) {
+        console.error(error);
+        message.error('请求失败！');
+      }
+      return;
+    }
     navigate(path as Routes);
   };
 
