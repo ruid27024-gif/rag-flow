@@ -182,6 +182,16 @@ class TaskService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_task_by_doc_id_and_type(cls, doc_id: str, task_type: str):
+        return (
+            cls.model.select()
+            .where((cls.model.doc_id == doc_id) & (cls.model.task_type == task_type))
+            .order_by(cls.model.create_time.desc())
+            .first()
+        )
+
+    @classmethod
+    @DB.connection_context()
     def update_chunk_ids(cls, id: str, chunk_ids: str):
         """Update the chunk IDs associated with a task.
 

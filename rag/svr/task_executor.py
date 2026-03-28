@@ -841,6 +841,8 @@ async def insert_es(task_id, task_tenant_id, task_dataset_id, chunks, progress_c
     return True
 
 async def parse_author_info(task: dict):
+    task_id = task["id"]
+    set_progress(task_id, prog=0.01, msg="Parsing author info...")
     st = timer()
     bucket, name = File2DocumentService.get_storage_address(doc_id=task["doc_id"])
     print(f"【DEBUG-HY】: parse_author_info filename: {name}", file=sys.stderr, flush=True)
@@ -861,12 +863,14 @@ async def parse_author_info(task: dict):
         
         if not images:
             logging.error(f"【DEBUG-HY】: No images extracted from {name}")
+            set_progress(task_id, prog=-1, msg="No images extracted from document.")
             return
 
         # Call VLM
         tenant_id = task["tenant_id"]
         # Use IMAGE2TEXT model type for VLM
         cv_mdl = LLMBundle(tenant_id, LLMType.IMAGE2TEXT)
+        set_progress(task_id, prog=0.2, msg="Calling VLM...")
         
         prompt = """
         请从提供的图片中提取以下信息，并以 JSON 格式返回：
@@ -905,14 +909,17 @@ async def parse_author_info(task: dict):
             
             DocumentService.update_by_id(task["doc_id"], {"meta_fields": meta_fields})
             print(f"【DEBUG-HY】: Updated document {task['doc_id']} with info: {meta_fields}", file=sys.stderr, flush=True)
+            set_progress(task_id, prog=1.0, msg="Author info parsed.")
             
         except Exception as e:
             logging.error(f"【DEBUG-HY】: Failed to parse JSON from VLM: {e}. Raw response: {final_ans}")
+            set_progress(task_id, prog=-1, msg=f"Failed to parse JSON from VLM: {e}")
 
     except Exception as e:
         logging.error(f"【DEBUG-HY】: Error in parse_author_info: {e}")
         import traceback
         logging.error(traceback.format_exc())
+        set_progress(task_id, prog=-1, msg=f"Error in parse_author_info: {e}")
 
     return
 

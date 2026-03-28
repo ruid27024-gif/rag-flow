@@ -91,6 +91,15 @@ async def upload():
     from datetime import datetime
     tasks = []
     for file in files:
+        DocumentService.update_by_id(
+            file["id"],
+            {
+                "run": TaskStatus.RUNNING.value,
+                "progress": 0,
+                "progress_msg": "",
+                "process_begin_at": datetime.now(),
+            },
+        )
         task = {
             "id": get_uuid(),
             "doc_id": file["id"],

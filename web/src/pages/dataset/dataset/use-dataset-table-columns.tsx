@@ -1,12 +1,14 @@
 import { FileIcon } from '@/components/icon-font';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { RunningStatus } from '@/constants/knowledge';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useSetDocumentStatus } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
@@ -230,6 +232,38 @@ export function useDatasetTableColumns({
       cell: ({ row }) => (
         <div className="capitalize">{row.getValue('chunk_num')}</div>
       ),
+    },
+    {
+      id: 'parsingStatus',
+      header: t('parsingStatus'),
+      cell: ({ row }) => {
+        const record = row.original;
+        const run = record.run;
+        const raw = typeof record.progress === 'number' ? record.progress : 0;
+        const percent = Math.max(
+          0,
+          Math.min(100, Number((raw * 100).toFixed(2))),
+        );
+        const isRunning =
+          run === RunningStatus.RUNNING || run === RunningStatus.SCHEDULE;
+        const label = t(`runningStatus${run}`);
+
+        if (!isRunning) {
+          return <div className="text-xs text-text-secondary">{label}</div>;
+        }
+
+        return (
+          <div
+            className="flex items-center gap-2 cursor-pointer min-w-28"
+            onClick={() => showLog(record)}
+          >
+            <Progress value={percent} className="h-1 flex-1" />
+            <span className="text-xs text-text-secondary tabular-nums">
+              {percent}%
+            </span>
+          </div>
+        );
+      },
     },
     {
       id: 'actions',
