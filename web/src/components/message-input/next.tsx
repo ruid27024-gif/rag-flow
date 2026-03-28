@@ -90,14 +90,6 @@ export function NextMessageInput({
     }
   };
 
-  const onSubmit = React.useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      submit();
-    },
-    [submit],
-  );
-
   const handleRemoveFile = React.useCallback(
     (file: File) => () => {
       removeFile?.(file);
@@ -130,10 +122,7 @@ export function NextMessageInput({
           </p>
         </div>
       </FileUploadDropzone>
-      <form
-        onSubmit={onSubmit}
-        className="relative flex w-full flex-col gap-2.5 rounded-md border border-input px-3 py-2 outline-none focus-within:ring-1 focus-within:ring-ring/50"
-      >
+      <div className="relative flex w-full flex-col gap-2.5 rounded-md border border-input px-3 py-2 outline-none focus-within:ring-1 focus-within:ring-ring/50">
         <FileUploadList
           orientation="horizontal"
           className="overflow-x-auto px-0 py-1"
@@ -146,6 +135,7 @@ export function NextMessageInput({
               <FileUploadItemMetadata size="sm" />
               <FileUploadItemDelete asChild>
                 <Button
+                  type="button"
                   variant="secondary"
                   size="icon"
                   className="-top-1 -right-1 absolute size-4 shrink-0 cursor-pointer rounded-full"
@@ -185,7 +175,11 @@ export function NextMessageInput({
             </FileUploadTrigger>
           )}
           {sendLoading ? (
-            <Button onClick={stopOutputMessage} className="size-5 rounded-sm">
+            <Button
+              type="button"
+              onClick={stopOutputMessage}
+              className="size-5 rounded-sm"
+            >
               <CircleStop />
             </Button>
           ) : (
@@ -198,6 +192,8 @@ export function NextMessageInput({
               />
               {/* </div> */}
               <Button
+                type="button"
+                onClick={submit}
                 className="size-5 rounded-sm"
                 disabled={
                   sendDisabled || isUploading || sendLoading || !value.trim()
@@ -209,7 +205,7 @@ export function NextMessageInput({
             </div>
           )}
         </div>
-      </form>
+      </div>
     </FileUpload>
   );
 }

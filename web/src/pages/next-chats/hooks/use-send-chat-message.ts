@@ -8,6 +8,7 @@ import {
 import { useGetChatSearchParams } from '@/hooks/use-chat-request';
 import { IMessage } from '@/interfaces/database/chat';
 import api from '@/utils/api';
+import { message as antdMessage } from 'antd';
 import { trim } from 'lodash';
 import { useCallback, useEffect } from 'react';
 import { useParams } from 'umi';
@@ -100,7 +101,7 @@ export const useSendMessage = (controller: AbortController) => {
           messages: [
             ...(Array.isArray(messages) && messages?.length > 0
               ? messages
-              : derivedMessages ?? []),
+              : (derivedMessages ?? [])),
             message,
           ],
         },
@@ -112,6 +113,7 @@ export const useSendMessage = (controller: AbortController) => {
         setValue(message.content);
         console.info('removeLatestMessage111');
         removeLatestMessage();
+        antdMessage.error(res?.data?.message || 'Send message failed');
       }
     },
     [
@@ -139,6 +141,7 @@ export const useSendMessage = (controller: AbortController) => {
     const data = await createConversationBeforeSendMessage(value);
 
     if (data === undefined) {
+      antdMessage.error('Failed to create conversation');
       return;
     }
 
