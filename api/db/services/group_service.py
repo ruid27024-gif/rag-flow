@@ -14,5 +14,6 @@ class GroupService(CommonService):
         if "created_time" not in kwargs:
             kwargs["created_time"] = current_timestamp()
             
-        obj = cls.model(**kwargs).save(force_insert=True)
+        obj = cls.model(**kwargs)
+        obj.save(force_insert=True)
         return obj

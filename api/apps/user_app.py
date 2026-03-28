@@ -36,6 +36,7 @@ from api.db.services.user_service import TenantService, UserService, UserTenantS
 from common.time_utils import current_timestamp, datetime_format, get_format_time
 from common.misc_utils import download_img, get_uuid
 from common.constants import RetCode
+from common import settings
 from common.connection_utils import construct_response
 from api.utils.api_utils import (
     get_data_error_result,
@@ -670,7 +671,13 @@ async def group_admin_candidates():
     try:
         # Find users who are NOT in AdminUser table
         subquery = AdminUser.select(AdminUser.user_id)
-        users = User.select(User.id, User.nickname).where(User.id.not_in(subquery))
+        if settings.REFERENCE_TENANT_ID:
+            users = User.select(User.id, User.nickname).where(
+                User.id.not_in(subquery),
+                User.id != settings.REFERENCE_TENANT_ID,
+            )
+        else:
+            users = User.select(User.id, User.nickname).where(User.id.not_in(subquery))
         res = [{"user_id": u.id, "nickname": u.nickname} for u in users]
         return get_json_result(data=res)
     except Exception as e:
@@ -1205,5 +1212,4 @@ async def forget_reset_password():
 
     msg = "Password reset successful. Logged in."
     return await construct_response(data=user.to_json(), auth=user.get_id(), message=msg)
-
 

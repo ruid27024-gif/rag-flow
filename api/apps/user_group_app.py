@@ -5,6 +5,7 @@ from api.db.db_models import AdminUser, Group, User, UserGroup
 from api.db.services.user_group_service import UserGroupService
 from api.utils.api_utils import get_json_result, get_request_json, server_error_response, validate_request
 from common.constants import RetCode
+from common import settings
 
 
 def check_admin(user):
@@ -258,10 +259,18 @@ async def list_candidate_users():
         # 2. Find users NOT in that list
         if bound_user_ids:
             candidates = list(
-                User.select(User.id, User.nickname).where(User.id.not_in(bound_user_ids))
+                User.select(User.id, User.nickname).where(
+                    User.id.not_in(bound_user_ids),
+                    User.id != settings.REFERENCE_TENANT_ID if settings.REFERENCE_TENANT_ID else True,
+                )
             )
         else:
-            candidates = list(User.select(User.id, User.nickname))
+            if settings.REFERENCE_TENANT_ID:
+                candidates = list(
+                    User.select(User.id, User.nickname).where(User.id != settings.REFERENCE_TENANT_ID)
+                )
+            else:
+                candidates = list(User.select(User.id, User.nickname))
 
         data = [{"user_id": u.id, "nickname": u.nickname} for u in candidates]
         return get_json_result(data=data)

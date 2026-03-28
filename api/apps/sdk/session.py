@@ -1079,15 +1079,17 @@ async def retrieval_test_embedded():
             metas = DocumentService.get_meta_by_kbs(kb_ids)
             local_doc_ids = await apply_meta_data_filter(meta_data_filter, metas, _question, chat_mdl, local_doc_ids)
 
-        tenants = UserTenantService.query(user_id=tenant_id)
         for kb_id in kb_ids:
-            for tenant in tenants:
-                if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-                    tenant_ids.append(tenant.tenant_id)
-                    break
-            else:
-                return get_json_result(data=False, message="Only owner of dataset authorized for this operation.",
-                                       code=RetCode.OPERATING_ERROR)
+            if not KnowledgebaseService.accessible(kb_id, tenant_id):
+                return get_json_result(
+                    data=False,
+                    message="Only owner of dataset authorized for this operation.",
+                    code=RetCode.OPERATING_ERROR,
+                )
+            e, _kb = KnowledgebaseService.get_by_id(kb_id)
+            if not e:
+                return get_error_data_result(message="Knowledgebase not found!")
+            tenant_ids.append(_kb.tenant_id)
 
         e, kb = KnowledgebaseService.get_by_id(kb_ids[0])
         if not e:

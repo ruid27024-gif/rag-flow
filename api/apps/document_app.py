@@ -18,10 +18,11 @@ import json
 import os.path
 import pathlib
 import re
+import os
 from pathlib import Path
 from quart import request, make_response
 from api.apps import current_user, login_required
-from api.common.check_team_permission import check_kb_team_permission
+from api.common.check_team_permission import check_kb_team_permission, check_kb_team_write_permission
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.db import VALID_FILE_TYPES, FileType
 from api.db.db_models import Task
@@ -71,11 +72,15 @@ async def upload():
     e, kb = KnowledgebaseService.get_by_id(kb_id)
     if not e:
         raise LookupError("Can't find this dataset!")
-    if not check_kb_team_permission(kb, current_user.id):
+    if not check_kb_team_write_permission(kb, current_user.id):
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     err, files = await asyncio.to_thread(FileService.upload_document, kb, file_objs, current_user.id)
     if err:
+        quota_errs = [e for e in err if isinstance(e, str) and e.startswith("QUOTA:")]
+        if quota_errs:
+            msg = "\n".join([e.split("QUOTA:", 1)[1].strip() for e in quota_errs])
+            return get_json_result(data=files, message=msg, code=RetCode.OPERATING_ERROR)
         return get_json_result(data=files, message="\n".join(err), code=RetCode.SERVER_ERROR)
     if not files:
         return get_json_result(data=files, message="There seems to be an issue with your file format. Please verify it is correct and not corrupted.", code=RetCode.DATA_ERROR)
@@ -120,8 +125,19 @@ async def web_crawl():
     e, kb = KnowledgebaseService.get_by_id(kb_id)
     if not e:
         raise LookupError("Can't find this dataset!")
-    if check_kb_team_permission(kb, current_user.id):
+    if not check_kb_team_write_permission(kb, current_user.id):
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+    max_doc_num_per_kb = int(os.environ.get("MAX_DOC_NUM_PER_KB", "100"))
+    from api.db.db_models import AdminUser
+    if max_doc_num_per_kb > 0 and not AdminUser.query(user_id=current_user.id):
+        current_doc_count = DocumentService.count_by_kb_id(kb.id, "", [], [])
+        if int(current_doc_count or 0) + 1 > max_doc_num_per_kb:
+            return get_json_result(
+                data=False,
+                message=f"非管理员账户每个知识库最多只能上传 {max_doc_num_per_kb} 篇文件。",
+                code=RetCode.OPERATING_ERROR,
+            )
 
     blob = html2pdf(url)
     if not blob:
@@ -190,6 +206,8 @@ async def create():
         e, kb = KnowledgebaseService.get_by_id(kb_id)
         if not e:
             return get_data_error_result(message="Can't find this dataset!")
+        if not check_kb_team_write_permission(kb, current_user.id):
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
         if DocumentService.query(name=req["name"], kb_id=kb_id):
             return get_data_error_result(message="Duplicated document name in the same dataset.")
@@ -287,7 +305,6 @@ async def list_docs():
                 if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
                     filtered_docs.append(doc)
             docs = filtered_docs
-        print(print(f"[DEBUG-HY] getting docs meta_info {docs}"))
         for doc_item in docs:
             if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
                 doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
@@ -296,9 +313,21 @@ async def list_docs():
             # 将字段的meta_fields字段解析出新的字段，并且整理为我们需要的作者、学校、论文发布时间
             if doc_item.get("meta_fields"):
                 meta_fields = doc_item["meta_fields"]
-                doc_item["author"] = meta_fields.get("author", "")
-                doc_item["school"] = meta_fields.get("school", "")
-                doc_item["publish_time"] = meta_fields.get("publish_time", "")
+                # 确保 meta_fields 是一个字典
+                if isinstance(meta_fields, str):
+                    try:
+                        meta_fields = json.loads(meta_fields)
+                    except json.JSONDecodeError:
+                        meta_fields = {}
+                # 确保 meta_fields 是一个字典
+                if isinstance(meta_fields, dict):
+                    doc_item["author"] = meta_fields.get("author", "")
+                    doc_item["school"] = meta_fields.get("school", "")
+                    doc_item["publish_time"] = meta_fields.get("publish_time", "")
+                else:
+                    doc_item["author"] = ""
+                    doc_item["school"] = ""
+                    doc_item["publish_time"] = ""
         return get_json_result(data={"total": tol, "docs": docs})
     except Exception as e:
         return server_error_response(e)
@@ -362,10 +391,7 @@ async def metadata_summary():
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
 
     tenants = UserTenantService.query(user_id=current_user.id)
-    for tenant in tenants:
-        if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-            break
-    else:
+    if not KnowledgebaseService.accessible(kb_id, current_user.id):
         return get_json_result(data=False, message="Only owner of dataset authorized for this operation.", code=RetCode.OPERATING_ERROR)
 
     try:
@@ -384,10 +410,7 @@ async def metadata_update():
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
 
     tenants = UserTenantService.query(user_id=current_user.id)
-    for tenant in tenants:
-        if KnowledgebaseService.query(tenant_id=tenant.tenant_id, id=kb_id):
-            break
-    else:
+    if not KnowledgebaseService.writable(kb_id, current_user.id):
         return get_json_result(data=False, message="Only owner of dataset authorized for this operation.", code=RetCode.OPERATING_ERROR)
 
     selector = req.get("selector", {}) or {}
@@ -466,10 +489,6 @@ async def change_status():
 
     result = {}
     for doc_id in doc_ids:
-        if not DocumentService.accessible(doc_id, current_user.id):
-            result[doc_id] = {"error": "No authorization."}
-            continue
-
         try:
             e, doc = DocumentService.get_by_id(doc_id)
             if not e:
@@ -478,6 +497,9 @@ async def change_status():
             e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
             if not e:
                 result[doc_id] = {"error": "Can't find this dataset!"}
+                continue
+            if not check_kb_team_write_permission(kb, current_user.id):
+                result[doc_id] = {"error": "No authorization."}
                 continue
             if not DocumentService.update_by_id(doc_id, {"status": str(status)}):
                 result[doc_id] = {"error": "Database error (Document update)!"}
@@ -503,7 +525,13 @@ async def rm():
         doc_ids = [doc_ids]
 
     for doc_id in doc_ids:
-        if not DocumentService.accessible4deletion(doc_id, current_user.id):
+        e, doc = DocumentService.get_by_id(doc_id)
+        if not e:
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+        if not e:
+            return get_data_error_result(message="Can't find this dataset!")
+        if not check_kb_team_write_permission(kb, current_user.id):
             return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     errors = await asyncio.to_thread(FileService.delete_docs, doc_ids, current_user.id)
@@ -522,7 +550,13 @@ async def run():
     try:
         def _run_sync():
             for doc_id in req["doc_ids"]:
-                if not DocumentService.accessible(doc_id, current_user.id):
+                e, doc = DocumentService.get_by_id(doc_id)
+                if not e:
+                    return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+                e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+                if not e:
+                    return get_data_error_result(message="Can't find this dataset!")
+                if not check_kb_team_write_permission(kb, current_user.id):
                     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
             kb_table_num_map = {}
@@ -539,33 +573,6 @@ async def run():
                 e, doc = DocumentService.get_by_id(id)
                 if not e:
                     return get_data_error_result(message="Document not found!")
-
-                import logging
-                import sys
-                from datetime import datetime
-                # 强制将日志写入指定文件，避开 basicConfig 的限制
-                logger = logging.getLogger("document_app_debug")
-                if not logger.handlers:
-                    try:
-                        handler = logging.FileHandler('/home/hit802/RAG1/ragflow/document_app_debug.log')
-                        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-                        logger.addHandler(handler)
-                        logger.setLevel(logging.INFO)
-                    except Exception as ex:
-                        print(f"Failed to setup debug logger: {ex}", file=sys.stderr)
-                
-                msg = f"DOCUMENT_APP_DEBUG: doc_id={id}, tenant_id={tenant_id}"
-                logger.info(msg)
-                # 强制刷新 stdout 和 stderr
-                print(f"DEBUG: {msg}", file=sys.stdout, flush=True)
-                print(f"DEBUG: {msg}", file=sys.stderr, flush=True)
-                
-                # 尝试直接写入文件作为兜底
-                try:
-                    with open('/home/hit802/RAG1/ragflow/direct_write.log', 'a') as f:
-                        f.write(f"{datetime.now()} - {msg}\n")
-                except:
-                    pass
 
                 if str(req["run"]) == TaskStatus.CANCEL.value:
                     if str(doc.run) == TaskStatus.RUNNING.value:
@@ -584,6 +591,26 @@ async def run():
                 if str(req["run"]) == TaskStatus.RUNNING.value:
                     doc_dict = doc.to_dict()
                     DocumentService.run(tenant_id, doc_dict, kb_table_num_map)
+                    
+                    # Create parse_author_info task if not exists
+                    from api.db.services.task_service import TaskService
+                    from api.db.db_utils import bulk_insert_into_db
+                    from rag.utils.redis_conn import REDIS_CONN
+                    from datetime import datetime
+                    
+                    existing_task = TaskService.get_task_by_doc_id_and_type(doc.id, "parse_author_info")
+                    if not existing_task:
+                        task = {
+                            "id": get_uuid(),
+                            "doc_id": doc.id,
+                            "task_type": "parse_author_info",
+                            "progress": 0.0,
+                            "from_page": 0,
+                            "to_page": 100000000,
+                            "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        }
+                        bulk_insert_into_db(Task, [task], True)
+                        REDIS_CONN.queue_product(settings.get_svr_queue_name(0), message=task)
 
             return get_json_result(data=True)
 
@@ -599,12 +626,14 @@ async def rename():
     req = await get_request_json()
     try:
         def _rename_sync():
-            if not DocumentService.accessible(req["doc_id"], current_user.id):
-                return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
-
             e, doc = DocumentService.get_by_id(req["doc_id"])
             if not e:
                 return get_data_error_result(message="Document not found!")
+            e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+            if not e:
+                return get_data_error_result(message="Can't find this dataset!")
+            if not check_kb_team_write_permission(kb, current_user.id):
+                return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
             if pathlib.Path(req["name"].lower()).suffix != pathlib.Path(doc.name.lower()).suffix:
                 return get_json_result(data=False, message="The extension of file can't be changed", code=RetCode.ARGUMENT_ERROR)
             if len(req["name"].encode("utf-8")) > FILE_NAME_LEN_LIMIT:
@@ -691,12 +720,14 @@ async def download_attachment(attachment_id):
 async def change_parser():
 
     req = await get_request_json()
-    if not DocumentService.accessible(req["doc_id"], current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
-
     e, doc = DocumentService.get_by_id(req["doc_id"])
     if not e:
         return get_data_error_result(message="Document not found!")
+    e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+    if not e:
+        return get_data_error_result(message="Can't find this dataset!")
+    if not check_kb_team_write_permission(kb, current_user.id):
+        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     def reset_doc():
         nonlocal doc
@@ -769,8 +800,15 @@ async def upload_and_parse():
             return get_json_result(data=False, message="No file selected!", code=RetCode.ARGUMENT_ERROR)
 
     form = await request.form
-    doc_ids = doc_upload_and_parse(form.get("conversation_id"), file_objs, current_user.id)
-    return get_json_result(data=doc_ids)
+    try:
+        doc_ids = doc_upload_and_parse(form.get("conversation_id"), file_objs, current_user.id)
+        return get_json_result(data=doc_ids)
+    except Exception as e:
+        msg = str(e)
+        if "QUOTA:" in msg:
+            msg = msg.split("QUOTA:", 1)[1].strip()
+            return get_json_result(data=False, message=msg, code=RetCode.OPERATING_ERROR)
+        return server_error_response(e)
 
 
 @manager.route("/parse", methods=["POST"])  # noqa: F821
@@ -833,8 +871,6 @@ async def parse():
 @validate_request("doc_id", "meta")
 async def set_meta():
     req = await get_request_json()
-    if not DocumentService.accessible(req["doc_id"], current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
     try:
         meta = json.loads(req["meta"])
         if not isinstance(meta, dict):
@@ -854,6 +890,12 @@ async def set_meta():
         e, doc = DocumentService.get_by_id(req["doc_id"])
         if not e:
             return get_data_error_result(message="Document not found!")
+
+        e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+        if not e:
+            return get_data_error_result(message="Can't find this dataset!")
+        if not check_kb_team_write_permission(kb, current_user.id):
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
         if not DocumentService.update_by_id(req["doc_id"], {"meta_fields": meta}):
             return get_data_error_result(message="Database error (meta updates)!")

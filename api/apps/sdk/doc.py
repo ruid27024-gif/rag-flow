@@ -162,6 +162,10 @@ async def upload(dataset_id, tenant_id):
         raise LookupError(f"Can't find the dataset with ID {dataset_id}!")
     err, files = FileService.upload_document(kb, file_objs, tenant_id, parent_path=form.get("parent_path"))
     if err:
+        quota_errs = [e for e in err if isinstance(e, str) and e.startswith("QUOTA:")]
+        if quota_errs:
+            msg = "\n".join([e.split("QUOTA:", 1)[1].strip() for e in quota_errs])
+            return get_result(message=msg, code=RetCode.OPERATING_ERROR)
         return get_result(message="\n".join(err), code=RetCode.SERVER_ERROR)
     # rename key's name
     renamed_doc_list = []
@@ -623,7 +627,7 @@ def metadata_summary(dataset_id, tenant_id):
 @manager.route("/datasets/<dataset_id>/metadata/update", methods=["POST"])  # noqa: F821
 @token_required
 async def metadata_batch_update(dataset_id, tenant_id):
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    if not KnowledgebaseService.writable(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}. ")
 
     req = await get_request_json()
@@ -709,7 +713,7 @@ async def delete(tenant_id, dataset_id):
         schema:
           type: object
     """
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    if not KnowledgebaseService.writable(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}. ")
     req = await get_request_json()
     if not req:
@@ -819,7 +823,7 @@ async def parse(tenant_id, dataset_id):
         schema:
           type: object
     """
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    if not KnowledgebaseService.writable(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
     req = await get_request_json()
     if not req.get("document_ids"):
@@ -902,7 +906,7 @@ async def stop_parsing(tenant_id, dataset_id):
         schema:
           type: object
     """
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    if not KnowledgebaseService.writable(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
     req = await get_request_json()
 
@@ -1172,7 +1176,7 @@ async def add_chunk(tenant_id, dataset_id, document_id):
                     type: string
                   description: Important keywords.
     """
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    if not KnowledgebaseService.writable(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
     doc = DocumentService.query(id=document_id, kb_id=dataset_id)
     if not doc:
@@ -1279,7 +1283,7 @@ async def rm_chunk(tenant_id, dataset_id, document_id):
         schema:
           type: object
     """
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    if not KnowledgebaseService.writable(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
     docs = DocumentService.get_by_ids([document_id])
     if not docs:
@@ -1364,7 +1368,7 @@ async def update_chunk(tenant_id, dataset_id, document_id, chunk_id):
     chunk = settings.docStoreConn.get(chunk_id, search.index_name(tenant_id), [dataset_id])
     if chunk is None:
         return get_error_data_result(f"Can't find this chunk {chunk_id}")
-    if not KnowledgebaseService.accessible(kb_id=dataset_id, user_id=tenant_id):
+    if not KnowledgebaseService.writable(kb_id=dataset_id, user_id=tenant_id):
         return get_error_data_result(message=f"You don't own the dataset {dataset_id}.")
     doc = DocumentService.query(id=document_id, kb_id=dataset_id)
     if not doc:

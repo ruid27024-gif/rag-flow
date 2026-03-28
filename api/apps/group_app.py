@@ -32,12 +32,10 @@ async def get_my_group():
 
         user_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
         if not user_group:
-            print(f"【DEBUG-HY】User {current_user.id} not in any user_group")
             return get_json_result(data=None)
 
         group = GroupService.get_or_none(group_id=user_group.group_id)
         if not group:
-            print(f"【DEBUG-HY】Group {user_group.group_id} not found for user {current_user.id}")
             return get_json_result(data=None)
 
         # Calculate member count
@@ -79,11 +77,11 @@ async def create_my_group():
         from api.db.services.user_group_service import UserGroupService
         UserGroupService.save(
             user_id=current_user.id,
-            group_id=group.id,
+            group_id=group.group_id,
             created_by=current_user.id,
         )
         
-        return get_json_result(data={"group_id": group.id})
+        return get_json_result(data={"group_id": group.group_id})
     except Exception as e:
         return server_error_response(e)
 

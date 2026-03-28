@@ -14,12 +14,14 @@
 #  limitations under the License
 #
 
+import os
 from pathlib import Path
 
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.file_service import FileService
 
 from api.apps import login_required, current_user
+from api.common.check_team_permission import check_kb_team_write_permission
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils.api_utils import get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from common.misc_utils import get_uuid
@@ -55,6 +57,11 @@ async def convert():
                     e, doc = DocumentService.get_by_id(doc_id)
                     if not e:
                         return get_data_error_result(message="Document not found!")
+                    e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+                    if not e:
+                        return get_data_error_result(message="Can't find this dataset!")
+                    if not check_kb_team_write_permission(kb, current_user.id):
+                        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
                     tenant_id = DocumentService.get_tenant_id(doc_id)
                     if not tenant_id:
                         return get_data_error_result(message="Tenant not found!")
@@ -69,6 +76,18 @@ async def convert():
                     if not e:
                         return get_data_error_result(
                             message="Can't find this dataset!")
+                    if not check_kb_team_write_permission(kb, current_user.id):
+                        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+                    max_doc_num_per_kb = int(os.environ.get("MAX_DOC_NUM_PER_KB", "100"))
+                    from api.db.db_models import AdminUser
+                    if max_doc_num_per_kb > 0 and not AdminUser.query(user_id=current_user.id):
+                        current_doc_count = DocumentService.count_by_kb_id(kb.id, "", [], [])
+                        if int(current_doc_count or 0) + 1 > max_doc_num_per_kb:
+                            return get_json_result(
+                                data=False,
+                                message=f"非管理员账户每个知识库最多只能上传 {max_doc_num_per_kb} 篇文件。",
+                                code=RetCode.OPERATING_ERROR,
+                            )
                     e, file = FileService.get_by_id(id)
                     if not e:
                         return get_data_error_result(
@@ -121,6 +140,11 @@ async def rm():
                 e, doc = DocumentService.get_by_id(doc_id)
                 if not e:
                     return get_data_error_result(message="Document not found!")
+                e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+                if not e:
+                    return get_data_error_result(message="Can't find this dataset!")
+                if not check_kb_team_write_permission(kb, current_user.id):
+                    return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
                 tenant_id = DocumentService.get_tenant_id(doc_id)
                 if not tenant_id:
                     return get_data_error_result(message="Tenant not found!")

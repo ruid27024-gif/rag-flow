@@ -1198,6 +1198,7 @@ class Group(Model):
     group_name = CharField(max_length=255, null=True, help_text="Group name")
     created_by = CharField(max_length=32, null=False, index=True)
     created_time = BigIntegerField(null=True)
+    reference_tenant_id = CharField(max_length=32, null=True, index=True)
 
     class Meta:
         database = DB
@@ -1291,6 +1292,10 @@ def migrate_db():
         pass
     try:
         migrate(migrator.add_column("knowledgebase", "pagerank", IntegerField(default=0, index=False)))
+    except Exception:
+        pass
+    try:
+        migrate(migrator.add_column("group", "reference_tenant_id", CharField(max_length=32, null=True, index=True)))
     except Exception:
         pass
     try:

@@ -30,6 +30,7 @@ class TenantPermission(StrEnum):
     TEAM = 'team'
     TEAM_VISIBLE = 'team_visible'
     EVERYONE = 'everyone'
+    EVERYONE_VISIBLE = 'everyone_visible'
 
 
 class SerializedType(IntEnum):

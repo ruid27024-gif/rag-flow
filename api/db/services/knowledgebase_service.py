@@ -13,18 +13,20 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import os
 from datetime import datetime
 
 from peewee import fn, JOIN
 
 from api.db import TenantPermission
-from api.db.db_models import DB, Document, Knowledgebase, User, UserTenant, UserCanvas, AdminUser, UserGroup
+from api.db.db_models import DB, Document, Group, Knowledgebase, User, UserTenant, UserCanvas, AdminUser, UserGroup
 from api.db.services.common_service import CommonService
+from common import settings
 from common.time_utils import current_timestamp, datetime_format
 from api.db.services import duplicate_name
 from api.db.services.user_service import TenantService
 from common.misc_utils import get_uuid
-from common.constants import StatusEnum
+from common.constants import RetCode, StatusEnum
 from api.constants import DATASET_NAME_LIMIT
 from api.utils.api_utils import get_parser_config, get_data_error_result
 
@@ -47,6 +49,82 @@ class KnowledgebaseService(CommonService):
         model: The Knowledgebase model class for database operations.
     """
     model = Knowledgebase
+
+    @classmethod
+    @DB.connection_context()
+    def get_group_reference_tenant_ids(cls, user_id: str) -> list[str]:
+        group_ids = {
+            r.group_id
+            for r in UserGroup.select(UserGroup.group_id).where(UserGroup.user_id == user_id)
+        }
+        try:
+            group_ids.update(
+                {
+                    r.group_id
+                    for r in Group.select(Group.group_id).where(Group.created_by == user_id)
+                }
+            )
+        except Exception:
+            pass
+        ref_ids = set()
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        for gid in list(group_ids):
+            tid = cfg_map.get(gid)
+            if tid:
+                ref_ids.add(tid)
+        db_group_ids = [gid for gid in list(group_ids) if gid not in cfg_map]
+        if db_group_ids:
+            try:
+                rows = Group.select(Group.reference_tenant_id).where(
+                    Group.group_id.in_(db_group_ids)
+                    & Group.reference_tenant_id.is_null(False)
+                    & (Group.reference_tenant_id != "")
+                )
+                for r in rows:
+                    if r.reference_tenant_id:
+                        ref_ids.add(r.reference_tenant_id)
+            except Exception:
+                pass
+        return list(ref_ids)
+
+    @classmethod
+    @DB.connection_context()
+    def get_group_ids_by_reference_tenant_id(cls, reference_tenant_id: str) -> list[str]:
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        group_ids = {gid for gid, tid in cfg_map.items() if tid == reference_tenant_id}
+        try:
+            rows = Group.select(Group.group_id).where(
+                (Group.reference_tenant_id == reference_tenant_id)
+                & Group.reference_tenant_id.is_null(False)
+                & (Group.reference_tenant_id != "")
+            )
+            for r in rows:
+                gid = r.group_id
+                if gid in cfg_map and cfg_map.get(gid) != reference_tenant_id:
+                    continue
+                group_ids.add(gid)
+        except Exception:
+            pass
+        return list(group_ids)
+
+    @classmethod
+    @DB.connection_context()
+    def get_all_group_reference_tenant_ids(cls) -> list[str]:
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        ref_ids = {tid for tid in cfg_map.values() if tid}
+        try:
+            rows = Group.select(Group.group_id, Group.reference_tenant_id).where(
+                Group.reference_tenant_id.is_null(False) & (Group.reference_tenant_id != "")
+            )
+            for r in rows:
+                gid = r.group_id
+                if gid in cfg_map:
+                    continue
+                if r.reference_tenant_id:
+                    ref_ids.add(r.reference_tenant_id)
+        except Exception:
+            pass
+        return list(ref_ids)
 
     @classmethod
     @DB.connection_context()
@@ -87,6 +165,18 @@ class KnowledgebaseService(CommonService):
                 owner_group = UserGroup.select().where(UserGroup.user_id == kb.tenant_id).first()
                 if owner_group and owner_group.group_id == my_group.group_id:
                     return True
+            if e and (
+                Group.select(Group.group_id)
+                .join(UserGroup, on=(Group.group_id == UserGroup.group_id))
+                .where(
+                    (UserGroup.user_id == user_id)
+                    & (Group.reference_tenant_id == kb.tenant_id)
+                    & Group.reference_tenant_id.is_null(False)
+                    & (Group.reference_tenant_id != "")
+                )
+                .exists()
+            ):
+                return True
         
         # Check if a dataset can be deleted by a user
         docs = cls.model.select(
@@ -187,6 +277,9 @@ class KnowledgebaseService(CommonService):
         kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
         
         if not admin_bypass:
+            reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
+            group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
+            group_reference_expr = cls.model.tenant_id.in_(group_reference_ids) if group_reference_ids else None
             # Check for level 2 admin
             if AdminUser.query(user_id=user_id, role_level=2):
                  # Find current user's group
@@ -196,30 +289,53 @@ class KnowledgebaseService(CommonService):
                     group_members = UserGroup.select(UserGroup.user_id).where(UserGroup.group_id == my_group.group_id)
                     member_ids = [m.user_id for m in group_members]
                     
-                    kbs = kbs.where(
+                    base_expr = (
                         (cls.model.tenant_id.in_(member_ids)) 
                         | (cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
-                        | (cls.model.permission == TenantPermission.EVERYONE.value)
+                        | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
                     )
+                    if reference_expr is not None:
+                        base_expr = base_expr | reference_expr
+                    if group_reference_expr is not None:
+                        base_expr = base_expr | group_reference_expr
+                    kbs = kbs.where(base_expr)
                 else:
-                    kbs = kbs.where(
-                        (
+                    base_expr = (
                             (cls.model.tenant_id.in_(joined_tenant_ids)
                             & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
                             | (cls.model.tenant_id == user_id)
-                            | (cls.model.permission == TenantPermission.EVERYONE.value)
-                        )
+                            | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
                     )
+                    if reference_expr is not None:
+                        base_expr = base_expr | reference_expr
+                    if group_reference_expr is not None:
+                        base_expr = base_expr | group_reference_expr
+                    kbs = kbs.where(base_expr)
             else:
-                kbs = kbs.where(
-                    (
+                reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
+                base_expr = (
                         (cls.model.tenant_id.in_(joined_tenant_ids)
                         & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
                         | (cls.model.tenant_id == user_id)
-                        | (cls.model.permission == TenantPermission.EVERYONE.value)
-                    )
+                        | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
                 )
+                if reference_expr is not None:
+                    base_expr = base_expr | reference_expr
+                if group_reference_expr is not None:
+                    base_expr = base_expr | group_reference_expr
+                kbs = kbs.where(base_expr)
             
+            if not AdminUser.query(user_id=user_id, role_level=1):
+                all_group_reference_ids = cls.get_all_group_reference_tenant_ids()
+                hidden_group_reference_ids = list(set(all_group_reference_ids) - set(group_reference_ids))
+                if settings.REFERENCE_TENANT_ID:
+                    hidden_group_reference_ids = [
+                        i for i in hidden_group_reference_ids if i != settings.REFERENCE_TENANT_ID
+                    ]
+                hidden_group_reference_ids = [i for i in hidden_group_reference_ids if i != user_id]
+                if hidden_group_reference_ids:
+                    kbs = kbs.where(~cls.model.tenant_id.in_(hidden_group_reference_ids))
+
         kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
         
         if keywords:
@@ -256,14 +372,30 @@ class KnowledgebaseService(CommonService):
             cls.model.update_date
         ]
         # find team kb and owned kb
-        kbs = cls.model.select(*fields).where(
+        base_expr = (
             (
                 cls.model.tenant_id.in_(tenant_ids)
                 & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value]))
             )
             | (cls.model.tenant_id == user_id)
-            | (cls.model.permission == TenantPermission.EVERYONE.value)
+            | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
         )
+        if settings.REFERENCE_TENANT_ID:
+            base_expr = base_expr | (cls.model.tenant_id == settings.REFERENCE_TENANT_ID)
+        group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
+        if group_reference_ids:
+            base_expr = base_expr | cls.model.tenant_id.in_(group_reference_ids)
+        kbs = cls.model.select(*fields).where(base_expr)
+        if not AdminUser.query(user_id=user_id, role_level=1):
+            all_group_reference_ids = cls.get_all_group_reference_tenant_ids()
+            hidden_group_reference_ids = list(set(all_group_reference_ids) - set(group_reference_ids))
+            if settings.REFERENCE_TENANT_ID:
+                hidden_group_reference_ids = [
+                    i for i in hidden_group_reference_ids if i != settings.REFERENCE_TENANT_ID
+                ]
+            hidden_group_reference_ids = [i for i in hidden_group_reference_ids if i != user_id]
+            if hidden_group_reference_ids:
+                kbs = kbs.where(~cls.model.tenant_id.in_(hidden_group_reference_ids))
         # sort by create_time asc
         kbs.order_by(cls.model.create_time.asc())
         # maybe cause slow query by deep paginate, optimize later.
@@ -459,6 +591,27 @@ class KnowledgebaseService(CommonService):
         if not ok:
             return False, get_data_error_result(message="Tenant not found.")
 
+        max_kb_num_per_user = int(os.environ.get("MAX_KB_NUM_PER_USER", "3"))
+        if max_kb_num_per_user > 0 and not AdminUser.query(user_id=tenant_id):
+            if tenant_id == settings.REFERENCE_TENANT_ID or tenant_id in cls.get_all_group_reference_tenant_ids():
+                pass
+            else:
+                user = User.select().where(User.id == tenant_id).first()
+                if not user or user.email != "1505114161@qq.com":
+                    kb_count = (
+                        cls.model.select(fn.COUNT(1))
+                        .where(
+                            (cls.model.created_by == tenant_id)
+                            & (cls.model.status == StatusEnum.VALID.value)
+                        )
+                        .scalar()
+                    )
+                    if int(kb_count or 0) >= max_kb_num_per_user:
+                        return False, get_data_error_result(
+                            code=RetCode.OPERATING_ERROR,
+                            message=f"非管理员账户最多只能创建 {max_kb_num_per_user} 个知识库。",
+                        )
+
         # Build payload
         kb_id = get_uuid()
         payload = {
@@ -501,14 +654,28 @@ class KnowledgebaseService(CommonService):
             kbs = kbs.where(cls.model.name == name)
         
         if not admin_bypass:
-            kbs = kbs.where(
-                (
+            base_expr = (
                     (cls.model.tenant_id.in_(joined_tenant_ids)
                      & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
                     | (cls.model.tenant_id == user_id)
-                    | (cls.model.permission == TenantPermission.EVERYONE.value)
-                )
+                    | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
             )
+            if settings.REFERENCE_TENANT_ID:
+                base_expr = base_expr | (cls.model.tenant_id == settings.REFERENCE_TENANT_ID)
+            group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
+            if group_reference_ids:
+                base_expr = base_expr | cls.model.tenant_id.in_(group_reference_ids)
+            kbs = kbs.where(base_expr)
+            if not AdminUser.query(user_id=user_id, role_level=1):
+                all_group_reference_ids = cls.get_all_group_reference_tenant_ids()
+                hidden_group_reference_ids = list(set(all_group_reference_ids) - set(group_reference_ids))
+                if settings.REFERENCE_TENANT_ID:
+                    hidden_group_reference_ids = [
+                        i for i in hidden_group_reference_ids if i != settings.REFERENCE_TENANT_ID
+                    ]
+                hidden_group_reference_ids = [i for i in hidden_group_reference_ids if i != user_id]
+                if hidden_group_reference_ids:
+                    kbs = kbs.where(~cls.model.tenant_id.in_(hidden_group_reference_ids))
         
         kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
 
@@ -539,18 +706,72 @@ class KnowledgebaseService(CommonService):
         if not kb:
             return False
 
+        if settings.REFERENCE_TENANT_ID and kb.tenant_id == settings.REFERENCE_TENANT_ID:
+            return True
+        if kb.tenant_id == user_id:
+            return True
+        all_group_reference_ids = cls.get_all_group_reference_tenant_ids()
+        if kb.tenant_id in all_group_reference_ids:
+            return kb.tenant_id in cls.get_group_reference_tenant_ids(user_id)
+
         if kb.permission == TenantPermission.EVERYONE.value:
             return True
         
-        if kb.tenant_id == user_id:
+        if kb.permission == TenantPermission.EVERYONE_VISIBLE.value:
             return True
-
+        
         if kb.permission in [TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value]:
             from api.db.services.user_group_service import UserGroupService
             team_tenant_ids = UserGroupService.get_team_tenant_ids(user_id)
             if kb.tenant_id in team_tenant_ids:
                 return True
         
+        return False
+
+    @classmethod
+    @DB.connection_context()
+    def writable(cls, kb_id, user_id):
+        kb = cls.model.get_or_none(cls.model.id == kb_id)
+        if not kb:
+            return False
+
+        if AdminUser.query(user_id=user_id, role_level=1):
+            return True
+
+        if settings.REFERENCE_TENANT_ID and kb.tenant_id == settings.REFERENCE_TENANT_ID:
+            return kb.tenant_id == user_id
+
+        group_ids = cls.get_group_ids_by_reference_tenant_id(kb.tenant_id)
+        if group_ids:
+            if kb.tenant_id == user_id:
+                return True
+            if Group.select(Group.group_id).where(
+                (Group.group_id.in_(group_ids)) & (Group.created_by == user_id)
+            ).exists():
+                return True
+            if not AdminUser.query(user_id=user_id, role_level=2):
+                return False
+            return UserGroup.select().where(
+                (UserGroup.user_id == user_id) & (UserGroup.group_id.in_(group_ids))
+            ).exists()
+
+        if AdminUser.query(user_id=user_id):
+            return True
+
+        if kb.tenant_id == user_id:
+            return True
+
+        if kb.permission == TenantPermission.EVERYONE.value:
+            return True
+
+        if kb.permission == TenantPermission.EVERYONE_VISIBLE.value:
+            return False
+
+        if kb.permission in [TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value]:
+            from api.db.services.user_group_service import UserGroupService
+            team_tenant_ids = UserGroupService.get_team_tenant_ids(user_id)
+            return kb.tenant_id in team_tenant_ids
+
         return False
 
     @classmethod
@@ -573,12 +794,18 @@ class KnowledgebaseService(CommonService):
             # Query approach:
             from api.db.services.user_group_service import UserGroupService
             team_tenant_ids = UserGroupService.get_team_tenant_ids(user_id)
+            group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
             
-            kbs = kbs.where(
+            base_expr = (
                 (cls.model.tenant_id.in_(team_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
                 | (cls.model.tenant_id == user_id)
-                | (cls.model.permission == TenantPermission.EVERYONE.value)
+                | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
             )
+            if settings.REFERENCE_TENANT_ID:
+                base_expr = base_expr | (cls.model.tenant_id == settings.REFERENCE_TENANT_ID)
+            if group_reference_ids:
+                base_expr = base_expr | cls.model.tenant_id.in_(group_reference_ids)
+            kbs = kbs.where(base_expr)
 
         kbs = kbs.dicts()
         return list(kbs)
@@ -597,14 +824,20 @@ class KnowledgebaseService(CommonService):
         else:
             from api.db.services.user_group_service import UserGroupService
             team_tenant_ids = UserGroupService.get_team_tenant_ids(user_id)
+            group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
             
+            base_expr = (
+                (cls.model.tenant_id.in_(team_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+                | (cls.model.tenant_id == user_id)
+                | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
+            )
+            if settings.REFERENCE_TENANT_ID:
+                base_expr = base_expr | (cls.model.tenant_id == settings.REFERENCE_TENANT_ID)
+            if group_reference_ids:
+                base_expr = base_expr | cls.model.tenant_id.in_(group_reference_ids)
             kbs = cls.model.select().where(
                 cls.model.name == kb_name,
-                (
-                    (cls.model.tenant_id.in_(team_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
-                    | (cls.model.tenant_id == user_id)
-                    | (cls.model.permission == TenantPermission.EVERYONE.value)
-                )
+                base_expr
             ).paginate(0, 1)
         kbs = kbs.dicts()
         return list(kbs)

@@ -21,7 +21,7 @@ import re
 from quart import request, make_response
 from api.apps import login_required, current_user
 
-from api.common.check_team_permission import check_file_team_permission
+from api.common.check_team_permission import check_file_team_permission, check_file_team_write_permission
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
@@ -287,7 +287,7 @@ async def rm():
                     return get_data_error_result(message="File or Folder not found!")
                 if not file.tenant_id:
                     return get_data_error_result(message="Tenant not found!")
-                if not check_file_team_permission(file, current_user.id):
+                if not check_file_team_write_permission(file, current_user.id):
                     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
                 if file.source_type == FileSource.KNOWLEDGEBASE:
@@ -316,7 +316,7 @@ async def rename():
         e, file = FileService.get_by_id(req["file_id"])
         if not e:
             return get_data_error_result(message="File not found!")
-        if not check_file_team_permission(file, current_user.id):
+        if not check_file_team_write_permission(file, current_user.id):
             return get_json_result(data=False, message='No authorization.', code=RetCode.AUTHENTICATION_ERROR)
         if file.type != FileType.FOLDER.value \
             and pathlib.Path(req["name"].lower()).suffix != pathlib.Path(
@@ -401,7 +401,7 @@ async def move():
                 return get_data_error_result(message="File or folder not found!")
             if not file.tenant_id:
                 return get_data_error_result(message="Tenant not found!")
-            if not check_file_team_permission(file, current_user.id):
+            if not check_file_team_write_permission(file, current_user.id):
                 return get_json_result(
                     data=False,
                     message="No authorization.",

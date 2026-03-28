@@ -527,7 +527,7 @@ def knowledge_graph(tenant_id, dataset_id):
 @manager.route('/datasets/<dataset_id>/knowledge_graph', methods=['DELETE'])  # noqa: F821
 @token_required
 def delete_knowledge_graph(tenant_id, dataset_id):
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
+    if not KnowledgebaseService.writable(dataset_id, tenant_id):
         return get_result(
             data=False,
             message='No authorization.',
@@ -545,7 +545,7 @@ def delete_knowledge_graph(tenant_id, dataset_id):
 def run_graphrag(tenant_id,dataset_id):
     if not dataset_id:
         return get_error_data_result(message='Lack of "Dataset ID"')
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
+    if not KnowledgebaseService.writable(dataset_id, tenant_id):
         return get_result(
             data=False,
             message='No authorization.',
@@ -622,7 +622,7 @@ def trace_graphrag(tenant_id,dataset_id):
 def run_raptor(tenant_id,dataset_id):
     if not dataset_id:
         return get_error_data_result(message='Lack of "Dataset ID"')
-    if not KnowledgebaseService.accessible(dataset_id, tenant_id):
+    if not KnowledgebaseService.writable(dataset_id, tenant_id):
         return get_result(
             data=False,
             message='No authorization.',

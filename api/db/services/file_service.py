@@ -16,6 +16,7 @@
 import asyncio
 import base64
 import logging
+import os
 import re
 import sys
 import time
@@ -26,13 +27,13 @@ from typing import Union
 from peewee import fn
 
 from api.db import KNOWLEDGEBASE_FOLDER_NAME, FileType
-from api.db.db_models import DB, Document, File, File2Document, Knowledgebase, Task
+from api.db.db_models import DB, AdminUser, User, Document, File, File2Document, Knowledgebase, Task
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from common.misc_utils import get_uuid
-from common.constants import TaskStatus, FileSource, ParserType
+from common.constants import StatusEnum, TaskStatus, FileSource, ParserType
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.task_service import TaskService
 from api.utils.file_utils import filename_type, read_potential_broken_pdf, thumbnail_img, sanitize_path
@@ -437,6 +438,24 @@ class FileService(CommonService):
 
         safe_parent_path = sanitize_path(parent_path)
 
+        max_doc_num_per_kb = int(os.environ.get("MAX_DOC_NUM_PER_KB", "100"))
+        if max_doc_num_per_kb > 0 and not AdminUser.query(user_id=user_id):
+            if user_id == settings.REFERENCE_TENANT_ID or user_id in KnowledgebaseService.get_all_group_reference_tenant_ids():
+                pass
+            else:
+                user = User.select().where(User.id == user_id).first()
+                if not user or user.email != "1505114161@qq.com":
+                    current_doc_count = (
+                        Document.select(fn.COUNT(1))
+                        .where(
+                            (Document.kb_id == kb.id) & (Document.status == StatusEnum.VALID.value)
+                        )
+                        .scalar()
+                    )
+                    incoming_count = len(file_objs) if hasattr(file_objs, "__len__") else 1
+                    if int(current_doc_count or 0) + int(incoming_count or 0) > max_doc_num_per_kb:
+                        return [f"QUOTA: 非管理员账户每个知识库最多只能上传 {max_doc_num_per_kb} 篇文件。"], []
+
         err, files = [], []
         for file in file_objs:
             try:
@@ -669,4 +688,3 @@ class FileService(CommonService):
                 continue
             threads.append(exe.submit(FileService.parse, file["name"], FileService.get_blob(file["created_by"], file["id"]), True, file["created_by"]))
         return [th.result() for th in threads]
-

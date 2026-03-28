@@ -24,6 +24,7 @@ from quart import request
 from api.db.services.document_service import DocumentService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.llm_service import LLMBundle
+from api.common.check_team_permission import check_kb_team_write_permission
 from common.metadata_utils import apply_meta_data_filter
 from api.db.services.search_service import SearchService
 from api.db.services.user_service import UserTenantService
@@ -159,6 +160,11 @@ async def set():
             e, doc = DocumentService.get_by_id(req["doc_id"])
             if not e:
                 return get_data_error_result(message="Document not found!")
+            e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+            if not e:
+                return get_data_error_result(message="Knowledgebase not found!")
+            if not check_kb_team_write_permission(kb, current_user.id):
+                return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
             _d = d
             if doc.parser_id == ParserType.QA:
@@ -199,6 +205,11 @@ async def switch():
             e, doc = DocumentService.get_by_id(req["doc_id"])
             if not e:
                 return get_data_error_result(message="Document not found!")
+            e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+            if not e:
+                return get_data_error_result(message="Knowledgebase not found!")
+            if not check_kb_team_write_permission(kb, current_user.id):
+                return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
             for cid in req["chunk_ids"]:
                 if not settings.docStoreConn.update({"id": cid},
                                                     {"available_int": int(req["available_int"])},
@@ -222,6 +233,11 @@ async def rm():
             e, doc = DocumentService.get_by_id(req["doc_id"])
             if not e:
                 return get_data_error_result(message="Document not found!")
+            e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+            if not e:
+                return get_data_error_result(message="Knowledgebase not found!")
+            if not check_kb_team_write_permission(kb, current_user.id):
+                return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
             if not settings.docStoreConn.delete({"id": req["chunk_ids"]},
                                                 search.index_name(DocumentService.get_tenant_id(req["doc_id"])),
                                                 doc.kb_id):
@@ -268,6 +284,11 @@ async def create():
             e, doc = DocumentService.get_by_id(req["doc_id"])
             if not e:
                 return get_data_error_result(message="Document not found!")
+            e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+            if not e:
+                return get_data_error_result(message="Knowledgebase not found!")
+            if not check_kb_team_write_permission(kb, current_user.id):
+                return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
             d["kb_id"] = [doc.kb_id]
             d["docnm_kwd"] = doc.name
             d["title_tks"] = rag_tokenizer.tokenize(doc.name)
@@ -341,17 +362,15 @@ async def retrieval_test():
             metas = DocumentService.get_meta_by_kbs(kb_ids)
             local_doc_ids = await apply_meta_data_filter(meta_data_filter, metas, question, chat_mdl, local_doc_ids)
 
-        tenants = UserTenantService.query(user_id=user_id)
         for kb_id in kb_ids:
-            for tenant in tenants:
-                if KnowledgebaseService.query(
-                        tenant_id=tenant.tenant_id, id=kb_id):
-                    tenant_ids.append(tenant.tenant_id)
-                    break
-            else:
+            if not KnowledgebaseService.accessible(kb_id, user_id):
                 return get_json_result(
                     data=False, message='Only owner of dataset authorized for this operation.',
                     code=RetCode.OPERATING_ERROR)
+            e, _kb = KnowledgebaseService.get_by_id(kb_id)
+            if not e:
+                return get_data_error_result(message="Knowledgebase not found!")
+            tenant_ids.append(_kb.tenant_id)
 
         e, kb = KnowledgebaseService.get_by_id(kb_ids[0])
         if not e:

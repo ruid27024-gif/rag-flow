@@ -58,6 +58,8 @@ API_KEY = None
 PARSERS = None
 HOST_IP = None
 HOST_PORT = None
+REFERENCE_TENANT_ID = ""
+GROUP_REFERENCE_TENANT_MAP = {}
 SECRET_KEY = None
 FACTORY_LLM_INFOS = None
 ALLOWED_LLM_FACTORIES = None
@@ -222,6 +224,34 @@ def init_settings():
     HOST_IP = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("host", "127.0.0.1")
     HOST_PORT = get_base_config(RAG_FLOW_SERVICE_NAME, {}).get("http_port")
 
+    global REFERENCE_TENANT_ID
+    REFERENCE_TENANT_ID = (get_base_config("ragflow", {}) or {}).get("reference_tenant_id") or os.getenv("REFERENCE_TENANT_ID") or ""
+
+    global GROUP_REFERENCE_TENANT_MAP
+    GROUP_REFERENCE_TENANT_MAP = {}
+    raw_group_ref_map = (get_base_config("ragflow", {}) or {}).get("group_reference_tenant_map")
+    if raw_group_ref_map is None:
+        raw_env = os.getenv("GROUP_REFERENCE_TENANT_MAP", "")
+        if raw_env:
+            try:
+                raw_group_ref_map = json.loads(raw_env)
+            except Exception:
+                raw_group_ref_map = None
+    if isinstance(raw_group_ref_map, dict):
+        GROUP_REFERENCE_TENANT_MAP = {
+            str(k): (str(v) if v is not None else "")
+            for k, v in raw_group_ref_map.items()
+            if k is not None
+        }
+    elif isinstance(raw_group_ref_map, list):
+        for item in raw_group_ref_map:
+            if not isinstance(item, dict):
+                continue
+            gid = item.get("group_id")
+            tid = item.get("reference_tenant_id") or item.get("tenant_id")
+            if gid and tid:
+                GROUP_REFERENCE_TENANT_MAP[str(gid)] = str(tid)
+
     global SECRET_KEY
     SECRET_KEY = _get_or_create_secret_key()
 
@@ -364,4 +394,3 @@ def _resolve_per_model_config(entry_dict, backup_factory, backup_api_key, backup
 def print_rag_settings():
     logging.info(f"MAX_CONTENT_LENGTH: {DOC_MAXIMUM_SIZE}")
     logging.info(f"MAX_FILE_COUNT_PER_USER: {int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))}")
-

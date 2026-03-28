@@ -85,38 +85,13 @@ async def update():
             message=f"Dataset name length is {len(req['name'])} which is large than {DATASET_NAME_LIMIT}")
     req["name"] = req["name"].strip()
 
-    if not KnowledgebaseService.accessible4deletion(req["kb_id"], current_user.id):
-        return get_json_result(
-            data=False,
-            message='No authorization.',
-            code=RetCode.AUTHENTICATION_ERROR
-        )
     try:
-        is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
-        if not is_admin:
-            # Check for level 2 admin
-            if AdminUser.query(user_id=current_user.id, role_level=2):
-                 # Find current user's group
-                from api.db.db_models import UserGroup
-                my_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
-                e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
-                
-                has_permission = False
-                if my_group and e:
-                     # Find KB owner's group
-                     owner_group = UserGroup.select().where(UserGroup.user_id == kb.tenant_id).first()
-                     if owner_group and owner_group.group_id == my_group.group_id:
-                         has_permission = True
-                
-                if not has_permission:
-                     return get_json_result(
-                        data=False, message='Only owner of dataset authorized for this operation.',
-                        code=RetCode.OPERATING_ERROR)
-            elif not KnowledgebaseService.query(
-                created_by=current_user.id, id=req["kb_id"]):
-                    return get_json_result(
-                        data=False, message='Only owner of dataset authorized for this operation.',
-                        code=RetCode.OPERATING_ERROR)
+        if not KnowledgebaseService.writable(req["kb_id"], current_user.id):
+            return get_json_result(
+                data=False,
+                message='Only owner of dataset authorized for this operation.',
+                code=RetCode.OPERATING_ERROR,
+            )
 
         e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
         if not e:
@@ -125,7 +100,7 @@ async def update():
 
         if req["name"].lower() != kb.name.lower() \
                 and len(
-            KnowledgebaseService.query(name=req["name"], tenant_id=current_user.id, status=StatusEnum.VALID.value)) >= 1:
+            KnowledgebaseService.query(name=req["name"], tenant_id=kb.tenant_id, status=StatusEnum.VALID.value)) >= 1:
             return get_data_error_result(
                 message="Duplicated dataset name.")
 
@@ -134,8 +109,6 @@ async def update():
         if "connectors" in req:
             connectors = req["connectors"]
             del req["connectors"]
-
-        print(f"[DEBUG-HY] Updating KB {kb.id} with req: {req}")
 
         if not KnowledgebaseService.update_by_id(kb.id, req):
             return get_data_error_result()
@@ -250,24 +223,33 @@ async def list_kbs():
 @validate_request("kb_id")
 async def rm():
     req = await get_request_json()
-    if not KnowledgebaseService.accessible4deletion(req["kb_id"], current_user.id):
-        return get_json_result(
-            data=False,
-            message='No authorization.',
-            code=RetCode.AUTHENTICATION_ERROR
-        )
     try:
-        is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
-        if not is_admin:
-            kbs = KnowledgebaseService.query(
-                created_by=current_user.id, id=req["kb_id"])
-            if not kbs:
+        e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
+        if not e:
+            return get_data_error_result(message="Can't find this dataset!")
+
+        is_reference_kb = (settings.REFERENCE_TENANT_ID and kb.tenant_id == settings.REFERENCE_TENANT_ID) or (
+            kb.tenant_id in KnowledgebaseService.get_all_group_reference_tenant_ids()
+        )
+        if is_reference_kb:
+            if not KnowledgebaseService.writable(req["kb_id"], current_user.id):
                 return get_json_result(
-                    data=False, message='Only owner of dataset authorized for this operation.',
-                    code=RetCode.OPERATING_ERROR)
+                    data=False,
+                    message='No authorization.',
+                    code=RetCode.AUTHENTICATION_ERROR,
+                )
+            kbs = [kb]
         else:
-            e, kb = KnowledgebaseService.get_by_id(req["kb_id"])
-            kbs = [kb] if e else []
+            is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
+            if not is_admin:
+                kbs = KnowledgebaseService.query(
+                    created_by=current_user.id, id=req["kb_id"])
+                if not kbs:
+                    return get_json_result(
+                        data=False, message='Only owner of dataset authorized for this operation.',
+                        code=RetCode.OPERATING_ERROR)
+            else:
+                kbs = [kb]
 
         def _rm_sync():
             for doc in DocumentService.query(kb_id=req["kb_id"]):
