@@ -35,6 +35,16 @@ export function useDatasetTableColumns({
   showLog,
   readonly = false,
 }: UseDatasetTableColumnsType) {
+  const toText = (v: unknown) => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return String(v);
+    }
+  };
   const { t } = useTranslation('translation', {
     keyPrefix: 'knowledgeDetails',
   });
@@ -81,7 +91,7 @@ export function useDatasetTableColumns({
       },
       meta: { cellClassName: 'max-w-[20vw]' },
       cell: ({ row }) => {
-        const name: string = row.getValue('name');
+        const name = toText(row.getValue('name'));
 
         return (
           <Tooltip>
@@ -127,55 +137,56 @@ export function useDatasetTableColumns({
     {
       id: 'metadata',
       header: '来源信息',
-      cell: ({ row }) => (
-        <div className="flex flex-col gap-1 text-xs text-text-secondary group relative min-h-[20px]">
-          {row.original.author && (
-            <div className="flex items-center gap-1">
-              <span className="font-medium">作者:</span>
-              <span
-                className="truncate max-w-[120px]"
-                title={row.original.author}
-              >
-                {row.original.author}
-              </span>
-            </div>
-          )}
-          {row.original.school && (
+      cell: ({ row }) => {
+        const author = toText(row.original.author);
+        const schoolRaw = row.original.school;
+        let school = '';
+        if (typeof schoolRaw === 'string') {
+          const trimmed = schoolRaw.trim();
+          if (trimmed && trimmed[0] !== '{' && trimmed[0] !== '[') {
+            school = schoolRaw;
+          }
+        }
+        const publishTime = toText(row.original.publish_time);
+        return (
+          <div className="flex flex-col gap-1 text-xs text-text-secondary group relative min-h-[20px]">
+            {author && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">作者:</span>
+                <span className="truncate max-w-[120px]" title={author}>
+                  {author}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               <span className="font-medium">学校:</span>
-              <span
-                className="truncate max-w-[120px]"
-                title={row.original.school}
-              >
-                {row.original.school}
+              <span className="truncate max-w-[120px]" title={school}>
+                {school}
               </span>
             </div>
-          )}
-          {row.original.publish_time && (
-            <div className="flex items-center gap-1">
-              <span className="font-medium">发布日期:</span>
-              <span
-                className="truncate max-w-[120px]"
-                title={row.original.publish_time}
-              >
-                {row.original.publish_time}
-              </span>
-            </div>
-          )}
-          {!readonly && (
-            <div className="absolute right-0 top-0 hidden group-hover:block">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => showSetMetaModal(row.original)}
-              >
-                <Edit className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-      ),
+            {publishTime && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">发布日期:</span>
+                <span className="truncate max-w-[120px]" title={publishTime}>
+                  {publishTime}
+                </span>
+              </div>
+            )}
+            {!readonly && (
+              <div className="absolute right-0 top-0 hidden group-hover:block">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => showSetMetaModal(row.original)}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'source_from',
@@ -189,11 +200,9 @@ export function useDatasetTableColumns({
             </div>
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">
-              {
-                dataSourceInfo[
-                  row.original.source_type as keyof typeof dataSourceInfo
-                ]?.icon
-              }
+              {dataSourceInfo[
+                row.original.source_type as keyof typeof dataSourceInfo
+              ]?.icon || null}
             </div>
           )}
         </div>
@@ -206,7 +215,7 @@ export function useDatasetTableColumns({
         const id = row.original.id;
         return (
           <Switch
-            checked={row.getValue('status') === '1'}
+            checked={String(row.getValue('status') ?? '') === '1'}
             disabled={readonly}
             onCheckedChange={(e) => {
               setDocumentStatus({ status: e, documentId: id });
