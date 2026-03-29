@@ -152,28 +152,24 @@ export function useDatasetTableColumns({
         const publishTime = toText(row.original.publish_time);
         return (
           <div className="flex flex-col gap-1 text-xs text-text-secondary group relative min-h-[20px]">
-            {author && (
-              <div className="flex items-center gap-1">
-                <span className="font-medium">作者:</span>
-                <span className="truncate max-w-[120px]" title={author}>
-                  {author}
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              <span className="font-medium">作者:</span>
+              <span className="truncate max-w-[120px]" title={author}>
+                {author}
+              </span>
+            </div>
             <div className="flex items-center gap-1">
               <span className="font-medium">学校:</span>
               <span className="truncate max-w-[120px]" title={school}>
                 {school}
               </span>
             </div>
-            {publishTime && (
-              <div className="flex items-center gap-1">
-                <span className="font-medium">发布日期:</span>
-                <span className="truncate max-w-[120px]" title={publishTime}>
-                  {publishTime}
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              <span className="font-medium">发布日期:</span>
+              <span className="truncate max-w-[120px]" title={publishTime}>
+                {publishTime}
+              </span>
+            </div>
             {!readonly && (
               <div className="absolute right-0 top-0 hidden group-hover:block">
                 <Button
