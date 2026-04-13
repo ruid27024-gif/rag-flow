@@ -1,6 +1,11 @@
 ragflow:
   host: 0.0.0.0
   http_port: 9380
+  reference_tenant_id: 'e475b8cc215711f1b64c10ffe02ab235'
+  group_reference_tenant_map:
+    '8e865b04278a11f1a03d10ffe02ab235': '145307e82a9011f1b25310ffe02ab235'
+    'e013c3d4278611f1a03d10ffe02ab235': 'f3cb12522aa011f199ea10ffe02ab235'
+    '71196836278011f19ca210ffe02ab235': 'b49914742aa211f1a25910ffe02ab235'
 admin:
   host: 0.0.0.0
   http_port: 9381
