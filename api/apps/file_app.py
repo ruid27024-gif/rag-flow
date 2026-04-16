@@ -22,8 +22,11 @@ from quart import request, make_response
 from api.apps import login_required, current_user
 
 from api.common.check_team_permission import check_file_team_permission, check_file_team_write_permission
+from api.db.db_models import AdminUser
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
+from api.db.services.group_service import GroupService
+from api.db.services.user_group_service import UserGroupService
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
 from common.misc_utils import get_uuid
 from common.constants import RetCode, FileSource
@@ -35,7 +38,37 @@ from api.utils.file_utils import filename_type
 from api.utils.web_utils import CONTENT_TYPE_MAP
 from common import settings
 
+def allow(pf_id):
+    # 1级别管理直接可以执行
+    is_admin_1 = AdminUser.query(user_id=current_user.id, role_level =1)
+    is_admin_2 = AdminUser.query(user_id=current_user.id, role_level =2)
 
+    is_admin = bool(is_admin_1 or is_admin_2)
+    print(f"当前是否为管理员：{is_admin}")
+
+    # 获取当前pf_id所属的 tenant  判断是不是当前文件的所有者
+    try:
+        folder_tenant_id = FileService.get_tenant_id_by_parent_id(pf_id)
+        is_tenant = (current_user.id == folder_tenant_id)
+    except Exception as e:
+        return get_data_error_result(message="Error checking folder ownership")
+    
+    # 组管理库tennat_id
+    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    cfg_map_id = cfg_map.values
+
+    # 全局库的id
+    public_id = settings.REFERENCE_TENANT_ID
+
+    if not is_admin and not is_tenant:
+        return False
+    
+    if AdminUser.query(user_id=current_user.id, role_level = 2) and folder_tenant_id == public_id:
+        return False
+
+    return True
+
+# 文件的上传
 @manager.route('/upload', methods=['POST'])  # noqa: F821
 @login_required
 # @validate_request("parent_id")
@@ -43,10 +76,17 @@ async def upload():
     form = await request.form
     pf_id = form.get("parent_id")
 
+    # 如果没有传入根接点
     if not pf_id:
+        # 获取根id
         root_folder = FileService.get_root_folder(current_user.id)
         pf_id = root_folder["id"]
 
+    # 上传权限
+    if not allow(pf_id):
+        return get_data_error_result(message="Error checking folder ownership")
+    
+    # 获取上传的文件
     files = await request.files
     if 'file' not in files:
         return get_json_result(
@@ -58,25 +98,31 @@ async def upload():
             return get_json_result(
                 data=False, message='No file selected!', code=RetCode.ARGUMENT_ERROR)
     file_res = []
+
     try:
         e, pf_folder = FileService.get_by_id(pf_id)
         if not e:
             return get_data_error_result( message="Can't find this folder!")
 
+        # 上传单个文件的file_obj
         async def _handle_single_file(file_obj):
+            # 最大上传数量
             MAX_FILE_NUM_PER_USER: int = int(os.environ.get('MAX_FILE_NUM_PER_USER', 0))
+
+            # 超过最大上传数量
             if 0 < MAX_FILE_NUM_PER_USER <= await asyncio.to_thread(DocumentService.get_doc_count, current_user.id):
                 return get_data_error_result( message="Exceed the maximum file number of a free user!")
 
             # split file name path
             if not file_obj.filename:
                 file_obj_names = [pf_folder.name, file_obj.filename]
+
             else:
                 full_path = '/' + file_obj.filename
                 file_obj_names = full_path.split('/')
             file_len = len(file_obj_names)
 
-            # get folder
+            # get folder 
             file_id_list = await asyncio.to_thread(FileService.get_id_list_by_id, pf_id, file_obj_names, 1, [pf_id])
             len_id_list = len(file_id_list)
 
@@ -91,21 +137,27 @@ async def upload():
                 e, file = await asyncio.to_thread(FileService.get_by_id, file_id_list[len_id_list - 2])
                 if not e:
                     return get_data_error_result(message="Folder not found!")
+                # 递归创建文件夹
                 last_folder = await asyncio.to_thread(FileService.create_folder, file, file_id_list[len_id_list - 2], file_obj_names,
                                                         len_id_list)
 
-            # file type
+            # file type 获取文件类型
             filetype = filename_type(file_obj_names[file_len - 1])
+            # 生成存储路径
             location = file_obj_names[file_len - 1]
             while await asyncio.to_thread(settings.STORAGE_IMPL.obj_exist, last_folder.id, location):
                 location += "_"
+            # 读取文件内容
             blob = await asyncio.to_thread(file_obj.read)
+            # 处理数据库的重复命名
             filename = await asyncio.to_thread(
                 duplicate_name,
                 FileService.query,
                 name=file_obj_names[file_len - 1],
                 parent_id=last_folder.id)
+            # 保存到Minio
             await asyncio.to_thread(settings.STORAGE_IMPL.put, last_folder.id, location, blob)
+
             file_data = {
                 "id": get_uuid(),
                 "parent_id": last_folder.id,
@@ -139,6 +191,10 @@ async def create():
         root_folder = FileService.get_root_folder(current_user.id)
         pf_id = root_folder["id"]
 
+    # 上传权限
+    if not allow(pf_id):
+        return get_data_error_result(message="Error checking folder ownership")
+
     try:
         if not FileService.is_parent_folder_exist(pf_id):
             return get_json_result(
@@ -168,32 +224,126 @@ async def create():
         return server_error_response(e)
 
 
+# 文件列表查询
 @manager.route('/list', methods=['GET'])  # noqa: F821
 @login_required
 def list_files():
+    # 你想看哪个文件夹的内容
     pf_id = request.args.get("parent_id")
-
+    # 是不是搜索文件
     keywords = request.args.get("keywords", "")
 
+    # 页码
     page_number = int(request.args.get("page", 1))
     items_per_page = int(request.args.get("page_size", 15))
     orderby = request.args.get("orderby", "create_time")
     desc = request.args.get("desc", True)
+
+    # 如果用户没有指定查看哪个文件夹
     if not pf_id:
+        # 系统默认指定当前目录的根目录
+        # todo 目前是获取当前用户的 --> 1级管理员获取所有； 二级管理员获取组内所有 --> 普通用户获取参考库 + 自己
+        print("现在开始查看文件啦啦")
+        # 如果是超级管理员 获取全部根id
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            print("当前用户是管理员，正在执行管理员逻辑...")
+            # 管理员：查询所有根目录
+            root_id_current = FileService.get_all_root_id()
+
+        # 如果是组管理员
+        elif AdminUser.query(user_id=current_user.id, role_level=2):
+            print("当前用户是组管理员，正在执行管理员逻辑...")
+            # 组管理员：获取自己的 + 组员的 + 组公共库的 + 全局公共库的
+
+            # 获取管理员创建的组
+            group_ids = GroupService.get_ids_by_created_by(current_user.id)
+            # 获取组员id
+            lis = []
+            # 组号到组公共tenant区域的映射
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            for group_id in group_ids:
+                print(group_id)
+                # 获取 组的公共区域 id
+                if group_id and group_id in cfg_map and cfg_map[group_id]:
+                    group_public_id = cfg_map[group_id]
+                    lis.append(group_public_id)
+                ids = UserGroupService.get_member_ids_by_group_id(group_id=group_id)
+                lis.extend(ids)
+            if settings.REFERENCE_TENANT_ID:
+                public_id = settings.REFERENCE_TENANT_ID
+                lis.append(public_id)
+
+            lis.append(current_user.id)
+            print(lis)
+            lis = list(set(lis))
+
+            # 获取二级管理员的根目录
+            root_id_current = FileService.get_team_root_id(lis)
+
+        else:
+            lis = []
+            # 获取组id下的公共tenant_id
+            group_id = UserGroupService.get_group_id_by_id(current_user.id)
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            if group_id and group_id in cfg_map and cfg_map[group_id]:
+                group_public_tenant_id = cfg_map[group_id]
+                lis.append(group_public_tenant_id)
+
+            if settings.REFERENCE_TENANT_ID:
+                public_tenant_id = settings.REFERENCE_TENANT_ID
+                lis.append(public_tenant_id)
+
+            lis.append(current_user.id)
+            
+            lis = list(set(lis))  # 可以看到的租户id
+
+            # 获取二级管理员的根目录
+            root_id_current = FileService.get_team_root_id(lis)
+
+        # 处理每一个根id 获取下面的目录/文件
+        all_files = []
+        total = 0
+
+        for r_id in root_id_current:
+            try:
+
+                # 2. 获取该目录下的文件
+                files, count = FileService.get_by_pf_id_admin(
+                    current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                )
+
+                # 3. 累加结果
+                all_files.extend(files)
+                total += count
+
+            except Exception as e:
+                # 某个用户的目录查错了不要中断整体
+                print(f"Error fetching folder {r_id}: {e}")
+                continue
+
+        print(all_files)
+        # 4. 返回汇总结果
         root_folder = FileService.get_root_folder(current_user.id)
         pf_id = root_folder["id"]
-        FileService.init_knowledgebase_docs(pf_id, current_user.id)
+        parent_folder = FileService.get_parent_folder(pf_id)
+        return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
+
     try:
+        # 先检查这个文件夹是否存在
         e, file = FileService.get_by_id(pf_id)
         if not e:
             return get_data_error_result(message="Folder not found!")
 
+        # 核心查询 （即使你通过某种手段猜到了别人的文件夹 ID，因为这行代码的存在，数据库也会发现“这个文件夹不属于当前用户）
+        # 看某个文件夹内的内容
         files, total = FileService.get_by_pf_id(
             current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
 
+        # 获取父级信息（我的网盘 / 工作资料 / ...），让你知道自己当前在哪一层。）
         parent_folder = FileService.get_parent_folder(pf_id)
         if not parent_folder:
             return get_json_result(message="File not found!")
+        print(files)
 
         return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
     except Exception as e:
@@ -242,13 +392,18 @@ def get_all_parent_folders():
     except Exception as e:
         return server_error_response(e)
 
-
+# 删除
 @manager.route("/rm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("file_ids")
 async def rm():
     req = await get_request_json()
     file_ids = req["file_ids"]
+
+    pf_id = file_ids[0]
+    # 权限
+    if not allow(pf_id):
+        return get_data_error_result(message="暂无删除权限")
 
     try:
         def _delete_single_file(file):
@@ -312,6 +467,11 @@ async def rm():
 @validate_request("file_id", "name")
 async def rename():
     req = await get_request_json()
+
+    # 权限
+    if not allow(req["file_id"]):
+        return get_data_error_result(message="暂无重命名权限")
+    
     try:
         e, file = FileService.get_by_id(req["file_id"])
         if not e:
@@ -350,6 +510,8 @@ async def rename():
 @manager.route('/get/<file_id>', methods=['GET'])  # noqa: F821
 @login_required
 async def get(file_id):
+
+
     try:
         e, file = FileService.get_by_id(file_id)
         if not e:
@@ -384,6 +546,11 @@ async def move():
     try:
         file_ids = req["src_file_ids"]
         dest_parent_id = req["dest_file_id"]
+
+        if not allow(dest_parent_id) or not allow(file_ids[0]):
+            return get_data_error_result(message="暂无移动当前文件的权限")
+
+        
 
         ok, dest_folder = FileService.get_by_id(dest_parent_id)
         if not ok or not dest_folder:

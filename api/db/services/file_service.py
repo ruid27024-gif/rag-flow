@@ -32,6 +32,8 @@ from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
+from api.db.services.group_service import GroupService
+from api.db.services.user_group_service import UserGroupService
 from common.misc_utils import get_uuid
 from common.constants import StatusEnum, TaskStatus, FileSource, ParserType
 from api.db.services.knowledgebase_service import KnowledgebaseService
@@ -44,6 +46,157 @@ from common import settings
 class FileService(CommonService):
     # Service class for managing file operations and storage
     model = File
+
+    @classmethod
+    @DB.connection_context()
+    def get_tenant_id_by_parent_id(cls, parent_id):
+        """
+        通过父文件夹ID获取租户ID (tenant_id)
+        Args:
+            parent_id (str): 父文件夹的UUID
+        Returns:
+            str or None: 返回 tenant_id，如果未找到则返回 None
+        """
+        try:
+            # 1. 尝试从数据库中获取该记录，只选择 tenant_id 字段以提高效率
+            obj = cls.model.select(cls.model.tenant_id).where(
+                cls.model.id == parent_id
+            ).first()
+
+            # 2. 如果找到了对象，返回 tenant_id，否则返回 None
+            if obj:
+                return obj.tenant_id
+            return None
+
+        except Exception as e:
+            print(f"Error getting tenant_id by parent_id: {e}")
+            return None
+
+
+    @classmethod
+    @DB.connection_context()
+    def get_all_root_id(cls):
+        files = cls.model.select().where(FileService.model.parent_id == FileService.model.id).execute()
+        return [file.id for file in files]
+
+    @classmethod
+    @DB.connection_context()
+    def get_team_root_id(cls, user_ids):
+        """
+        通过用户 ID 列表获取团队根目录 ID 列表
+        Args:
+            user_ids: 用户 ID 列表 (例如: ['uuid_1', 'uuid_2'])
+        Returns:
+            list: ID 列表
+        """
+        try:
+            if isinstance(user_ids, str):
+                user_ids = [user_ids]
+
+            query = cls.model.select().where(
+                (cls.model.parent_id == cls.model.id) &  # 根目录条件
+                (cls.model.tenant_id.in_(user_ids))  # 用户ID在列表中
+            )
+
+            return [file.id for file in query]
+
+        except Exception as e:
+            print(f"Error fetching team root ids: {e}")
+            return []
+
+    # TODO 新增的
+    @classmethod
+    @DB.connection_context()
+    def get_by_pf_id_admin(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
+        # 获取parent_id 是根目录下的行 (根目录下的目录/虚拟文件) 让前端进行渲染
+        # 如果有关键字, 排除 / 本身 ，上一级
+        if keywords:
+            files = cls.model.select().where((cls.model.parent_id == pf_id),
+                                             (fn.LOWER(cls.model.name).contains(keywords.lower())),
+                                             ~(cls.model.id == pf_id))
+
+        else:
+            files = cls.model.select().where((cls.model.parent_id == pf_id), ~(cls.model.id == pf_id))
+        count = files.count()
+
+        if desc:
+            files = files.order_by(cls.model.getter_by(orderby).desc())
+
+        else:
+            files = files.order_by(cls.model.getter_by(orderby).asc())
+
+        # 默认按照时间的降序进行排
+        files = files.order_by(cls.model.getter_by("create_time").desc())
+
+        files = files.paginate(page_number, items_per_page)
+
+        res_files = list(files.dicts())
+
+        from .user_service import UserService
+        from api.apps import login_required, current_user
+
+        # 开始解析每一行
+        for file in res_files:
+
+            # 获取文件夹/文件 的前缀(组 + nickname)
+            # 获取用户
+            user = UserService.filter_by_id(file["tenant_id"])
+
+            # 判空后直接获取昵称
+            if user and user.id != current_user.id:
+                user_id = user.id
+                nickname = user.nickname
+
+                # 通过user_id获取组id
+                group_id = UserGroupService.get_group_id_by_id(user_id)
+                print(group_id)
+                if group_id:
+                    group_name = GroupService.get_name_by_id(group_id)
+                    if group_name:
+                        print(f"组名称为： {group_name}")
+                        pre = group_name + "/" + nickname
+                    else:
+                        pre = nickname
+                else:
+                    pre = nickname
+
+            else:
+                pre = ""
+
+            print(pre)
+
+            # 如果是文件夹
+            if file["type"] == FileType.FOLDER.value:
+                if pre:
+                    if file['name'] == '.knowledgebase' :
+                        file['name'] = pre + "/" + "knowledgebase"
+
+                    # 自建的文件夹
+                    else:
+                        file['name'] = pre + "/" + file['name']
+                        
+
+                # 计算大小
+                file["size"] = cls.get_folder_size(file["id"])
+                file["kbs_info"] = []
+                # 检查是否有子文件夹：又查了一次数据库（children = ...），只是为了看里面有没有文件夹，用来决定前端是否显示那个“小箭头”图标。
+                children = list(
+                    cls.model.select()
+                    .where(
+                        (cls.model.parent_id == file["id"]),
+                        ~(cls.model.id == file["id"]),
+                    )
+                    .dicts()
+                )
+
+                file["has_child_folder"] = any(value["type"] == FileType.FOLDER.value for value in children)
+                continue
+
+            # 如果是文件
+            kbs_info = cls.get_kb_id_by_file_id_new(file["id"], pre)
+            file["kbs_info"] = kbs_info
+
+        return res_files, count
 
     @classmethod
     @DB.connection_context()
@@ -60,9 +213,10 @@ class FileService(CommonService):
         # Returns:
         #     Tuple of (file_list, total_count)
         if keywords:
-            files = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == pf_id), (fn.LOWER(cls.model.name).contains(keywords.lower())), ~(cls.model.id == pf_id))
+            files = cls.model.select().where((cls.model.parent_id == pf_id), (fn.LOWER(cls.model.name).contains(keywords.lower())), ~(cls.model.id == pf_id))
         else:
-            files = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == pf_id), ~(cls.model.id == pf_id))
+            files = cls.model.select().where((cls.model.parent_id == pf_id), ~(cls.model.id == pf_id))
+            # (cls.model.tenant_id == tenant_id), 
         count = files.count()
         if desc:
             files = files.order_by(cls.model.getter_by(orderby).desc())
@@ -79,7 +233,7 @@ class FileService(CommonService):
                 children = list(
                     cls.model.select()
                     .where(
-                        (cls.model.tenant_id == tenant_id),
+                        # (cls.model.tenant_id == tenant_id),
                         (cls.model.parent_id == file["id"]),
                         ~(cls.model.id == file["id"]),
                     )
@@ -107,9 +261,34 @@ class FileService(CommonService):
             .join(Knowledgebase, on=(Knowledgebase.id == Document.kb_id))
             .where(cls.model.id == file_id)
         )
+
         if not kbs:
             return []
         kbs_info_list = []
+        for kb in list(kbs.dicts()):
+            kbs_info_list.append({"kb_id": kb["id"], "kb_name": kb["name"]})
+        return kbs_info_list
+
+    @classmethod
+    @DB.connection_context()
+    def get_kb_id_by_file_id_new(cls, file_id, pre):
+        # Get dataset IDs associated with a file
+        # Args:
+        #     file_id: File ID
+        # Returns:
+        #     List of dictionaries containing dataset IDs and names
+        kbs = (
+            cls.model.select(*[Knowledgebase.id, Knowledgebase.name])
+            .join(File2Document, on=(File2Document.file_id == file_id))
+            .join(Document, on=(File2Document.document_id == Document.id))
+            .join(Knowledgebase, on=(Knowledgebase.id == Document.kb_id))
+            .where(cls.model.id == file_id)
+        )
+
+        if not kbs:
+            return []
+        kbs_info_list = []
+
         for kb in list(kbs.dicts()):
             kbs_info_list.append({"kb_id": kb["id"], "kb_name": kb["name"]})
         return kbs_info_list

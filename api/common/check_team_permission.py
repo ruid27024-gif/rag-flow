@@ -108,6 +108,9 @@ def check_file_team_permission(file: dict | File, other: str) -> bool:
 def check_file_team_write_permission(file: dict | File, other: str) -> bool:
     if AdminUser.query(user_id=other, role_level=1):
         return True
+    if AdminUser.query(user_id=other, role_level=2):
+        return True
+
     file = file.to_dict() if isinstance(file, File) else file
 
     file_tenant_id = file["tenant_id"]

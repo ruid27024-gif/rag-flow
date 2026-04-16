@@ -280,7 +280,7 @@ class MinerUParser(RAGFlowPdfParser):
             middle_json, infer_result = vlm_doc_analyze(
                 pdf_bytes, 
                 image_writer=image_writer, 
-                backend=backend_str, 
+                backend="transformers", 
                 server_url=options.server_url
             )
 
