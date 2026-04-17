@@ -9,7 +9,8 @@ from common.misc_utils import get_uuid
 
 # debug_app = Blueprint('debug_app', __name__, url_prefix='/debug')
 
-CONFIG_FILE_PATH = '/home/hit802/RAG1/dialog_3ad8d622f11511f0ad4410ffe02ab235.json'
+# CONFIG_FILE_PATH = '/home/hit802/RAG1/dialog_3ad8d622f11511f0ad4410ffe02ab235.json'
+CONFIG_FILE_PATH = './dialog_3.json'
 
 @manager.route('/config', methods=['GET'])  # noqa: F821
 async def get_config():
@@ -49,6 +50,7 @@ async def create_dialog_from_config():
         from common.misc_utils import get_uuid
         from common.constants import StatusEnum
 
+        CONFIG_FILE_PATH = '/home/zyb/rag-flow/api/apps/dialog_3.json'
         # 1. Read config file
         if not os.path.exists(CONFIG_FILE_PATH):
             return jsonify({"msg": "Config file not found", "retcode": 404}), 404
@@ -98,6 +100,8 @@ async def create_dialog_from_config():
             "prompt_type": config_data.get("prompt_type", "simple"),
             "status": "1"
         }
+
+        print(new_dialog_data)
 
         # 2.5 Check if dialog with same name exists
         existing_dialogs = DialogService.query(tenant_id=tenant_id, name=new_dialog_data["name"], status=StatusEnum.VALID.value)

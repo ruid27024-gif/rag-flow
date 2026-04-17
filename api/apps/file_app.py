@@ -336,8 +336,101 @@ def list_files():
 
         # 核心查询 （即使你通过某种手段猜到了别人的文件夹 ID，因为这行代码的存在，数据库也会发现“这个文件夹不属于当前用户）
         # 看某个文件夹内的内容
-        files, total = FileService.get_by_pf_id(
-            current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+        # 1级别管理直接可以执行
+        # is_admin_1 = AdminUser.query(user_id=current_user.id, role_level =1)
+        # is_admin_2 = AdminUser.query(user_id=current_user.id, role_level =2)
+
+        # is_admin = bool(is_admin_1 or is_admin_2)
+        # if is_admin and pf_id in FileService.get_all_root_id():
+        #     files, total = FileService.get_by_pf_id_admin(
+        #         current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+
+        if AdminUser.query(user_id=current_user.id, role_level=1) and pf_id in FileService.get_all_root_id():
+            print("当前用户是管理员，正在执行管理员逻辑...")
+            # 管理员：查询所有根目录
+            root_id_current = FileService.get_all_root_id()
+
+            # 处理每一个根id 获取下面的目录/文件
+            all_files = []
+            total = 0
+
+            for r_id in root_id_current:
+                try:
+
+                    # 2. 获取该目录下的文件
+                    files, count = FileService.get_by_pf_id_admin(
+                        current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                    )
+
+                    # 3. 累加结果
+                    all_files.extend(files)
+                    total += count
+
+
+                except Exception as e:
+                    # 某个用户的目录查错了不要中断整体
+                    print(f"Error fetching folder {r_id}: {e}")
+
+            files = all_files
+
+        # 如果是组管理员
+        elif AdminUser.query(user_id=current_user.id, role_level=2) and pf_id in FileService.get_all_root_id():
+            print("当前用户是组管理员，正在执行管理员逻辑...")
+            # 组管理员：获取自己的 + 组员的 + 组公共库的 + 全局公共库的
+
+            # 获取管理员创建的组
+            group_ids = GroupService.get_ids_by_created_by(current_user.id)
+            # 获取组员id
+            lis = []
+            # 组号到组公共tenant区域的映射
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            for group_id in group_ids:
+                print(group_id)
+                # 获取 组的公共区域 id
+                if group_id and group_id in cfg_map and cfg_map[group_id]:
+                    group_public_id = cfg_map[group_id]
+                    lis.append(group_public_id)
+                ids = UserGroupService.get_member_ids_by_group_id(group_id=group_id)
+                lis.extend(ids)
+            if settings.REFERENCE_TENANT_ID:
+                public_id = settings.REFERENCE_TENANT_ID
+                lis.append(public_id)
+
+            lis.append(current_user.id)
+            print(lis)
+            lis = list(set(lis))
+
+            # 获取二级管理员的根目录
+            root_id_current = FileService.get_team_root_id(lis)
+
+            # 处理每一个根id 获取下面的目录/文件
+            all_files = []
+            total = 0
+
+            for r_id in root_id_current:
+                try:
+
+                    # 2. 获取该目录下的文件
+                    files, count = FileService.get_by_pf_id_admin(
+                        current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                    )
+
+                    # 3. 累加结果
+                    all_files.extend(files)
+                    total += count
+
+
+                except Exception as e:
+                    # 某个用户的目录查错了不要中断整体
+                    print(f"Error fetching folder {r_id}: {e}")
+
+            files = all_files
+
+
+
+        else:
+            files, total = FileService.get_by_pf_id(
+                current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
 
         # 获取父级信息（我的网盘 / 工作资料 / ...），让你知道自己当前在哪一层。）
         parent_folder = FileService.get_parent_folder(pf_id)
@@ -374,11 +467,12 @@ def get_parent_folder():
     except Exception as e:
         return server_error_response(e)
 
-
+# todo 修改返回的文件名
 @manager.route('/all_parent_folder', methods=['GET'])  # noqa: F821
 @login_required
 def get_all_parent_folders():
     file_id = request.args.get("file_id")
+
     try:
         e, file = FileService.get_by_id(file_id)
         if not e:

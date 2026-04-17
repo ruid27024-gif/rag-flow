@@ -496,6 +496,8 @@ class FileService(CommonService):
         file = cls.model.select().where(cls.model.id == file_id)
         if file.count():
             e, file = cls.get_by_id(file[0].parent_id)
+        
+            print("------------------------------------------------------")
             if not e:
                 raise RuntimeError("Database error (File retrieval)!")
         else:
@@ -512,9 +514,55 @@ class FileService(CommonService):
         #     List of parent folder objects
         parent_folders = []
         current_id = start_id
+        
         while current_id:
             e, file = cls.get_by_id(current_id)
             if e and file.parent_id != file.id:
+                
+                from .user_service import UserService
+                from api.apps import login_required, current_user
+
+                user = UserService.filter_by_id(file.tenant_id)
+
+                if file.name == "/":
+                    file.name = user.nickname
+
+
+
+                # 判空后直接获取昵称
+                if user and user.id != current_user.id and file.parent_id in FileService.get_all_root_id():
+                    user_id = user.id
+                    nickname = user.nickname
+
+                    # 通过user_id获取组id
+                    group_id = UserGroupService.get_group_id_by_id(user_id)
+                    print(group_id)
+                    if group_id:
+                        group_name = GroupService.get_name_by_id(group_id)
+                        if group_name:
+                            print(f"组名称为： {group_name}")
+                            pre = group_name + "/" + nickname
+                        else:
+                            pre = nickname
+                    else:
+                        pre = nickname
+
+                else:
+                    pre = ""
+
+                # 如果是文件夹
+                if file.type == FileType.FOLDER.value:
+                    if pre:
+                        if file.name == '.knowledgebase' :
+                            file.name = pre + "/" + "knowledgebase"
+
+                        # 自建的文件夹
+                        else:
+                            file.name = pre + "/" + file.name
+
+
+
+
                 parent_folders.append(file)
                 current_id = file.parent_id
             else:

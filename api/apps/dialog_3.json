@@ -1,0 +1,21 @@
+{
+  "name": "小助手",
+  "description": "",
+  "icon": "",
+  "language": "Chinese",
+  "llm_id": "qwen3-14b",
+
+  "llm_setting": "{\"temperature\": 0.1, \"top_p\": 0.3, \"presence_penalty\": 0, \"frequency_penalty\": 0}",
+
+  "prompt_config": "{\"system\": \"你是一个专业的助手。\", \"prologue\": \"你好？\", \"parameters\": []}",
+
+  "kb_ids": "[\"3a71e65c395d11f195d4345a60aae1f7\"]",
+
+  "top_n": 6,
+  "top_k": 1024,
+  "rerank_id": "",
+  "similarity_threshold": 0.1,
+  "vector_similarity_weight": 0.3,
+  "do_refer": "1",
+  "prompt_type": "simple"
+}
