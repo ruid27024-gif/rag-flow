@@ -687,7 +687,11 @@ class FileService(CommonService):
         for file in file_objs:
             try:
                 DocumentService.check_doc_health(kb.tenant_id, file.filename)
+                from urllib.parse import unquote
+                from urllib.parse import unquote
+
                 filename = duplicate_name(DocumentService.query, name=file.filename, kb_id=kb.id)
+
                 filetype = filename_type(filename)
                 if filetype == FileType.OTHER.value:
                     raise RuntimeError("This type of file has not been supported yet!")

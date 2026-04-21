@@ -25,7 +25,7 @@ from api.apps import current_user, login_required
 from api.common.check_team_permission import check_kb_team_permission, check_kb_team_write_permission
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.db import VALID_FILE_TYPES, FileType
-from api.db.db_models import Task
+from api.db.db_models import Task, SyncDept, SyncPerson
 from api.db.services import duplicate_name
 from api.db.services.document_service import DocumentService, doc_upload_and_parse
 from common.metadata_utils import meta_filter, convert_conditions
@@ -49,15 +49,282 @@ from deepdoc.parser.html_parser import RAGFlowHtmlParser
 from rag.nlp import search, rag_tokenizer
 from common import settings
 
+# 新增报告推送接口
+@manager.route("/upload/report", methods=["POST"])  # noqa: F821
+# @validate_request("dept_id", "user_id") 
+async def upload_report():
+    # 知识库id
+    form = await request.form
+    dept_id = form.get("dept_id")  # 部门id
+    user_id = form.get("user_id")  # 用户id
+    file_name = form.get("file_name")
+    print(file_name)
+    file_name2 = form.get("file_name2")
+    print(file_name2)
+    dept_id = int(dept_id)
+    user_id = int(user_id)
+    print(f"部门id：{dept_id}")
+
+
+
+    dep_obj = SyncDept.select(SyncDept.mdmName).where(
+            SyncDept.mdmCode == dept_id
+        ).first()
+    
+    user_obj = SyncPerson.select(SyncPerson.mdmName).where(
+        SyncPerson.mdmCode == user_id
+    ).first()
+
+    # 3. 校验数据是否存在
+    if not dep_obj or not user_obj:
+        missing = []
+        if not dep_obj: missing.append("部门")
+        if not user_obj: missing.append("用户")
+        return get_json_result(
+            data=False, 
+            message=f"未找到对应的{'、'.join(missing)}信息，请检查 dept_id 和 user_id 是否正确", 
+            code=RetCode.ARGUMENT_ERROR
+        )
+
+    # 4. 提取名称（转为字符串）
+    dep_name = dep_obj.mdmName
+    user_name = user_obj.mdmName
+
+
+    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    print(cfg_map)
+    nfg_map = getattr(settings, "GROUP_NAME_ID_MAP", {}) or {}
+    print(nfg_map)
+    # 2. 通过部门id --> 组号
+    kb_name = dep_name + "报告库"
+    # 3. 通过组号 --> 公共库 user_id
+    # tenant_id = "c79873e6395a11f1b4e6345a60aae1f7"
+    tenant_id = cfg_map.get(nfg_map.get(dep_name))
+
+    # 7. 如果 tenant_id 也没找到，也返回错误
+    if not tenant_id:
+        return get_json_result(
+            data=False, 
+            message=f"部门 '{dep_name}' 未配置对应的租户ID，请检查系统配置", 
+            code=RetCode.ARGUMENT_ERROR
+        )
+
+
+    # 4. 获取kb_id 通过知识库的名称 以及公共库的tenant_id (如果没有就创建1个）
+    kb = KnowledgebaseService.model.select().where(
+        (KnowledgebaseService.model.tenant_id == tenant_id) & 
+        (KnowledgebaseService.model.name == kb_name)
+    ).first()
+
+    # kb_id = kb.id
+    if not kb:   
+        # try:
+            # return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+            # 新建一个知识库
+        req = {
+        "name": kb_name,  # 知识库名称
+        "embd_id": "text-embedding-v3@Tongyi-Qianwen",
+        "language": "Chinese",
+        "parse_type": 1,
+        "parser_id": "paper",
+        "pipeline_id": ""}
+
+        # 创建1个知识库
+        e, res = KnowledgebaseService.create_with_name(
+        name = req.pop("name", None),
+        tenant_id = tenant_id,
+        parser_id = req.pop("parser_id", None),
+        **req)
+
+        kb_id = res["id"]
+
+        try:
+            if not KnowledgebaseService.save(**res):
+                return get_data_error_result()
+            
+        except Exception as e:
+            return server_error_response(e)
+        # except Exception as err:
+        #     return get_json_result(data=False, message="系统内部错误", code=RetCode.SERVER_ERROR)
+    
+    else:
+        kb_id = kb.id
+
+    # kb_id = "cfc8ad543c9a11f18845345a60aae1f7"
+    # 文件
+    files = await request.files
+    if "file" not in files:
+        return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
+    
+    file_objs = files.getlist("file")
+
+    for file_obj in file_objs:
+        file_obj.filename = file_name2
+        if file_obj.filename == "":
+            return get_json_result(data=False, message="No file selected!", code=RetCode.ARGUMENT_ERROR)
+        if len(file_obj.filename.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
+            return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
+
+    # 获取知识库行信息
+    e, kb = KnowledgebaseService.get_by_id(kb_id)
+    if not e:
+        raise LookupError("Can't find this dataset!")
+    # 鉴权
+    if not check_kb_team_write_permission(kb, tenant_id):
+        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+    # 上传到文本库
+    err, files = await asyncio.to_thread(FileService.upload_document, kb, file_objs, tenant_id)
+    if err:
+        quota_errs = [e for e in err if isinstance(e, str) and e.startswith("QUOTA:")]
+        if quota_errs:
+            msg = "\n".join([e.split("QUOTA:", 1)[1].strip() for e in quota_errs])
+            return get_json_result(data=files, message=msg, code=RetCode.OPERATING_ERROR)
+        return get_json_result(data=files, message="\n".join(err), code=RetCode.SERVER_ERROR)
+    
+    if not files:
+        return get_json_result(data=files, message="There seems to be an issue with your file format. Please verify it is correct and not corrupted.", code=RetCode.DATA_ERROR)
+    
+    files = [f[0] for f in files]  # remove the blob
+
+    # 如果上传完成，则对上传的每个文件进行作者信息解析任务
+    from api.db.db_utils import bulk_insert_into_db
+    from rag.utils.redis_conn import REDIS_CONN
+    from datetime import datetime
+    tasks = []
+    doc_ids = []
+    for file in files:
+        DocumentService.update_by_id(
+            file["id"],
+            {
+                "run": TaskStatus.RUNNING.value,
+                "progress": 0,
+                "progress_msg": "",
+                "process_begin_at": datetime.now(),
+            },
+        )
+        doc_ids.append(file["id"])
+        task = {
+            "id": get_uuid(),
+            "doc_id": file["id"],
+            "task_type": "parse_author_info",
+            "progress": 0.0,
+            "from_page": 0,
+            "to_page": 100000000,
+            "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        tasks.append(task)
+
+
+    if tasks:
+        bulk_insert_into_db(Task, tasks, True)
+        for task in tasks:
+            REDIS_CONN.queue_product(settings.get_svr_queue_name(0), message=task)
+
+    # 解析的任务
+    req = {
+        "doc_ids": doc_ids,
+        "run": TaskStatus.RUNNING.value,
+    }
+    try:
+        def _run_sync():
+            # 遍历传入的文档id
+            for doc_id in req["doc_ids"]:
+                # 查数据库看文档是否存在
+                e, doc = DocumentService.get_by_id(doc_id)
+                if not e:
+                    return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+                # 通过文档找到所属的知识库（Knowledgebase），看知识库是否存在
+                e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+                if not e:
+                    return get_data_error_result(message="Can't find this dataset!")
+                
+                # # 确保当前用户有权限修改这个知识库（防止越权操作）。
+                # if not check_kb_team_write_permission(kb, tenant_id):
+                #     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+            # 用于在多次解析间共享表格数量信息的临时字典
+            kb_table_num_map = {}
+            for id in req["doc_ids"]:
+                # 当前信息
+                info = {"run": str(req["run"]), "progress": 0}
+
+                # 如果是“重新运行”且要求“删除旧数据”
+                if str(req["run"]) == TaskStatus.RUNNING.value and req.get("delete", False):
+                    info["progress_msg"] = ""
+                    info["chunk_num"] = 0
+                    info["token_num"] = 0
+
+                # 二次检查：再次获取租户 ID 和文档对象（为了安全，防止在长循环中数据状态变化）
+                tenant_id = DocumentService.get_tenant_id(id)
+                if not tenant_id:
+                    return get_data_error_result(message="Tenant not found!")
+                e, doc = DocumentService.get_by_id(id)
+                if not e:
+                    return get_data_error_result(message="Document not found!")
+
+                # 处理“取消”指令
+                if str(req["run"]) == TaskStatus.CANCEL.value:
+                    if str(doc.run) == TaskStatus.RUNNING.value:
+                        cancel_all_task_of(id)
+                    else:
+                        return get_data_error_result(message="Cannot cancel a task that is not in RUNNING status")
+                # 处理“重新运行”清理
+                if all([("delete" not in req or req["delete"]), str(req["run"]) == TaskStatus.RUNNING.value, str(doc.run) == TaskStatus.DONE.value]):
+                    DocumentService.clear_chunk_num_when_rerun(doc.id)
+
+                # 更新数据库状态
+                DocumentService.update_by_id(id, info)
+                # 物理删除旧数据 es0
+                if req.get("delete", False):
+                    TaskService.filter_delete([Task.doc_id == id])
+                    if settings.docStoreConn.indexExist(search.index_name(tenant_id), doc.kb_id):
+                        settings.docStoreConn.delete({"doc_id": id}, search.index_name(tenant_id), doc.kb_id)
+
+                # 启动解析任务
+                if str(req["run"]) == TaskStatus.RUNNING.value:
+                    doc_dict = doc.to_dict()
+                    DocumentService.run(tenant_id, doc_dict, kb_table_num_map)
+                    
+                    # Create parse_author_info task if not exists
+                    from api.db.services.task_service import TaskService
+                    from api.db.db_utils import bulk_insert_into_db
+                    from rag.utils.redis_conn import REDIS_CONN
+                    from datetime import datetime
+                    
+                    existing_task = TaskService.get_task_by_doc_id_and_type(doc.id, "parse_author_info")
+                    if not existing_task:
+                        task = {
+                            "id": get_uuid(),
+                            "doc_id": doc.id,
+                            "task_type": "parse_author_info",
+                            "progress": 0.0,
+                            "from_page": 0,
+                            "to_page": 100000000,
+                            "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        }
+                        bulk_insert_into_db(Task, [task], True)
+                        REDIS_CONN.queue_product(settings.get_svr_queue_name(0), message=task)
+
+            return get_json_result(data=True)
+
+        return await asyncio.to_thread(_run_sync)
+    except Exception as e:
+        return server_error_response(e)
+
+
 
 @manager.route("/upload", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("kb_id")
 async def upload():
+    # 知识库id
     form = await request.form
     kb_id = form.get("kb_id")
+
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+    
+    # 文件
     files = await request.files
     if "file" not in files:
         return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
@@ -69,12 +336,15 @@ async def upload():
         if len(file_obj.filename.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
             return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
 
+    # 获取知识库行信息
     e, kb = KnowledgebaseService.get_by_id(kb_id)
     if not e:
         raise LookupError("Can't find this dataset!")
+    # 鉴权
     if not check_kb_team_write_permission(kb, current_user.id):
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
+    # 上传到文本库
     err, files = await asyncio.to_thread(FileService.upload_document, kb, file_objs, current_user.id)
     if err:
         quota_errs = [e for e in err if isinstance(e, str) and e.startswith("QUOTA:")]
@@ -82,9 +352,12 @@ async def upload():
             msg = "\n".join([e.split("QUOTA:", 1)[1].strip() for e in quota_errs])
             return get_json_result(data=files, message=msg, code=RetCode.OPERATING_ERROR)
         return get_json_result(data=files, message="\n".join(err), code=RetCode.SERVER_ERROR)
+    
     if not files:
         return get_json_result(data=files, message="There seems to be an issue with your file format. Please verify it is correct and not corrupted.", code=RetCode.DATA_ERROR)
+    
     files = [f[0] for f in files]  # remove the blob
+
     # 如果上传完成，则对上传的每个文件进行作者信息解析任务
     from api.db.db_utils import bulk_insert_into_db
     from rag.utils.redis_conn import REDIS_CONN
@@ -558,24 +831,33 @@ async def run():
     req = await get_request_json()
     try:
         def _run_sync():
+            # 遍历传入的文档id
             for doc_id in req["doc_ids"]:
+                # 查数据库看文档是否存在
                 e, doc = DocumentService.get_by_id(doc_id)
                 if not e:
                     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+                # 通过文档找到所属的知识库（Knowledgebase），看知识库是否存在
                 e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
                 if not e:
                     return get_data_error_result(message="Can't find this dataset!")
+                
+                # 确保当前用户有权限修改这个知识库（防止越权操作）。
                 if not check_kb_team_write_permission(kb, current_user.id):
                     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
-
+            # 用于在多次解析间共享表格数量信息的临时字典
             kb_table_num_map = {}
             for id in req["doc_ids"]:
+                # 当前信息
                 info = {"run": str(req["run"]), "progress": 0}
+
+                # 如果是“重新运行”且要求“删除旧数据”
                 if str(req["run"]) == TaskStatus.RUNNING.value and req.get("delete", False):
                     info["progress_msg"] = ""
                     info["chunk_num"] = 0
                     info["token_num"] = 0
 
+                # 二次检查：再次获取租户 ID 和文档对象（为了安全，防止在长循环中数据状态变化）
                 tenant_id = DocumentService.get_tenant_id(id)
                 if not tenant_id:
                     return get_data_error_result(message="Tenant not found!")
@@ -583,20 +865,25 @@ async def run():
                 if not e:
                     return get_data_error_result(message="Document not found!")
 
+                # 处理“取消”指令
                 if str(req["run"]) == TaskStatus.CANCEL.value:
                     if str(doc.run) == TaskStatus.RUNNING.value:
                         cancel_all_task_of(id)
                     else:
                         return get_data_error_result(message="Cannot cancel a task that is not in RUNNING status")
+                # 处理“重新运行”清理
                 if all([("delete" not in req or req["delete"]), str(req["run"]) == TaskStatus.RUNNING.value, str(doc.run) == TaskStatus.DONE.value]):
                     DocumentService.clear_chunk_num_when_rerun(doc.id)
 
+                # 更新数据库状态
                 DocumentService.update_by_id(id, info)
+                # 物理删除旧数据 es0
                 if req.get("delete", False):
                     TaskService.filter_delete([Task.doc_id == id])
                     if settings.docStoreConn.indexExist(search.index_name(tenant_id), doc.kb_id):
                         settings.docStoreConn.delete({"doc_id": id}, search.index_name(tenant_id), doc.kb_id)
 
+                # 启动解析任务
                 if str(req["run"]) == TaskStatus.RUNNING.value:
                     doc_dict = doc.to_dict()
                     DocumentService.run(tenant_id, doc_dict, kb_table_num_map)

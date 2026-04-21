@@ -27,7 +27,7 @@ from functools import wraps
 
 from quart_auth import AuthUser
 from itsdangerous.url_safe import URLSafeTimedSerializer as Serializer
-from peewee import AutoField, InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField
+from peewee import AutoField, InterfaceError, OperationalError, BigIntegerField, BooleanField, CharField, CompositeKey, DateTimeField, Field, FloatField, IntegerField, Metadata, Model, TextField,DateField
 from playhouse.migrate import MySQLMigrator, PostgresqlMigrator, migrate
 from playhouse.pool import PooledMySQLDatabase, PooledPostgresqlDatabase
 
@@ -1204,17 +1204,24 @@ class Group(Model):
         database = DB
         db_table = "group"
 
-
+# 表模型
 class UserGroup(Model):
+    # 自增整数
     id = AutoField(primary_key=True)
+    # index=True 这意味着数据库会为 user_id 建立索引。
     user_id = CharField(max_length=32, null=False, index=True)
+    # 组id
     group_id = CharField(max_length=32, null=False, index=True)
     created_by = CharField(max_length=32, null=False, index=True)
     created_time = BigIntegerField(null=False, index=True)
 
+    # 这是一个内部类，用于配置表的高级选项，不直接对应数据库的列。
     class Meta:
+        # 指定这个模型使用哪个数据库连接对象（DB 是在其他地方定义的 Peewee 数据库实例
         database = DB
+        # 指定数据库中的实际表名为 user_group 如果不写这个，Peewee 默认可能会用 usergroup（类名小写）。
         db_table = "user_group"
+        # 联合唯一索引
         indexes = ((("user_id", "group_id"), True),)
 
 
@@ -1237,6 +1244,59 @@ class Memory(DataBaseModel):
 
     class Meta:
         db_table = "memory"
+
+# 部门表
+class SyncDept(Model):
+    # 只包含你字典里出现的字段，全部允许 NULL
+    id = CharField(max_length=255, null=True)
+    mdmCode = CharField(max_length=255, null=True)
+    mdmName = CharField(max_length=255, null=True)
+    companyCode = CharField(max_length=255, null=True)
+    corporateName = CharField(max_length=255, null=True)
+    nameOfAdminOrg = CharField(max_length=255, null=True)
+    administrativeOrganizationCode = CharField(max_length=255, null=True)
+    parentId = CharField(max_length=255, null=True)
+    parentAdminOrgCode = CharField(max_length=255, null=True)
+    departmentName = CharField(max_length=255, null=True)
+    departmentCode = CharField(max_length=255, null=True)
+    remarks = TextField(null=True)
+    sealed = CharField(max_length=255, null=True)
+    administrativeOrganizationType = CharField(max_length=255, null=True)
+    longName = CharField(max_length=255, null=True)
+    longCode = CharField(max_length=255, null=True)
+    erpid = CharField(max_length=255, null=True)
+
+    class Meta:
+        database = DB
+        db_table = 'sync_dept'
+
+class SyncPerson(Model):
+    id = CharField(max_length=255, null=True)
+    organize = CharField(max_length=255, null=True)
+    organizationCode = CharField(max_length=255, null=True)
+    mdmName = CharField(max_length=255, null=True)
+    mdmCode = CharField(max_length=255, null=True)
+    part = CharField(max_length=255, null=True)
+    gender = CharField(max_length=10, null=True)
+    onDutyOrNot = CharField(max_length=10, null=True)
+    credentialNo = CharField(max_length=255, null=True)
+    phone = CharField(max_length=50, null=True)
+    birthday = DateField(null=True)  # 日期型
+    timeOfEnteringTheGroup = DateTimeField(null=True)
+    personnelCategory = CharField(max_length=50, null=True)
+    dateOfResignation = DateField(null=True)
+    email = CharField(max_length=255, null=True)
+    erpid = CharField(max_length=255, null=True)
+    childData = JSONField(null=True)  # 存整个 childData 字典
+
+    class Meta:
+        database = DB
+        db_table = 'sync_person'
+        table_settings = [
+            'ENGINE=InnoDB',
+            'DEFAULT CHARSET=utf8mb4',
+            'COLLATE=utf8mb4_unicode_ci'
+        ]
 
 
 def migrate_db():

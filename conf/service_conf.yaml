@@ -6,6 +6,13 @@ ragflow:
     '682d690e393a11f1a920345a60aae1f7': 'c79873e6395a11f1b4e6345a60aae1f7'  # 1组id : 参考库tennat_id
     'e013c3d4278611f1a03d10ffe02ab235': 'f3cb12522aa011f199ea10ffe02ab235'
     '71196836278011f19ca210ffe02ab235': 'b49914742aa211f1a25910ffe02ab235'
+  group_name_id_map:
+    '工艺研究一室（100146）': '682d690e393a11f1a920345a60aae1f7'  # 1组id : 参考库tennat_id
+    '工艺研究二室': 'e013c3d4278611f1a03d10ffe02ab235'
+    '工艺研究三室': '71196836278011f19ca210ffe02ab235'
+    '新品事业研发部门': '71196836278011f19ca210ffe02ab235'
+
+  
 admin:
   host: 0.0.0.0
   http_port: 9381

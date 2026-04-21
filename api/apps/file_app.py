@@ -117,27 +117,36 @@ async def upload():
             if not file_obj.filename:
                 file_obj_names = [pf_folder.name, file_obj.filename]
 
+            # /data/report.txt
             else:
                 full_path = '/' + file_obj.filename
                 file_obj_names = full_path.split('/')
+
+            # 保证了列表长度至少为 2，逻辑更统一。
             file_len = len(file_obj_names)
 
+            # ['', 'folderA', 'folderB', 'file.txt'] --> 目标路径。函数会拿着这个列表去数据库里一个个比对。
             # get folder 
             file_id_list = await asyncio.to_thread(FileService.get_id_list_by_id, pf_id, file_obj_names, 1, [pf_id])
+            
+            # 期望的路径长度 与实际存在的长度
             len_id_list = len(file_id_list)
 
             # create folder
             if file_len != len_id_list:
+                # 1. 获取“最后一个已存在的文件夹”作为父级
                 e, file = await asyncio.to_thread(FileService.get_by_id, file_id_list[len_id_list - 1])
                 if not e:
                     return get_data_error_result(message="Folder not found!")
+                # 以 b 为父级，创建下一个缺失的文件夹（比如 c） 递归创建
                 last_folder = await asyncio.to_thread(FileService.create_folder, file, file_id_list[len_id_list - 1], file_obj_names,
                                                         len_id_list)
+            # 取 -2 可能是因为 file_obj_names 的最后一项是文件名而不是文件夹，所以要把“文件的父目录”作为操作对象。    
             else:
                 e, file = await asyncio.to_thread(FileService.get_by_id, file_id_list[len_id_list - 2])
                 if not e:
                     return get_data_error_result(message="Folder not found!")
-                # 递归创建文件夹
+
                 last_folder = await asyncio.to_thread(FileService.create_folder, file, file_id_list[len_id_list - 2], file_obj_names,
                                                         len_id_list)
 
@@ -178,6 +187,108 @@ async def upload():
         return get_json_result(data=file_res)
     except Exception as e:
         return server_error_response(e)
+
+# # 通过组名称上传到对应的组内（公共组）
+# @manager.route('/upload/report', methods=['POST'])
+# @validate_request("dept_id", "user_id") 
+# async def upload_report():
+#     form = await request.form
+#     dept_id = form.get("dept_id")
+#     user_id = form.get("user_id")
+
+#     # 上传 + 解析 + 入库
+
+#     # 人员编码  + 部门编码 + pf_id
+
+#     # name = ""
+#     dept = "" + "报告"
+#     # TODO: 获取这个部门的pf_id  通过组 -> 组号 -> tenant -> pf_id
+#     pf_id = ""
+
+#     # 获取上传的文件
+#     files = await request.files
+#     if 'file' not in files:
+#         return get_json_result(
+#             data=False, message='No file part!', code=RetCode.ARGUMENT_ERROR)
+#     file_objs = files.getlist('file')
+
+#     for file_obj in file_objs:
+#         if file_obj.filename == '':
+#             return get_json_result(
+#                 data=False, message='No file selected!', code=RetCode.ARGUMENT_ERROR)
+#     file_res = []
+
+#     try:
+        
+#         # 上传单个文件的file_obj
+#         async def _handle_single_file(file_obj):
+          
+#             # # split file name path
+#             # if not file_obj.filename:
+#             #     file_obj_names = [pf_folder.name, file_obj.filename]
+
+#             # full_path = '/' + file_obj.filename
+#             full_path = '/' + dept  + "/" + file_obj.filename
+#             file_obj_names = full_path.split('/')
+#             file_len = len(file_obj_names)
+
+#             # get folder 
+#             file_id_list = await asyncio.to_thread(FileService.get_id_list_by_id, pf_id, file_obj_names, 1, [pf_id])
+#             len_id_list = len(file_id_list)
+
+#             # create folder
+#             if file_len != len_id_list:
+#                 e, file = await asyncio.to_thread(FileService.get_by_id, file_id_list[len_id_list - 1])
+#                 if not e:
+#                     return get_data_error_result(message="Folder not found!")
+#                 last_folder = await asyncio.to_thread(FileService.create_folder, file, file_id_list[len_id_list - 1], file_obj_names,
+#                                                         len_id_list)
+#             else:
+#                 e, file = await asyncio.to_thread(FileService.get_by_id, file_id_list[len_id_list - 2])
+#                 if not e:
+#                     return get_data_error_result(message="Folder not found!")
+#                 # 递归创建文件夹
+#                 last_folder = await asyncio.to_thread(FileService.create_folder, file, file_id_list[len_id_list - 2], file_obj_names,
+#                                                         len_id_list)
+
+#             # file type 获取文件类型
+#             filetype = filename_type(file_obj_names[file_len - 1])
+#             # 生成存储路径
+#             location = file_obj_names[file_len - 1]
+#             while await asyncio.to_thread(settings.STORAGE_IMPL.obj_exist, last_folder.id, location):
+#                 location += "_"
+#             # 读取文件内容
+#             blob = await asyncio.to_thread(file_obj.read)
+#             # 处理数据库的重复命名
+#             filename = await asyncio.to_thread(
+#                 duplicate_name,
+#                 FileService.query,
+#                 name=file_obj_names[file_len - 1],
+#                 parent_id=last_folder.id)
+#             # 保存到Minio
+#             await asyncio.to_thread(settings.STORAGE_IMPL.put, last_folder.id, location, blob)
+
+#             file_data = {
+#                 "id": get_uuid(),
+#                 "parent_id": last_folder.id,
+#                 "tenant_id": current_user.id,
+#                 "created_by": current_user.id,
+#                 "type": filetype,
+#                 "name": filename,
+#                 "location": location,
+#                 "size": len(blob),
+#             }
+#             inserted = await asyncio.to_thread(FileService.insert, file_data)
+#             return inserted.to_json()
+
+#         for file_obj in file_objs:
+#             res = await _handle_single_file(file_obj)
+#             file_res.append(res)
+
+#         return get_json_result(data=file_res)
+#     except Exception as e:
+#         return server_error_response(e)
+
 
 
 @manager.route('/create', methods=['POST'])  # noqa: F821
