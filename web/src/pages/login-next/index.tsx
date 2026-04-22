@@ -10,7 +10,7 @@ import { useSystemConfig } from '@/hooks/use-system-request';
 import { rsaPsw } from '@/utils';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'umi';
+import { useLocation, useNavigate } from 'umi';
 
 import Spotlight from '@/components/spotlight';
 import { Button, ButtonLoading } from '@/components/ui/button';
@@ -32,6 +32,8 @@ import { BgSvg } from './bg';
 import FlipCard3D from './card';
 import './index.less';
 
+import request from '@/utils/request';
+
 const Login = () => {
   const [title, setTitle] = useState('login');
   const navigate = useNavigate();
@@ -52,13 +54,114 @@ const Login = () => {
     loginWithChannelLoading;
   const { config } = useSystemConfig();
   const registerEnabled = config?.registerEnabled !== 0;
-
   const { isLogin } = useAuth();
+  const location = useLocation();
+  // const { isLogin } = useAuth();
+  // useEffect(() => {
+  //   if (isLogin) {
+  //     navigate('/');
+  //   }
+  // }, [isLogin, navigate]);
+
   useEffect(() => {
-    if (isLogin) {
+    // 第一步：检查 URL 是否有 SSO token
+    const params = new URLSearchParams(location.search);
+    const ssoToken = params.get('token');
+
+    if (ssoToken) {
+      // 执行 SSO 登录
+      const performSSO = async () => {
+        try {
+          // 1. 调用 SSO 验证接口
+          const ssoResponse = await request(
+            'http://192.168.1.24:8686/dev-api/sso/SsoOtherSys',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              data: { token: ssoToken }, // 注意：这里是 data 而不是 body，根据您的 request 库配置调整
+            },
+          );
+
+          // 2. 验证 SSO 响应
+          if (ssoResponse.data && ssoResponse.data.code === 200) {
+            const idCard = ssoResponse.data.msg; // 获取身份证号
+
+            // 3. 调用您的后端接口验证用户是否存在
+            const verifyResponse = await request('/v1/user/verify_sso', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json', // 确保这一行存在
+              },
+              data: { idCard: idCard }, // 确保参数名是 idCard
+            });
+            // 4. 处理后端验证结果
+            if (verifyResponse.data.code === 0) {
+              const mockRagflowLoginData = verifyResponse.data.data;
+
+              const email = mockRagflowLoginData['email'];
+              const nickname = mockRagflowLoginData['nickname'];
+              const password = mockRagflowLoginData['password'];
+
+              try {
+                // 1. 简单的非空检查 (可选，比 zod 更轻量)
+                if (!email || !password) {
+                  console.error('邮箱或密码不能为空');
+                  return;
+                }
+
+                // // 2. 密码加密 (保留原有的加密逻辑)
+                // const rsaPassWord = rsaPsw(password);
+
+                // 3. 直接触发 useLogin 中的 mutateAsync
+                // 这里的 login 是你从 useLogin() 解构出来的函数
+                const code = await login({
+                  email: email.trim(),
+                  password: password,
+                });
+
+                // 4. 根据返回结果处理业务
+                if (code === 0) {
+                  // 登录成功，跳转到首页
+                  // alert("hhhhhhhhh")
+                  await new Promise((resolve) => setTimeout(resolve, 100));
+
+                  navigate('/');
+                } else {
+                  // 可以在这里处理后端返回的具体错误提示
+                  console.log('登录失败，错误码:', code);
+                }
+              } catch (errorInfo) {
+                // 捕获网络错误或异常
+                console.log('登录过程发生异常:', errorInfo);
+              }
+            } else {
+              // 用户不存在于数据库中
+              alert('用户不存在，请联系管理员');
+              navigate('/login');
+            }
+          } else {
+            // SSO 验证失败
+            console.error('SSO 验证失败:', ssoResponse.msg);
+            alert(`SSO 验证失败: ${ssoResponse.msg || '未知错误'}`);
+            navigate('/login');
+          }
+        } catch (error) {
+          console.error('SSO 登录失败', error);
+          alert('网络请求失败，请检查网络连接');
+          navigate('/login');
+        }
+      };
+
+      performSSO();
+    }
+    // 第二步：如果没有 SSO token 但已登录，直接跳转首页
+    else if (isLogin) {
       navigate('/');
     }
-  }, [isLogin, navigate]);
+    // 第三步：既无 token 也未登录 -> 保持当前页面
+  }, [location, isLogin, navigate]);
 
   const handleLoginWithChannel = async (channel: string) => {
     await loginWithChannel(channel);
@@ -81,8 +184,23 @@ const Login = () => {
       nickname: z.string().optional(),
       email: z
         .string()
-        .email()
-        .min(1, { message: t('emailPlaceholder') }),
+        // .email()
+        .min(1, { message: t('emailPlaceholder') })
+        // 手机号 + 邮箱
+        .refine(
+          (val) => {
+            // 1. 简单的邮箱正则
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            // 2. 简单的手机号正则 (这里匹配 11 位数字，可根据需要调整)
+            const phoneRegex = /^1\d{10}$/;
+
+            // 只要满足其中一个就通过
+            return emailRegex.test(val) || phoneRegex.test(val);
+          },
+          {
+            message: t('emailPlaceholder'), // 提示语可以改成 "请输入有效的邮箱或手机号"
+          },
+        ),
       password: z.string().min(1, { message: t('passwordPlaceholder') }),
       remember: z.boolean().optional(),
     })

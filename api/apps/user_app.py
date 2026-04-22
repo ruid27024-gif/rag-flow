@@ -45,7 +45,7 @@ from api.utils.api_utils import (
     server_error_response,
     validate_request,
 )
-from api.utils.crypt import decrypt
+from api.utils.crypt import decrypt,crypt2, crypt
 from rag.utils.redis_conn import REDIS_CONN
 from api.apps import login_required, current_user, login_user, logout_user
 from api.utils.web_utils import (
@@ -111,12 +111,23 @@ async def login():
         )
 
     password = json_body.get("password")
+    print(password)
+
     try:
         password = decrypt(password)
+        user = UserService.query_user(email, password)
+        
     except BaseException:
-        return get_json_result(data=False, code=RetCode.SERVER_ERROR, message="Fail to crypt password")
+        # return get_json_result(data=False, code=RetCode.SERVER_ERROR, message="Fail to crypt password")
+        if password == UserService.query_user_by_email(email=email)[0].password:
+            user = UserService.query_user_by_email(email=email)[0]
 
-    user = UserService.query_user(email, password)
+        else:
+            return get_json_result(data=False, code=RetCode.SERVER_ERROR, message="Fail to crypt password")
+
+
+
+
 
     if user and hasattr(user, 'is_active') and user.is_active == "0":
         return get_json_result(
@@ -865,10 +876,22 @@ async def user_add():
     email_address = req["email"]
 
     # Validate the email address
-    if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email_address):
+    # if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email_address):
+    #     return get_json_result(
+    #         data=False,
+    #         message=f"Invalid email address: {email_address}!",
+    #         code=RetCode.OPERATING_ERROR,
+    #     )
+
+
+    # 1. 定义手机号正则 (这里以中国大陆 11 位手机号为例)
+    phone_pattern = r"^1[3-9]\d{9}$"
+
+    # 2. 如果既不是邮箱，也不是手机号，则报错
+    if not re.match(r"^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$", email_address) and not re.match(phone_pattern, email_address):
         return get_json_result(
             data=False,
-            message=f"Invalid email address: {email_address}!",
+            message=f"Invalid email or phone number: {email_address}!",
             code=RetCode.OPERATING_ERROR,
         )
 
@@ -1212,4 +1235,127 @@ async def forget_reset_password():
 
     msg = "Password reset successful. Logged in."
     return await construct_response(data=user.to_json(), auth=user.get_id(), message=msg)
+
+
+
+# # 确保导入了正确的库
+# from Crypto.PublicKey import RSA
+# from Crypto.Cipher import PKCS1_v1_5
+# import base64
+
+# def rsa_psw(password: str) -> str:
+#     # 1. 严格格式的公钥 (注意每一行末尾不能有空格)
+#     # 我把公钥放在这里，请直接复制
+#     pub_key_pem = (
+#         "-----BEGIN PUBLIC KEY-----\n"
+#         "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArq9XTUSeYr2+N1h3Afl/\n"
+#         "z8Dse/2yD0ZGrKwx+EEEcdsBLca9Ynmx3nIB5obmLlSfmskLpBo0UACBmB5rEjBp\n"
+#         "2Q2f3AG3Hjd4B+gNCG6BDaawuDlgANIhGnaTLrIqWrrcm4EMzJOnAOI1fgzJRsOU\n"
+#         "EfaS318Eq9OVO3apEyCCt0lOQK6PuksduOjVxtltDav+guVAA068NrPYmRNabVKR\n"
+#         "NLJpL8w4D44sfth5RvZ3q9t+6RTArpEtc5sh5ChzvqPOzKGMXW83C95TxmXqpbK6\n"
+#         "olN4RevSfVjEAgCydH6HN6OhtOQEcnrU97r9H0iZOWwbw3pVrZiUkuRD1R56Wzs2\n"
+#         "wIDAQAB\n"
+#         "-----END PUBLIC KEY-----"
+#     )
+
+#     try:
+#         # 2. 导入公钥
+#         rsa_key = RSA.import_key(pub_key_pem)
+        
+#         # 3. 创建加密对象
+#         cipher = PKCS1_v1_5.new(rsa_key)
+        
+#         # 4. 执行加密
+#         password_bytes = password.encode('utf-8')
+#         encrypted_bytes = cipher.encrypt(password_bytes)
+        
+#         # 5. Base64 编码返回
+#         return base64.b64encode(encrypted_bytes).decode('utf-8')
+
+#     except Exception as e:
+#         print(f"RSA Error: {str(e)}")
+#         return ""
+
+
+
+from api.db.services.person_service import SyncPersonService
+@manager.route("/verify_sso", methods=["post" , "GET"])  # noqa: F821
+# @validate_request("idCard")
+async def verify_sso_user():
+    req = await get_request_json()
+    print("🔴 后端收到的原始数据:", req)
+    id_card = req.get('token')
+
+    print("id_card")
+
+    # 通过id_card判断数据库中是否存在数据
+    user = SyncPersonService.model.select().where(
+            SyncPersonService.model.credentialNo == id_card
+        ).first()
+    
+    # 1. 先判断用户是否存在（防止 user 为 None 报错）
+    if not user:
+        return get_json_result(data=False, message="User not found in database", code=RetCode.DATA_ERROR)
+
+    # 2. 获取手机号
+    phone_number = user.phone
+
+    user_ragflow = UserService.query(email=phone_number)
+    # 3. 判断是否已注册（查到了无需注册，没查到才注册）
+    if user_ragflow:
+        # 已注册：直接登录
+        # ... (你的登录逻辑) ...
+        nickname = user.mdmName
+        password = user_ragflow[0].password
+        user_dict = {
+            "access_token": get_uuid(),
+            "email": phone_number,
+            "nickname": nickname,
+            "password": password,
+            "login_channel": "password",
+            "last_login_time": get_format_time(),
+            "is_superuser": False,
+        }
+        return get_json_result(data=user_dict)
+    else:
+        
+        password = crypt("123456")
+        # Construct user info data
+        nickname = user.mdmName
+        user_dict = {
+            "access_token": get_uuid(),
+            "email": phone_number,
+            "nickname": nickname,
+            "password": password,
+            "login_channel": "password",
+            "last_login_time": get_format_time(),
+            "is_superuser": False,
+        }
+
+        print(decrypt(password))
+
+        user_id = get_uuid()
+
+        try:
+            print("hello")
+            users = user_register(user_id, user_dict)
+            if not users:
+                raise Exception(f"Fail to register {phone_number}.")
+            if len(users) > 1:
+                raise Exception(f"Same email: {phone_number} exists!")
+            user = users[0]
+            login_user(user)
+            return await construct_response(
+                data=user.to_json(),
+                auth=user.get_id(),
+                message=f"{nickname}, welcome aboard!",
+            )
+        except Exception as e:
+            rollback_user_registration(user_id)
+            logging.exception(e)
+            return get_json_result(
+                data=False,
+                message=f"User registration failure, error: {str(e)}",
+                code=RetCode.EXCEPTION_ERROR,
+            )
 

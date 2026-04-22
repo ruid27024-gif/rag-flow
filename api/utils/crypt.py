@@ -33,6 +33,17 @@ def crypt(line):
     encrypted_password = cipher.encrypt(password_base64.encode())
     return base64.b64encode(encrypted_password).decode('utf-8')
 
+def crypt2(line):
+    """
+    decrypt(crypt(input_string)) == base64(input_string), which frontend and admin_client use.
+    """
+    file_path = os.path.join(get_project_base_directory(), "conf", "private.pem")
+    rsa_key = RSA.importKey(open(file_path).read(), "Welcome")
+    cipher = Cipher_pkcs1_v1_5.new(rsa_key)
+    password_base64 = base64.b64encode(line.encode('utf-8')).decode("utf-8")
+    encrypted_password = cipher.encrypt(password_base64.encode())
+    return base64.b64encode(encrypted_password).decode('utf-8')
+
 
 def decrypt(line):
     file_path = os.path.join(get_project_base_directory(), "conf", "private.pem")
