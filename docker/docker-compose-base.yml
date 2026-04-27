@@ -4,7 +4,7 @@ services:
       - elasticsearch
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/elasticsearch:${STACK_VERSION}
     volumes:
-      - esdata01:/usr/share/elasticsearch/data
+      - /home/zyb/esdata_data:/usr/share/elasticsearch/data
     ports:
       - ${ES_PORT}:9200
     env_file: .env
@@ -166,7 +166,8 @@ services:
     ports:
       - ${MYSQL_PORT}:3306
     volumes:
-      - mysql_data:/var/lib/mysql
+      # - mysql_data:/var/lib/mysql
+      - /home/zyb/mysql_data:/var/lib/mysql
       - ./init.sql:/data/application/init.sql
     networks:
       - ragflow
@@ -188,7 +189,7 @@ services:
       - MINIO_ROOT_USER=${MINIO_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}
     volumes:
-      - minio_data:/data
+      - /home/zyb/minio_data:/data
     networks:
       - ragflow
     restart: unless-stopped
@@ -242,6 +243,11 @@ services:
     networks:
       - ragflow
     command: ["--model-id", "/data/${TEI_MODEL}", "--auto-truncate"]
+
+    # 新增模型挂载
+    volumes:
+      - ../tei_data:/data
+
     deploy:
       resources:
         reservations:

@@ -95,6 +95,7 @@ export default {
       search: '搜索',
       welcome: '欢迎来到',
       dataset: '知识库',
+      Memories: '记忆',
     },
     knowledgeList: {
       welcome: '欢迎回来',

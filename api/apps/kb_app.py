@@ -52,22 +52,35 @@ async def create():
     req = await get_request_json()
     print('DEBUG: req content follows')
     print(req)
-    e, res = KnowledgebaseService.create_with_name(
-        name = req.pop("name", None),
-        tenant_id = current_user.id,
-        parser_id = req.pop("parser_id", None),
-        **req
-    )
 
-    if not e:
-        return res
+    # 组id --> 全局参考库用户
+    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    # 这个库 所属的组id
+    tids = {tid for gid, tid in cfg_map.items()}
 
-    try:
-        if not KnowledgebaseService.save(**res):
-            return get_data_error_result()
-        return get_json_result(data={"kb_id":res["id"]})
-    except Exception as e:
-        return server_error_response(e)
+    # 如果是管理员或者参考库的用户(只有管理员和公共库可以创建)
+    if AdminUser.query(user_id=current_user.id) or current_user.id in tids:
+        e, res = KnowledgebaseService.create_with_name(
+            name = req.pop("name", None),
+            tenant_id = current_user.id,
+            parser_id = req.pop("parser_id", None),
+            **req
+        )
+
+        if not e:
+            return res
+
+        try:
+            if not KnowledgebaseService.save(**res):
+                return get_data_error_result()
+            return get_json_result(data={"kb_id":res["id"]})
+        except Exception as e:
+            return server_error_response(e)
+        
+    # ---------------- 新增的代码块 ----------------
+    else:
+        print("暂无权限")
+        return get_data_error_result(message="抱歉！当前用户暂无权限创建知识库")
 
 
 @manager.route('/update', methods=['post'])  # noqa: F821
@@ -208,7 +221,8 @@ async def list_kbs():
             tenants = owner_ids
             kbs, total = KnowledgebaseService.get_by_tenant_ids(
                 tenants, current_user.id, 0,
-                0, orderby, desc, keywords, parser_id)
+                0, orderby, desc, keywords, parser_id, admin_bypass=bool(is_admin))
+            
             kbs = [kb for kb in kbs if kb["tenant_id"] in tenants]
             total = len(kbs)
             if page_number and items_per_page:

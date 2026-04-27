@@ -201,3 +201,6 @@ backup
 
 dept.json
 people.json
+
+docker/*.tar.gz
+tei_data/

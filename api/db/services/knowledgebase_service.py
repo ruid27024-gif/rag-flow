@@ -53,10 +53,12 @@ class KnowledgebaseService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_group_reference_tenant_ids(cls, user_id: str) -> list[str]:
+        # 用户所加入的组id
         group_ids = {
             r.group_id
             for r in UserGroup.select(UserGroup.group_id).where(UserGroup.user_id == user_id)
         }
+        # 用户创建的组
         try:
             group_ids.update(
                 {
@@ -66,12 +68,15 @@ class KnowledgebaseService(CommonService):
             )
         except Exception:
             pass
+
+        # 通过组id获取到参考库的租户id
         ref_ids = set()
         cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
         for gid in list(group_ids):
             tid = cfg_map.get(gid)
             if tid:
                 ref_ids.add(tid)
+        # 没有参考库的组通过数据库直接获取组参考库id
         db_group_ids = [gid for gid in list(group_ids) if gid not in cfg_map]
         if db_group_ids:
             try:
@@ -256,34 +261,79 @@ class KnowledgebaseService(CommonService):
         #     admin_bypass: Bypass permission check if True
         # Returns:
         #     Tuple of (knowledge_base_list, total_count)
+        # fields = [
+        #     cls.model.id,
+        #     cls.model.avatar,
+        #     cls.model.name,
+        #     cls.model.language,
+        #     cls.model.description,
+        #     cls.model.tenant_id,
+        #     cls.model.permission,
+        #     cls.model.doc_num,
+        #     cls.model.token_num,
+        #     cls.model.chunk_num,
+        #     cls.model.parser_id,
+        #     cls.model.embd_id,
+        #     User.nickname,
+        #     User.avatar.alias('tenant_avatar'),
+        #     cls.model.update_time
+        # ]
+        
+        # kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+
         fields = [
-            cls.model.id,
-            cls.model.avatar,
-            cls.model.name,
-            cls.model.language,
-            cls.model.description,
-            cls.model.tenant_id,
-            cls.model.permission,
-            cls.model.doc_num,
-            cls.model.token_num,
-            cls.model.chunk_num,
-            cls.model.parser_id,
-            cls.model.embd_id,
-            User.nickname,
-            User.avatar.alias('tenant_avatar'),
-            cls.model.update_time
-        ]
+        cls.model.id,
+        cls.model.avatar,
+        cls.model.name,
+        cls.model.language,
+        cls.model.description,
+        cls.model.tenant_id,
+        cls.model.permission,
+        cls.model.doc_num,
+        cls.model.token_num,
+        cls.model.chunk_num,
+        cls.model.parser_id,
+        cls.model.embd_id,
+        User.nickname,
+        User.avatar.alias('tenant_avatar'),
+        cls.model.update_time,
+        # 新增字段
+        UserGroup.group_id,      # 1. 拿到关联表中的 group_id
+        Group.group_name         # 2. 拿到最终目标表中的 group_name
+    ]
+
+        kbs = (cls.model
+        .select(*fields)
+        # 1. 连接 User 表 (通常用户肯定存在，保持 INNER JOIN 即可，也可以改为 LEFT_OUTER 以防万一)
+        .join(User, on=(cls.model.tenant_id == User.id))
         
-        kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+        # 2. 连接 UserGroup 表 <--- 修改这里
+        # 使用 LEFT_OUTER，这样即使没有组，知识库也能查出来
+        .join(UserGroup, JOIN.LEFT_OUTER, on=(cls.model.tenant_id == UserGroup.user_id))
         
+        # 3. 切换回主表上下文
+        .switch(cls.model)
+        
+        # 4. 连接 Group 表 <--- 修改这里
+        # 同样建议用 LEFT_OUTER，防止因为组信息缺失导致数据查不出来
+        .join(Group, JOIN.LEFT_OUTER, on=(UserGroup.group_id == Group.group_id))
+        )
+
+
+                
+        # 如果不是超级管理员
         if not admin_bypass:
+            # 拿到全局参考库
             reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
+            # 所有的组参考库id
             group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
+            # 拿到组参考库
             group_reference_expr = cls.model.tenant_id.in_(group_reference_ids) if group_reference_ids else None
-            # Check for level 2 admin
+            # Check for level 2 admin 如果是二级管理员
             if AdminUser.query(user_id=user_id, role_level=2):
-                 # Find current user's group
+                 # Find current user's group  找出用户当前组
                 my_group = UserGroup.select().where(UserGroup.user_id == user_id).first()
+                # 有组的
                 if my_group:
                     # Find all users in the same group
                     group_members = UserGroup.select(UserGroup.user_id).where(UserGroup.group_id == my_group.group_id)
@@ -311,6 +361,7 @@ class KnowledgebaseService(CommonService):
                     if group_reference_expr is not None:
                         base_expr = base_expr | group_reference_expr
                     kbs = kbs.where(base_expr)
+
             else:
                 reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
                 base_expr = (
@@ -337,6 +388,8 @@ class KnowledgebaseService(CommonService):
                     kbs = kbs.where(~cls.model.tenant_id.in_(hidden_group_reference_ids))
 
         kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
+
+
         
         if keywords:
             kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
@@ -349,11 +402,46 @@ class KnowledgebaseService(CommonService):
             kbs = kbs.order_by(cls.model.getter_by(orderby).asc())
 
         count = kbs.count()
+        
+        # # todo先展示参考库了
+        # kbs = kbs.order_by(UserGroup.group_id.asc())
 
+        # if page_number and items_per_page:
+        #     kbs = kbs.paginate(page_number, items_per_page)
+
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        reversed_map = {v: k for k, v in cfg_map.items()}
+        
+        res = list(kbs.dicts())
+        
+        for kb in res:
+            # 1. 获取租户ID
+            tenant_id = kb["tenant_id"]
+            
+            # 2. 检查是否有映射关系
+            if tenant_id in reversed_map:
+                group_id = reversed_map[tenant_id]
+                
+                # 3. 修正：执行查询并获取具体对象
+                # 使用 .first() 获取第一条记录，如果找不到返回 None
+                group_obj = Group.select(Group.group_name).where(Group.group_id == group_id).first()
+                
+                kb["group_id"] = group_id
+                # 修正：取出对象里的属性，如果没有查到对象则设为 None
+                kb["group_name"] = group_obj.group_name if group_obj else None
+        print(res)
+        
         if page_number and items_per_page:
-            kbs = kbs.paginate(page_number, items_per_page)
-
-        return list(kbs.dicts()), count
+            res = sorted(res, key=lambda x: (1 if x["group_name"] is not None else 0, x["group_name"] or ""))
+            # 1. 计算偏移量 (Offset)
+            # 公式：(当前页码 - 1) * 每页数量
+            # 例如：第1页偏移0，第2页偏移10（假设每页10条）
+            offset = (page_number - 1) * items_per_page
+            
+            # 2. 使用切片截取列表
+            # 语法：列表[起始索引 : 结束索引]
+            res = res[offset : offset + items_per_page]
+        return res, count
 
     @classmethod
     @DB.connection_context()

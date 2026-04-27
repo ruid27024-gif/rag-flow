@@ -109,12 +109,17 @@ async def upload_report():
             code=RetCode.ARGUMENT_ERROR
         )
 
+    if '（' in dep_name:
+        dep_name = dep_name.split('（')[0]
+    kb_name = dep_name + "报告库"
 
     # 4. 获取kb_id 通过知识库的名称 以及公共库的tenant_id (如果没有就创建1个）
     kb = KnowledgebaseService.model.select().where(
         (KnowledgebaseService.model.tenant_id == tenant_id) & 
         (KnowledgebaseService.model.name == kb_name)
     ).first()
+
+
 
     # kb_id = kb.id
     if not kb:   
@@ -123,7 +128,7 @@ async def upload_report():
             # 新建一个知识库
         req = {
         "name": kb_name,  # 知识库名称
-        "embd_id": "text-embedding-v3@Tongyi-Qianwen",
+        "embd_id": "text-embedding-v2@Tongyi-Qianwen",
         "language": "Chinese",
         "parse_type": 1,
         "parser_id": "paper",

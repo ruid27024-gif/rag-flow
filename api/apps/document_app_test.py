@@ -3,11 +3,13 @@ import requests
 # 1. 设置 URL
 url = "http://localhost:9222/v1/document/upload/report"
 
+# 100146  100147  100148
+
 # 2. 准备表单数据
 data = {
-    "dept_id": "100146",
+    "dept_id": "100051",
     "user_id": "105405",
-    "file_name2": "haha.pdf"
+    "file_name2": "12345.pdf"
 }
 
 # 3. 准备文件 (注意使用 'rb' 二进制读取模式)
