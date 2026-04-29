@@ -413,7 +413,8 @@ class KnowledgebaseService(CommonService):
         reversed_map = {v: k for k, v in cfg_map.items()}
         
         res = list(kbs.dicts())
-        
+        public_id = settings.REFERENCE_TENANT_ID
+
         for kb in res:
             # 1. 获取租户ID
             tenant_id = kb["tenant_id"]
@@ -429,10 +430,47 @@ class KnowledgebaseService(CommonService):
                 kb["group_id"] = group_id
                 # 修正：取出对象里的属性，如果没有查到对象则设为 None
                 kb["group_name"] = group_obj.group_name if group_obj else None
+
+                # 全局库的id
+
+            if tenant_id == public_id:
+                kb["group_name"] = "全局参考库"
+        
         print(res)
         
+        
+
         if page_number and items_per_page:
-            res = sorted(res, key=lambda x: (1 if x["group_name"] is not None else 0, x["group_name"] or ""))
+            # res = sorted(res, key=lambda x: (1 if x["group_name"] is not None else 0, x["group_name"] or ""))
+
+            def custom_sort_key(x):
+                name = x["group_name"]
+                
+                # 1. 处理 None 值：优先级 0 (最高，排第一)
+                if name is None:
+                    return (0, "")
+                    
+                # 2. 处理 "全局参考库"：优先级 1 (排第二)
+                if name == "全局参考库":
+                    return (1, "")
+                
+                if name == "工艺研究一室":
+                    return (2, "")
+                
+                if name == "工艺研究二室":
+                    return (3, "")
+                
+                if name == "工艺研究三室":
+                    return (4, "")
+                
+                if name == "新品事业部研发部":
+                    return (5, "")
+                
+                else:
+                    return(6, "")
+                
+            res = sorted(res, key=custom_sort_key)
+
             # 1. 计算偏移量 (Offset)
             # 公式：(当前页码 - 1) * 每页数量
             # 例如：第1页偏移0，第2页偏移10（假设每页10条）

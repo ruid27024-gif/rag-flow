@@ -33,7 +33,7 @@ export default function SearchPage({
             'text-4xl font-bold bg-gradient-to-l from-[#40EBE3] to-[#4A51FF] bg-clip-text',
           )}
         >
-          RAGFlow
+          恒丰纸业
         </h1>
 
         <div className="rounded-lg  text-primary text-xl sticky flex justify-center w-full transform scale-100 mt-8 p-6 h-[240px] border">
@@ -41,7 +41,7 @@ export default function SearchPage({
           <div className="flex flex-col justify-center items-center  w-2/3">
             {!isSearching && (
               <>
-                <p className="mb-4 transition-opacity">👋 Hi there</p>
+                <p className="mb-4 transition-opacity">知识库检索</p>
                 <p className="mb-10 transition-opacity">
                   {userInfo && (
                     <>

@@ -15,7 +15,7 @@ import { SearchList } from './search-list';
 const IconMap = {
   [Routes.Chats]: 'chats',
   [Routes.Searches]: 'searches',
-  [Routes.Agents]: 'agents',
+  // [Routes.Agents]: 'agents',
 };
 
 const EmptyTypeMap = {
@@ -46,7 +46,7 @@ export function Applications() {
     () => [
       { value: Routes.Chats, label: t('chat.chatApps') },
       { value: Routes.Searches, label: t('search.searchApps') },
-      { value: Routes.Agents, label: t('header.flow') },
+      // { value: Routes.Agents, label: t('header.flow') },
     ],
     [t],
   );

@@ -499,9 +499,13 @@ async def create():
         if DocumentService.query(name=req["name"], kb_id=kb_id):
             return get_data_error_result(message="Duplicated document name in the same dataset.")
 
+        # 1. 获取创建并将.knowladge挂到根上
         kb_root_folder = FileService.get_kb_folder(kb.tenant_id)
+
         if not kb_root_folder:
             return get_data_error_result(message="Cannot find the root folder.")
+        
+        # 2. 知识库挂接到.knowladge
         kb_folder = FileService.new_a_file_from_kb(
             kb.tenant_id,
             kb.name,

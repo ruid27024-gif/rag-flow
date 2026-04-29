@@ -57,9 +57,12 @@ async def create():
     cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
     # 这个库 所属的组id
     tids = {tid for gid, tid in cfg_map.items()}
+    public_id = settings.REFERENCE_TENANT_ID
+
+
 
     # 如果是管理员或者参考库的用户(只有管理员和公共库可以创建)
-    if AdminUser.query(user_id=current_user.id) or current_user.id in tids:
+    if AdminUser.query(user_id=current_user.id) or current_user.id in tids or current_user.id == public_id:
         e, res = KnowledgebaseService.create_with_name(
             name = req.pop("name", None),
             tenant_id = current_user.id,

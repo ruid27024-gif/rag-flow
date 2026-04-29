@@ -232,6 +232,7 @@ class CommonService:
         data["update_time"] = current_timestamp()
         data["update_date"] = datetime_format(datetime.now())
         num = cls.model.update(data).where(cls.model.id == pid).execute()
+        
         return num
 
     @classmethod

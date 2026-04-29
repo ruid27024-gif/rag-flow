@@ -74,7 +74,7 @@ export default function Datasets() {
     const groups: Record<string, typeof kbs> = {};
 
     kbs.forEach((dataset) => {
-      const groupName = dataset.group_name || '未分组';
+      const groupName = dataset.group_name || '管理员私有库';
 
       if (!groups[groupName]) {
         groups[groupName] = [];

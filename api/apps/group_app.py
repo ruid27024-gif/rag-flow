@@ -6,6 +6,15 @@ from api.apps import login_required, current_user
 from common.constants import RetCode
 from peewee import fn
 
+from api.db.services.user_group_service import UserGroupService
+from api.db.services.file_service import FileService
+from api.db.services.file_admin_service import FileAdminService
+from api.db.services.file_group_service import FileGroupService
+from api.db import FileType
+from api.db.services import UserService
+from peewee import IntegrityError
+from api.db.db_models import DB
+
 def check_admin(user):
     admin_user = AdminUser.query(user_id=user.id, role_level=1)
     if not admin_user:
@@ -52,7 +61,7 @@ async def get_my_group():
     except Exception as e:
         return server_error_response(e)
 
-
+# 二级管理员建组
 @manager.route('/my_group/create', methods=['POST'])
 @login_required
 @validate_request("group_name")
@@ -75,12 +84,62 @@ async def create_my_group():
         
         # Add current user to the group
         from api.db.services.user_group_service import UserGroupService
+        from api.db.services.file_service import FileService
         UserGroupService.save(
             user_id=current_user.id,
             group_id=group.group_id,
             created_by=current_user.id,
         )
-        
+
+        # 获取1级管理员id
+        admin = AdminUser.select().where(AdminUser.role_level  == 1).first()
+        admin_id = admin.user_id
+
+        # 获取1级别管理员的根
+        root_folder = FileService.get_root_folder(admin_id)
+        root_id = root_folder["id"]
+
+
+        # 把组id挂载到根id上
+        file = FileAdminService.insert({
+            "id": group.group_id,
+            "parent_id": root_id,
+            "tenant_id": admin_id,  # 虚拟到1级管理员
+            "created_by": admin_id,
+            "name": group_name,
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
+        # 2. 把自己挂到组id上
+        root_folder = FileService.get_root_folder(tenant_id=current_user.id)
+        pf_id = root_folder["id"]
+        user = UserService.filter_by_id(current_user.id)
+
+        file = FileAdminService.insert({
+            "id": pf_id,
+            "parent_id": group.group_id,
+            "tenant_id": admin_id,  # 虚拟到1级管理员
+            "created_by": admin_id,
+            "name": user.nickname,
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
+        # 3. 把自己挂到二级表
+        file = FileGroupService.insert({
+            "id": pf_id,
+            "parent_id": pf_id,
+            "tenant_id": current_user.id,  # 组管理员id
+            "created_by": current_user.id,
+            "name": "/",
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
         return get_json_result(data={"group_id": group.group_id})
     except Exception as e:
         return server_error_response(e)
@@ -98,7 +157,25 @@ async def new_group():
         if error_response:
             return error_response
             
-        GroupService.save(group_name=group_name, created_by=current_user.id)
+        group = GroupService.save(group_name=group_name, created_by=current_user.id)
+
+
+        # 建组的时候把 组id挂载到自己的根上
+        root_folder = FileService.get_root_folder(tenant_id)
+        root_id = root_folder["id"]
+
+        # 组挂到自己的根上
+        file = FileAdminService.insert({
+            "id": group.group_id,
+            "parent_id": root_id,
+            "tenant_id": current_user.id,
+            "created_by": current_user.id,
+            "name": group_name,
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
@@ -157,8 +234,29 @@ async def delete_group():
         error_response = check_admin(current_user)
         if error_response:
             return error_response
-            
+        
+
         GroupService.delete_by_id(group_id)
+        UserGroupService.remove_members_by_group_id(group_id)
+        # 暂且断开1级别表的组号到"/"
+        FileAdminService.delete_by_id(group_id)
+
+        # 断开2级别表
+        # 获取当前组的管理员
+        # 1. 构建查询
+        query = (AdminUser
+                .select()
+                .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
+                .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+
+        # 2. 获取第一个结果
+        group_user = query.first()
+        group_user_id = group_user.user_id
+
+        FileGroupService.delete_by_id(group_user_id)
+
+
+
         return get_json_result(data=True)
         
     except Exception as e:

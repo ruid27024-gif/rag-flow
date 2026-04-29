@@ -6,7 +6,13 @@ from api.db.services.user_group_service import UserGroupService
 from api.utils.api_utils import get_json_result, get_request_json, server_error_response, validate_request
 from common.constants import RetCode
 from common import settings
-
+from api.db.services.file_admin_service import FileAdminService
+from api.db.services.file_group_service import FileGroupService
+from api.db.services.file_service import FileService
+from api.db import FileType
+from api.db.services import UserService
+from peewee import IntegrityError
+from api.db.db_models import DB
 
 def check_admin(user):
     is_admin = AdminUser.query(user_id=user.id, role_level=1)
@@ -72,7 +78,7 @@ async def list_my_group_members():
     except Exception as e:
         return server_error_response(e)
 
-
+# 二级管理员添加用户到自己的组内
 @manager.route("/my_group/members/add", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("user_id")
@@ -107,6 +113,45 @@ async def add_member_to_my_group():
             group_id=group_id,
             created_by=current_user.id,
         )
+
+
+        user = UserService.filter_by_id(user_id)
+        root_folder = FileService.get_root_folder(tenant_id=user_id)
+        pf_id = root_folder["id"]
+
+        admin = AdminUser.select().where(AdminUser.role_level  == 1).first()
+        admin_id = admin.user_id
+
+        # 1级表 人员挂到组内
+        file = FileAdminService.insert({
+            "id": pf_id,  # 昵称的id
+            "parent_id": group_id,
+            "tenant_id": admin_id,
+            "created_by": admin_id,
+            "name": user.nickname,
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
+        team_id = current_user.id
+        # 获取自己的根id
+        root_folder = FileService.get_root_folder(team_id)
+        root_id = root_folder["id"]        
+
+        # 二级表
+        # todo : 人员挂到自己身上
+        file = FileGroupService.insert({
+            "id": pf_id,  # 昵称的id
+            "parent_id": root_id,
+            "tenant_id": team_id,
+            "created_by": team_id,
+            "name": user.nickname,
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
         return get_json_result(data={"id": obj.id})
     except Exception as e:
         return server_error_response(e)
@@ -132,11 +177,22 @@ async def remove_member_from_my_group():
         group_id = user_group.group_id
 
         deleted = UserGroupService.delete_by_user_group(user_id=user_id, group_id=group_id)
+        root_folder = FileService.get_root_folder(tenant_id=user_id)
+        pf_id = root_folder["id"]
+        print(pf_id)
+        print(user_id)
+        # 移除1、2级别表
+        # 执行删除
+        admin_deleted = FileAdminService.model.delete().where(FileAdminService.model.id == pf_id).execute()
+        group_deleted = FileGroupService.model.delete().where(FileGroupService.model.id == pf_id).execute()
+        
+        print(f">>> 4. 删除执行完毕，Admin表影响行数: {admin_deleted}, Group表影响行数: {group_deleted}")
+
         return get_json_result(data={"deleted": deleted})
     except Exception as e:
         return server_error_response(e)
 
-
+# 1级别管理员拉人
 @manager.route("/new", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("user_id", "group_id")
@@ -149,6 +205,23 @@ async def add_user_to_group():
         error_response = check_admin(current_user)
         if error_response:
             return error_response
+        
+        # --- 修改开始：在保存前检查组内是否有二级管理员 ---
+        query = (AdminUser
+                .select()
+                .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))
+                .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))
+        
+
+        existing_manager = query.get_or_none()
+
+        is_new_user_manager = AdminUser.query(user_id=user_id, role_level=2)
+        
+        if not existing_manager and not is_new_user_manager:
+             return get_json_result(
+                code=RetCode.DATA_ERROR,
+                message="请先拉一个组管理员入组",
+            )
 
         exists = UserGroup.get_or_none(
             (UserGroup.user_id == user_id) & (UserGroup.group_id == group_id)
@@ -165,6 +238,81 @@ async def add_user_to_group():
             group_id=group_id,
             created_by=current_user.id,
         )
+
+        # 拿到当前用户的根
+        add_user = UserService.filter_by_id(user_id)
+        # 从FILE表获取用户的file_id
+        # file = File.select().where((File.parent_id == File.id)
+        #                 & (File.tenant_id == add_user.id)).first()
+        file = FileService.get_root_folder(add_user.id)
+        
+        try:
+            # 直接把人挂到1级表
+            file1 = FileAdminService.insert({
+                "id": file['id'],  # 昵称的id
+                "parent_id": group_id,
+                "tenant_id": current_user.id,
+                "created_by": current_user.id,
+                "name": add_user.nickname,
+                "location": "",
+                "size": 0,
+                "type": FileType.FOLDER.value
+            })
+        except Exception as e:
+                pass
+
+        # 判断拉入的用户是否为二级管理员
+        if AdminUser.query(user_id=user_id, role_level=2):
+            # 直接把自己加入到二级表
+            pf_id = file['id']
+            try:
+                file2 = FileGroupService.insert({
+                    "id": pf_id,  # 昵称的id
+                    "parent_id": pf_id,
+                    "tenant_id": user_id,
+                    "created_by": user_id,
+                    "name": "/",
+                    "location": "",
+                    "size": 0,
+                    "type": FileType.FOLDER.value
+                })
+            except Exception as e:
+                pass
+
+        else:
+            try:
+                # 获取当前组的管理员
+                # 1. 构建查询
+                query = (AdminUser
+                        .select()
+                        .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
+                        .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+
+                # 2. 获取第一个结果
+                group_user = query.first()
+
+                print(group_user.to_dict())
+                print(group_user.user_id)
+                print("---------------------------------------------------------------")
+                # 3. 将当前用户挂载到管理员
+                # root_folder = FileService.get_root_folder(tenant_id=group_user.user_id)
+
+                root_folder = FileService.model.select().where((FileService.model.tenant_id == group_user.user_id), (FileService.model.parent_id == FileService.model.id)).first()
+                pf_id = root_folder.id
+                file3 = FileGroupService.insert({
+                    "id": file['id'],  # 昵称的id
+                    "parent_id": pf_id,
+                    "tenant_id": group_user.user_id,
+                    "created_by": group_user.user_id,
+                    "name": add_user.nickname,
+                    "location": "",
+                    "size": 0,
+                    "type": FileType.FOLDER.value
+                })
+            except AdminUser.DoesNotExist:
+                raise Exception("请先拉一个组管理员入组")
+
+
         return get_json_result(data={"id": obj.id})
     except Exception as e:
         return server_error_response(e)
@@ -183,12 +331,22 @@ async def delete_user_group():
         if error_response:
             return error_response
 
+
+
         if pid is not None:
             deleted = UserGroupService.delete_by_id(pid)
+            # 删除1级表、二级表中的连接
+            FileAdminService.delete_by_id(pid)
+            FileGroupService.delete_by_id(pid)
             return get_json_result(data={"deleted": deleted})
+        
 
         if user_id and group_id:
             deleted = UserGroupService.delete_by_user_group(user_id=user_id, group_id=group_id)
+
+            FileAdminService.model.delete().where(FileAdminService.model.tenant_id == user_id).execute()
+            FileGroupService.model.delete().where(FileAdminService.model.tenant_id == user_id).execute()
+
             return get_json_result(data={"deleted": deleted})
 
         return get_json_result(

@@ -76,7 +76,7 @@ export default {
       nicknamePlaceholder: '请输入名称',
       register: '创建账户',
       continue: '继续',
-      title: 'A leading RAG engine for LLM context',
+      title: '知识库检索增强生成引擎',
       start: '立即开始',
       description:
         '免费注册以探索顶级 RAG 技术。 创建知识库和人工智能来增强您的业务',
@@ -777,7 +777,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       save: '保存',
       search: '搜索',
       availableModels: '可选模型',
-      profile: '概要',
+      profile: '用户概要',
       avatar: '头像',
       avatarTip: '这会在你的个人主页展示',
       profileDescription: '在此更新您的照片和个人详细信息。',
@@ -808,7 +808,8 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       timezone: '时区',
       timezoneMessage: '请选择时区',
       timezonePlaceholder: '请选择时区',
-      email: '邮箱',
+      email: '手机/邮箱',
+
       emailDescription: '一旦注册，电子邮件将无法更改。',
       currentPassword: '当前密码',
       currentPasswordMessage: '请输入当前密码',

@@ -828,6 +828,39 @@ class File(DataBaseModel):
         db_table = "file"
 
 
+# 新增1级表
+class File_Admin(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    parent_id = CharField(max_length=32, null=False, help_text="parent folder id", index=True)
+    tenant_id = CharField(max_length=32, null=False, help_text="tenant id", index=True)
+    created_by = CharField(max_length=32, null=False, help_text="who created it", index=True)
+    name = CharField(max_length=255, null=False, help_text="file name or folder name", index=True)
+    location = CharField(max_length=255, null=True, help_text="where dose it store", index=True)
+    size = IntegerField(default=0, index=True)
+    type = CharField(max_length=32, null=False, help_text="file extension", index=True)
+    source_type = CharField(max_length=128, null=False, default="", help_text="where dose this document come from",
+                            index=True)
+
+    class Meta:
+        db_table = "file_admin"
+
+# 新增二级表
+class File_Group(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    parent_id = CharField(max_length=32, null=False, help_text="parent folder id", index=True)
+    tenant_id = CharField(max_length=32, null=False, help_text="tenant id", index=True)
+    created_by = CharField(max_length=32, null=False, help_text="who created it", index=True)
+    name = CharField(max_length=255, null=False, help_text="file name or folder name", index=True)
+    location = CharField(max_length=255, null=True, help_text="where dose it store", index=True)
+    size = IntegerField(default=0, index=True)
+    type = CharField(max_length=32, null=False, help_text="file extension", index=True)
+    source_type = CharField(max_length=128, null=False, default="", help_text="where dose this document come from",
+                            index=True)
+
+    class Meta:
+        db_table = "file_group"
+
+
 class File2Document(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)
     file_id = CharField(max_length=32, null=True, help_text="file id", index=True)

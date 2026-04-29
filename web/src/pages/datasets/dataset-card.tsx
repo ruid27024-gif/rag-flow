@@ -21,7 +21,6 @@ export function DatasetCard({
 
   return (
     <HomeCard
-      className="w-full max-w-[300px]"
       data={{
         ...dataset,
         description: `${dataset.doc_num} ${t('knowledgeDetails.files')}`,

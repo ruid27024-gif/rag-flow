@@ -16,7 +16,6 @@
 import asyncio
 import base64
 import logging
-import os
 import re
 import sys
 import time
@@ -27,178 +26,24 @@ from typing import Union
 from peewee import fn
 
 from api.db import KNOWLEDGEBASE_FOLDER_NAME, FileType
-from api.db.db_models import DB, AdminUser, User, Document, File, File2Document, Knowledgebase, Task
+from api.db.db_models import DB, Document, File, File2Document, Knowledgebase, Task, File_Admin
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
-from api.db.services.group_service import GroupService
-from api.db.services.user_group_service import UserGroupService
+
 from common.misc_utils import get_uuid
-from common.constants import StatusEnum, TaskStatus, FileSource, ParserType
+from common.constants import TaskStatus, FileSource, ParserType
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.task_service import TaskService
 from api.utils.file_utils import filename_type, read_potential_broken_pdf, thumbnail_img, sanitize_path
 from rag.llm.cv_model import GptV4
 from common import settings
-from api.db.services.file_admin_service import FileAdminService
-from api.db.services.file_group_service import FileGroupService
-from api.apps import current_user
 
-class FileService(CommonService):
+
+class FileAdminService(CommonService):
     # Service class for managing file operations and storage
-    model = File
-
-    @classmethod
-    @DB.connection_context()
-    def get_tenant_id_by_parent_id(cls, parent_id):
-        """
-        通过父文件夹ID获取租户ID (tenant_id)
-        Args:
-            parent_id (str): 父文件夹的UUID
-        Returns:
-            str or None: 返回 tenant_id，如果未找到则返回 None
-        """
-        try:
-            # 1. 尝试从数据库中获取该记录，只选择 tenant_id 字段以提高效率
-            obj = cls.model.select(cls.model.tenant_id).where(
-                cls.model.id == parent_id
-            ).first()
-
-            # 2. 如果找到了对象，返回 tenant_id，否则返回 None
-            if obj:
-                return obj.tenant_id
-            return None
-
-        except Exception as e:
-            print(f"Error getting tenant_id by parent_id: {e}")
-            return None
-
-
-    @classmethod
-    @DB.connection_context()
-    def get_all_root_id(cls):
-        files = cls.model.select().where(FileService.model.parent_id == FileService.model.id).execute()
-        return [file.id for file in files]
-
-    @classmethod
-    @DB.connection_context()
-    def get_team_root_id(cls, user_ids):
-        """
-        通过用户 ID 列表获取团队根目录 ID 列表
-        Args:
-            user_ids: 用户 ID 列表 (例如: ['uuid_1', 'uuid_2'])
-        Returns:
-            list: ID 列表
-        """
-        try:
-            if isinstance(user_ids, str):
-                user_ids = [user_ids]
-
-            query = cls.model.select().where(
-                (cls.model.parent_id == cls.model.id) &  # 根目录条件
-                (cls.model.tenant_id.in_(user_ids))  # 用户ID在列表中
-            )
-
-            return [file.id for file in query]
-
-        except Exception as e:
-            print(f"Error fetching team root ids: {e}")
-            return []
-
-    # TODO 新增的
-    @classmethod
-    @DB.connection_context()
-    def get_by_pf_id_admin(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
-        # 获取parent_id 是根目录下的行 (根目录下的目录/虚拟文件) 让前端进行渲染
-        # 如果有关键字, 排除 / 本身 ，上一级
-        if keywords:
-            files = cls.model.select().where((cls.model.parent_id == pf_id),
-                                             (fn.LOWER(cls.model.name).contains(keywords.lower())),
-                                             ~(cls.model.id == pf_id))
-
-        else:
-            files = cls.model.select().where((cls.model.parent_id == pf_id), ~(cls.model.id == pf_id))
-        count = files.count()
-
-        if desc:
-            files = files.order_by(cls.model.getter_by(orderby).desc())
-
-        else:
-            files = files.order_by(cls.model.getter_by(orderby).asc())
-
-        # 默认按照时间的降序进行排
-        files = files.order_by(cls.model.getter_by("create_time").desc())
-
-        files = files.paginate(page_number, items_per_page)
-
-        res_files = list(files.dicts())
-
-        from .user_service import UserService
-        from api.apps import login_required, current_user
-
-        # 开始解析每一行
-        for file in res_files:
-
-            # 获取文件夹/文件 的前缀(组 + nickname)
-            # 获取用户
-            user = UserService.filter_by_id(file["tenant_id"])
-
-            # 判空后直接获取昵称
-            if user and user.id != current_user.id:
-                user_id = user.id
-                nickname = user.nickname
-
-                # 通过user_id获取组id
-                group_id = UserGroupService.get_group_id_by_id(user_id)
-                print(group_id)
-                if group_id:
-                    group_name = GroupService.get_name_by_id(group_id)
-                    if group_name:
-                        print(f"组名称为： {group_name}")
-                        pre = group_name + "/" + nickname
-                    else:
-                        pre = nickname
-                else:
-                    pre = nickname
-
-            else:
-                pre = ""
-
-            print(pre)
-
-            # 如果是文件夹
-            if file["type"] == FileType.FOLDER.value:
-                if pre:
-                    if file['name'] == '.knowledgebase' :
-                        file['name'] = pre 
-
-                    # 自建的文件夹
-                    else:
-                        file['name'] = file['name']
-                        
-
-                # 计算大小
-                file["size"] = cls.get_folder_size(file["id"])
-                file["kbs_info"] = []
-                # 检查是否有子文件夹：又查了一次数据库（children = ...），只是为了看里面有没有文件夹，用来决定前端是否显示那个“小箭头”图标。
-                children = list(
-                    cls.model.select()
-                    .where(
-                        (cls.model.parent_id == file["id"]),
-                        ~(cls.model.id == file["id"]),
-                    )
-                    .dicts()
-                )
-
-                file["has_child_folder"] = any(value["type"] == FileType.FOLDER.value for value in children)
-                continue
-
-            # 如果是文件
-            kbs_info = cls.get_kb_id_by_file_id_new(file["id"], pre)
-            file["kbs_info"] = kbs_info
-
-        return res_files, count
+    model = File_Admin
 
     @classmethod
     @DB.connection_context()
@@ -215,11 +60,11 @@ class FileService(CommonService):
         # Returns:
         #     Tuple of (file_list, total_count)
         if keywords:
-            files = cls.model.select().where((cls.model.parent_id == pf_id), (fn.LOWER(cls.model.name).contains(keywords.lower())), ~(cls.model.id == pf_id))
+            files = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == pf_id), (fn.LOWER(cls.model.name).contains(keywords.lower())), ~(cls.model.id == pf_id))
         else:
             files = cls.model.select().where((cls.model.parent_id == pf_id), ~(cls.model.id == pf_id))
-            # (cls.model.tenant_id == tenant_id), 
         count = files.count()
+        print(count)
         if desc:
             files = files.order_by(cls.model.getter_by(orderby).desc())
         else:
@@ -228,6 +73,41 @@ class FileService(CommonService):
         files = files.paginate(page_number, items_per_page)
 
         res_files = list(files.dicts())
+        print(res_files)
+
+
+        file = cls.model.select().where((cls.model.tenant_id == tenant_id)&(cls.model.id == cls.model.parent_id)).first()
+        root_id = file.id
+
+        if pf_id == root_id:
+            print("部门排序开始... ...")
+            def custom_sort_key(x):
+                name = x["name"]
+                
+                # 1. 处理 None 值：优先级 0 (最高，排第一)
+                if name is None:
+                    return (0, "")
+                    
+                # 2. 处理 "全局参考库"：优先级 1 (排第二)
+                if name == "全局参考库":
+                    return (1, "")
+                
+                if name == "工艺研究一室":
+                    return (2, "")
+                
+                if name == "工艺研究二室":
+                    return (3, "")
+                
+                if name == "工艺研究三室":
+                    return (4, "")
+                
+                if name == "新品事业部研发部":
+                    return (5, "")
+                
+                else:
+                    return(6, "")
+                    
+            res_files = sorted(res_files, key=custom_sort_key)
 
         for file in res_files:
             if file["type"] == FileType.FOLDER.value:
@@ -236,7 +116,7 @@ class FileService(CommonService):
                 children = list(
                     cls.model.select()
                     .where(
-                        # (cls.model.tenant_id == tenant_id),
+                        (cls.model.tenant_id == tenant_id),
                         (cls.model.parent_id == file["id"]),
                         ~(cls.model.id == file["id"]),
                     )
@@ -258,42 +138,17 @@ class FileService(CommonService):
         # Returns:
         #     List of dictionaries containing dataset IDs and names
         kbs = (
-            cls.model.select(*[Knowledgebase.id, Knowledgebase.name])
+            cls.model.select(*[Knowledgebase.id, Knowledgebase.name, File2Document.document_id])
             .join(File2Document, on=(File2Document.file_id == file_id))
             .join(Document, on=(File2Document.document_id == Document.id))
             .join(Knowledgebase, on=(Knowledgebase.id == Document.kb_id))
             .where(cls.model.id == file_id)
         )
-
         if not kbs:
             return []
         kbs_info_list = []
         for kb in list(kbs.dicts()):
-            kbs_info_list.append({"kb_id": kb["id"], "kb_name": kb["name"]})
-        return kbs_info_list
-
-    @classmethod
-    @DB.connection_context()
-    def get_kb_id_by_file_id_new(cls, file_id, pre):
-        # Get dataset IDs associated with a file
-        # Args:
-        #     file_id: File ID
-        # Returns:
-        #     List of dictionaries containing dataset IDs and names
-        kbs = (
-            cls.model.select(*[Knowledgebase.id, Knowledgebase.name])
-            .join(File2Document, on=(File2Document.file_id == file_id))
-            .join(Document, on=(File2Document.document_id == Document.id))
-            .join(Knowledgebase, on=(Knowledgebase.id == Document.kb_id))
-            .where(cls.model.id == file_id)
-        )
-
-        if not kbs:
-            return []
-        kbs_info_list = []
-
-        for kb in list(kbs.dicts()):
-            kbs_info_list.append({"kb_id": kb["id"], "kb_name": kb["name"]})
+            kbs_info_list.append({"kb_id": kb["id"], "kb_name": kb["name"], "document_id": kb["document_id"]})
         return kbs_info_list
 
     @classmethod
@@ -386,21 +241,6 @@ class FileService(CommonService):
             file = cls.insert(
                 {"id": get_uuid(), "parent_id": parent_id, "tenant_id": current_user.id, "created_by": current_user.id, "name": name[count], "location": "", "size": 0, "type": FileType.FOLDER.value}
             )
-            try:
-                if AdminUser.query(user_id=current_user.id, role_level=1):
-                    FileAdminService.insert(
-                {"id": get_uuid(), "parent_id": parent_id, "tenant_id": current_user.id, "created_by": current_user.id, "name": name[count], "location": "", "size": 0, "type": FileType.FOLDER.value}
-            )
-                else:
-                    FileGroupService.insert(
-                {"id": get_uuid(), "parent_id": parent_id, "tenant_id": current_user.id, "created_by": current_user.id, "name": name[count], "location": "", "size": 0, "type": FileType.FOLDER.value}
-            )
-                    FileAdminService.insert(
-                {"id": get_uuid(), "parent_id": parent_id, "tenant_id": current_user.id, "created_by": current_user.id, "name": name[count], "location": "", "size": 0, "type": FileType.FOLDER.value}
-            )
-            except Exception as e:
-                print("1、2级表知识库未能挂到.knowladge")
-
             return cls.create_folder(file, file.id, name, count + 1)
 
     @classmethod
@@ -425,6 +265,7 @@ class FileService(CommonService):
         #     tenant_id: Tenant ID
         # Returns:
         #     Root folder dictionary
+        # 查询到自己的根ID
         for file in cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == cls.model.id)):
             return file.to_dict()
 
@@ -440,14 +281,6 @@ class FileService(CommonService):
             "location": "",
         }
         cls.save(**file)
-        try:
-            if AdminUser.query(user_id=tenant_id, role_level=1):
-                FileAdminService.save(**file)
-            else:
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
-        except Exception as e:
-            print("1、2级表知识库写入根路径失败")
         return file
 
     @classmethod
@@ -462,110 +295,8 @@ class FileService(CommonService):
         root_id = root_folder["id"]
         kb_folder = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == root_id), (cls.model.name == KNOWLEDGEBASE_FOLDER_NAME)).first()
         if not kb_folder:
-            # 没有和就创建一个 .knowladge
             kb_folder = cls.new_a_file_from_kb(tenant_id, KNOWLEDGEBASE_FOLDER_NAME, root_id)
-
-            try:
-                # 管理员只放1级表
-                if AdminUser.query(user_id=tenant_id, role_level=1):
-                    knowladge_id = kb_folder.id
-                    file = {
-                        "id": knowladge_id,
-                        "parent_id": root_id,
-                        "tenant_id": tenant_id,
-                        "created_by": tenant_id,
-                        "name": KNOWLEDGEBASE_FOLDER_NAME,
-                        "type": kb_folder.type,
-                        "size": kb_folder.size,
-                        "location": kb_folder.location,
-                        "source_type": FileSource.KNOWLEDGEBASE,
-                    }
-                    FileAdminService.save(**file)
-                # 二级管理员创建后挂接到自己的pf_id上
-                if AdminUser.query(user_id=tenant_id, role_level=2):
-                    knowladge_id = kb_folder.id
-                    file = {
-                        "id": knowladge_id,
-                        "parent_id": root_id,
-                        "tenant_id": tenant_id,
-                        "created_by": tenant_id,
-                        "name": KNOWLEDGEBASE_FOLDER_NAME,
-                        "type": kb_folder["type"],
-                        "size": kb_folder["size"],
-                        "location": kb_folder["location"],
-                        "source_type": FileSource.KNOWLEDGEBASE,
-                    }
-                    FileAdminService.save(**file)
-                    FileGroupService.save(**file)
-                # 普通用户
-                else:
-                    knowladge_id = kb_folder.id
-                    file = {
-                        "id": knowladge_id,
-                        "parent_id": root_id,
-                        "tenant_id": tenant_id,
-                        "created_by": tenant_id,
-                        "name": KNOWLEDGEBASE_FOLDER_NAME,
-                        "type": kb_folder.type,
-                        "size": kb_folder.size,
-                        "location": kb_folder["location"],
-                        "source_type": FileSource.KNOWLEDGEBASE,
-                    }
-                    FileGroupService.save(**file)
-                    FileAdminService.save(**file)
-            except Exception as e:
-                    print(f"错误详情: {e}")
             return kb_folder
-        # 如果存在.knowladge
-        try:
-            # 管理员只放1级表
-            if AdminUser.query(user_id=tenant_id, role_level=1):
-                knowladge_id = kb_folder.id
-                file = {
-                    "id": knowladge_id,
-                    "parent_id": root_id,
-                    "tenant_id": tenant_id,
-                    "created_by": tenant_id,
-                    "name": KNOWLEDGEBASE_FOLDER_NAME,
-                    "type": kb_folder.type,
-                    "size": kb_folder.size,
-                    "location": kb_folder.location,
-                    "source_type": FileSource.KNOWLEDGEBASE,
-                }
-                FileAdminService.save(**file)
-            if AdminUser.query(user_id=tenant_id, role_level=2):
-                knowladge_id = kb_folder.id
-                file = {
-                    "id": knowladge_id,
-                    "parent_id": root_id,
-                    "tenant_id": tenant_id,
-                    "created_by": tenant_id,
-                    "name": KNOWLEDGEBASE_FOLDER_NAME,
-                    "type": kb_folder.type,
-                    "size": kb_folder.size,
-                    "location": kb_folder.location,
-                    "source_type": FileSource.KNOWLEDGEBASE,
-                }
-                FileAdminService.save(**file)
-                FileGroupService.save(**file)
-            else:
-                knowladge_id = kb_folder.id
-                file = {
-                    "id": knowladge_id,
-                    "parent_id": root_id,
-                    "tenant_id": tenant_id,
-                    "created_by": tenant_id,
-                    "name": KNOWLEDGEBASE_FOLDER_NAME,
-                    "type": kb_folder.type,
-                    "size": kb_folder.size,
-                    "location": kb_folder.location,
-                    "source_type": FileSource.KNOWLEDGEBASE,
-                }
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
-        except Exception as e:
-            print(f"❌ 错误详情: {e}")
-
         return kb_folder.to_dict()
 
     @classmethod
@@ -595,15 +326,6 @@ class FileService(CommonService):
             "source_type": FileSource.KNOWLEDGEBASE,
         }
         cls.save(**file)
-        # 知识库挂到1级、2级表
-        try:
-            if AdminUser.query(user_id=tenant_id, role_level=1):
-                FileAdminService.save(**file)
-            else:
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
-        except Exception as e:
-            print("1、2级表知识库未能挂到.knowladge")
         return file
 
     @classmethod
@@ -615,17 +337,12 @@ class FileService(CommonService):
         #     tenant_id: Tenant ID
         for _ in cls.model.select().where((cls.model.name == KNOWLEDGEBASE_FOLDER_NAME) & (cls.model.parent_id == root_id)):
             return
-        
-        # 创建.knowladge
         folder = cls.new_a_file_from_kb(tenant_id, KNOWLEDGEBASE_FOLDER_NAME, root_id)
-        # 获取所有的知识库
+        from api.db.services.file_service import FileService
         for kb in Knowledgebase.select(*[Knowledgebase.id, Knowledgebase.name]).where(Knowledgebase.tenant_id == tenant_id):
-            # 为每个知识库创建一个文件夹
             kb_folder = cls.new_a_file_from_kb(tenant_id, kb.name, folder["id"])
-            # 遍历文档将文档关联到文件服务
             for doc in DocumentService.query(kb_id=kb.id):
                 FileService.add_file_from_kb(doc.to_dict(), kb_folder["id"], tenant_id)
-
 
     @classmethod
     @DB.connection_context()
@@ -636,81 +353,14 @@ class FileService(CommonService):
         # Returns:
         #     Parent folder object
         file = cls.model.select().where(cls.model.id == file_id)
+        print(file[0].parent_id)
         if file.count():
             e, file = cls.get_by_id(file[0].parent_id)
-        
-            print("------------------------------------------------------")
             if not e:
                 raise RuntimeError("Database error (File retrieval)!")
         else:
             raise RuntimeError("Database error (File doesn't exist)!")
         return file
-
-    # @classmethod
-    # @DB.connection_context()
-    # def get_all_parent_folders(cls, start_id):
-    #     # Get all parent folders in path
-    #     # Args:
-    #     #     start_id: Starting file ID
-    #     # Returns:
-    #     #     List of parent folder objects
-    #     parent_folders = []
-    #     current_id = start_id
-        
-    #     while current_id:
-    #         e, file = cls.get_by_id(current_id)
-    #         if e and file.parent_id != file.id:
-                
-    #             from .user_service import UserService
-    #             from api.apps import login_required, current_user
-
-    #             user = UserService.filter_by_id(file.tenant_id)
-
-    #             if file.name == "/":
-    #                 file.name = user.nickname
-
-
-
-    #             # 判空后直接获取昵称
-    #             if user and user.id != current_user.id and file.parent_id in FileService.get_all_root_id():
-    #                 user_id = user.id
-    #                 nickname = user.nickname
-
-    #                 # 通过user_id获取组id
-    #                 group_id = UserGroupService.get_group_id_by_id(user_id)
-    #                 print(group_id)
-    #                 if group_id:
-    #                     group_name = GroupService.get_name_by_id(group_id)
-    #                     if group_name:
-    #                         print(f"组名称为： {group_name}")
-    #                         pre = group_name + "/" + nickname
-    #                     else:
-    #                         pre = nickname
-    #                 else:
-    #                     pre = nickname
-
-    #             else:
-    #                 pre = ""
-
-    #             # 如果是文件夹
-    #             if file.type == FileType.FOLDER.value:
-    #                 if pre:
-    #                     if file.name == '.knowledgebase' :
-    #                         file.name = pre + "/" + "knowledgebase"
-
-    #                     # 自建的文件夹
-    #                     else:
-    #                         file.name = pre + "/" + file.name
-
-
-
-
-    #             parent_folders.append(file)
-    #             current_id = file.parent_id
-    #         else:
-    #             parent_folders.append(file)
-    #             break
-    #     return parent_folders
 
     @classmethod
     @DB.connection_context()
@@ -748,53 +398,17 @@ class FileService(CommonService):
         #     Created file object
         if not cls.save(**file):
             raise RuntimeError("Database error (File)!")
-        try:
-            if AdminUser.query(user_id=current_user.id, role_level=1):
-                FileAdminService.save(**file)
-            else:
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
-        except Exception as e:
-            print("1、2级表文件名称未能挂载到知识库")
-
         return File(**file)
-    
-    """
-        try:
-            if AdminUser.query(user_id=tenant_id, role_level=1):
-                FileAdminService.save(**file)
-            else:
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
-        except Exception as e:
-            print("1、2级表文件名称未能挂载到知识库")
-    """
 
     @classmethod
     @DB.connection_context()
     def delete(cls, file):
-        try:
-            if AdminUser.query(user_id=current_user.id, role_level=1):
-                FileAdminService.delete_by_id(**file)
-            else:
-                FileGroupService.delete_by_id(**file)
-                FileAdminService.delete_by_id(**file)
-        except Exception as e:
-            print("1、2级表删除文件失败")
-        
+        #
         return cls.delete_by_id(file.id)
 
     @classmethod
     @DB.connection_context()
     def delete_by_pf_id(cls, folder_id):
-        try:
-            if AdminUser.query(user_id=current_user.id, role_level=1):
-                FileAdminService.model.delete().where(cls.model.parent_id == folder_id).execute()
-            else:
-                FileGroupService.model.delete().where(cls.model.parent_id == folder_id).execute()
-                FileAdminService.model.delete().where(cls.model.parent_id == folder_id).execute()
-        except Exception as e:
-            print("1、2级表文件名称未能挂载到知识库")
         return cls.model.delete().where(cls.model.parent_id == folder_id).execute()
 
     @classmethod
@@ -804,15 +418,6 @@ class FileService(CommonService):
             files = cls.model.select().where((cls.model.tenant_id == user_id) & (cls.model.parent_id == folder_id))
             for file in files:
                 cls.delete_folder_by_pf_id(user_id, file.id)
-                try:
-                    if AdminUser.query(user_id=current_user.id, role_level=1):
-                        FileAdminService.delete_folder_by_pf_id(user_id, file.id)
-                    else:
-                        FileGroupService.delete_folder_by_pf_id(user_id, file.id)
-                        FileAdminService.delete_folder_by_pf_id(user_id, file.id)
-                except Exception as e:
-                    print("1、2级表文件名称未能挂载到知识库")
-
             return (cls.model.delete().where((cls.model.tenant_id == user_id) & (cls.model.id == folder_id)).execute(),)
         except Exception:
             logging.exception("delete_folder_by_pf_id")
@@ -842,11 +447,8 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def add_file_from_kb(cls, doc, kb_folder_id, tenant_id):
-        # 没找到这个单个文件就执行下面的操作
         for _ in File2DocumentService.get_by_document_id(doc["id"]):
             return
-        
-        # kb_folder_id 库名对应的id
         file = {
             "id": get_uuid(),
             "parent_id": kb_folder_id,
@@ -859,15 +461,6 @@ class FileService(CommonService):
             "source_type": FileSource.KNOWLEDGEBASE,
         }
         cls.save(**file)
-        try:
-            if AdminUser.query(user_id=tenant_id, role_level=1):
-                FileAdminService.save(**file)
-            else:
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
-        except Exception as e:
-            print("1、2级表文件名称未能挂载到知识库")
-
         File2DocumentService.save(**{"id": get_uuid(), "file_id": file["id"], "document_id": doc["id"]})
 
     @classmethod
@@ -875,67 +468,39 @@ class FileService(CommonService):
     def move_file(cls, file_ids, folder_id):
         try:
             cls.filter_update((cls.model.id << file_ids,), {"parent_id": folder_id})
-            try:
-                if AdminUser.query(user_id=current_user.id, role_level=1):
-                    FileAdminService.filter_update((cls.model.id << file_ids,), {"parent_id": folder_id})
-                else:
-                    FileGroupService.filter_update((cls.model.id << file_ids,), {"parent_id": folder_id})
-                    FileAdminService.filter_update((cls.model.id << file_ids,), {"parent_id": folder_id})
-            except Exception as e:
-                print("1、2级表文件移动后路径变更失败")
-            
         except Exception:
             logging.exception("move_file")
             raise RuntimeError("Database error (File move)!")
 
-
     @classmethod
     @DB.connection_context()
     def upload_document(self, kb, file_objs, user_id, src="local", parent_path: str | None = None):
-        # 获取当前用户的根
         root_folder = self.get_root_folder(user_id)
         pf_id = root_folder["id"]
-        # 已经存在的，知识库全部挂载到.knowladge ; 文件挂载到库名
         self.init_knowledgebase_docs(pf_id, user_id)
-
-        # 未存在的，新增的 .knowladge
         kb_root_folder = self.get_kb_folder(user_id)
-        # 库名称号 --> .knowladge
         kb_folder = self.new_a_file_from_kb(kb.tenant_id, kb.name, kb_root_folder["id"])
 
         safe_parent_path = sanitize_path(parent_path)
 
-        max_doc_num_per_kb = int(os.environ.get("MAX_DOC_NUM_PER_KB", "100"))
-        if max_doc_num_per_kb > 0 and not AdminUser.query(user_id=user_id):
-            if user_id == settings.REFERENCE_TENANT_ID or user_id in KnowledgebaseService.get_all_group_reference_tenant_ids():
-                pass
-            else:
-                user = User.select().where(User.id == user_id).first()
-                if not user or user.email != "1505114161@qq.com":
-                    current_doc_count = (
-                        Document.select(fn.COUNT(1))
-                        .where(
-                            (Document.kb_id == kb.id) & (Document.status == StatusEnum.VALID.value)
-                        )
-                        .scalar()
-                    )
-                    incoming_count = len(file_objs) if hasattr(file_objs, "__len__") else 1
-                    if int(current_doc_count or 0) + int(incoming_count or 0) > max_doc_num_per_kb:
-                        return [f"QUOTA: 非管理员账户每个知识库最多只能上传 {max_doc_num_per_kb} 篇文件。"], []
-
         err, files = [], []
         for file in file_objs:
+            doc_id = file.id if hasattr(file, "id") else get_uuid()
+            e, doc = DocumentService.get_by_id(doc_id)
+            if e:
+                blob = file.read()
+                settings.STORAGE_IMPL.put(kb.id, doc.location, blob, kb.tenant_id)
+                doc.size = len(blob)
+                doc = doc.to_dict()
+                DocumentService.update_by_id(doc["id"], doc)
+                continue
             try:
                 DocumentService.check_doc_health(kb.tenant_id, file.filename)
-                from urllib.parse import unquote
-                from urllib.parse import unquote
-
                 filename = duplicate_name(DocumentService.query, name=file.filename, kb_id=kb.id)
-
                 filetype = filename_type(filename)
                 if filetype == FileType.OTHER.value:
                     raise RuntimeError("This type of file has not been supported yet!")
-                # 存储到Minio的位置
+
                 location = filename if not safe_parent_path else f"{safe_parent_path}/{filename}"
                 while settings.STORAGE_IMPL.obj_exist(kb.id, location):
                     location += "_"
@@ -945,7 +510,6 @@ class FileService(CommonService):
                     blob = read_potential_broken_pdf(blob)
                 settings.STORAGE_IMPL.put(kb.id, location, blob)
 
-                doc_id = get_uuid()
 
                 img = thumbnail_img(filename, blob)
                 thumbnail_location = ""
@@ -969,7 +533,7 @@ class FileService(CommonService):
                     "thumbnail": thumbnail_location,
                 }
                 DocumentService.insert(doc)
-                # 将doc的情况复制一份到file表 位置
+
                 FileService.add_file_from_kb(doc, kb_folder["id"], kb.tenant_id)
                 files.append((doc, blob))
             except Exception as e:
@@ -991,6 +555,7 @@ class FileService(CommonService):
     def parse_docs(file_objs, user_id):
         exe = ThreadPoolExecutor(max_workers=12)
         threads = []
+        from api.db.services.file_service import FileService
         for file in file_objs:
             threads.append(exe.submit(FileService.parse, file.filename, file.read(), False))
 
@@ -1012,6 +577,7 @@ class FileService(CommonService):
         parser_config = {"chunk_token_num": 16096, "delimiter": "\n!?;。；！？", "layout_recognize": "Plain Text"}
         kwargs = {"lang": "English", "callback": dummy, "parser_config": parser_config, "from_page": 0, "to_page": 100000, "tenant_id": current_user.id if current_user else tenant_id}
         file_type = filename_type(filename)
+        from api.db.services.file_service import FileService
         if img_base64 and file_type == FileType.VISUAL.value:
             return GptV4.image2base64(blob)
         cks = FACTORY.get(FileService.get_parser(filename_type(filename), filename, ""), naive).chunk(filename, blob, **kwargs)
@@ -1042,6 +608,7 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def delete_docs(cls, doc_ids, tenant_id):
+        from api.db.services.file_service import FileService
         root_folder = FileService.get_root_folder(tenant_id)
         pf_id = root_folder["id"]
         FileService.init_knowledgebase_docs(pf_id, tenant_id)
@@ -1066,15 +633,6 @@ class FileService(CommonService):
                 deleted_file_count = 0
                 if f2d:
                     deleted_file_count = FileService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
-
-                    try:
-                        if AdminUser.query(user_id=tenant_id, role_level=1):
-                            FileAdminService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
-                        else:
-                            FileGroupService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
-                            FileAdminService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
-                    except Exception as e:
-                        print("1、2级表文件名称未能挂载到知识库")
                 File2DocumentService.delete_by_document_id(doc_id)
                 if deleted_file_count > 0:
                     settings.STORAGE_IMPL.rm(b, n)
@@ -1101,15 +659,8 @@ class FileService(CommonService):
                 blob = read_potential_broken_pdf(blob)
 
             location = get_uuid()
+            from api.db.services.file_service import FileService
             FileService.put_blob(user_id, location, blob)
-            try:
-                if AdminUser.query(user_id=user_id, role_level=1):
-                    FileAdminService.put_blob(user_id, location, blob)
-                else:
-                    FileGroupService.put_blob(user_id, location, blob)
-                    FileAdminService.put_blob(user_id, location, blob)
-            except Exception as e:
-                print("1、2级表put_blob失败啦")
 
             return {
                 "id": location,
@@ -1170,9 +721,12 @@ class FileService(CommonService):
                                         base64.b64encode(FileService.get_blob(file["created_by"], file["id"])).decode("utf-8"))
         exe = ThreadPoolExecutor(max_workers=5)
         threads = []
+        from api.db.services.file_service import FileService
         for file in files:
             if file["mime_type"].find("image") >=0:
                 threads.append(exe.submit(image_to_base64, file))
                 continue
+
             threads.append(exe.submit(FileService.parse, file["name"], FileService.get_blob(file["created_by"], file["id"]), True, file["created_by"]))
         return [th.result() for th in threads]
+

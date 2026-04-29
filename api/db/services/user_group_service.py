@@ -86,6 +86,32 @@ class UserGroupService(CommonService):
         except Exception as e:
             print(f"Error fetching member ids by group_id {group_id}: {e}")
             return []
+        
+    # 删除组内所有成员
+    @classmethod
+    @DB.connection_context()
+    def remove_members_by_group_id(cls, group_id):
+        """
+        通过组ID删除该组下的所有成员关联关系
+        例如：解散群组或清空群组时使用
+        """
+        try:
+            # 2. 构建删除语句
+            # 对应 SQL: DELETE FROM user_group WHERE group_id = '...'
+            # 注意：这里假设 cls.model 指向的是 user_group 这张关联表
+            delete_query = cls.model.delete().where(cls.model.group_id == group_id)
+            
+            # 3. 执行删除并获取受影响的行数
+            rows_deleted = delete_query.execute()
+            
+            print(f"成功删除组 {group_id} 下的 {rows_deleted} 条成员记录")
+            return rows_deleted
+            
+        except Exception as e:
+            # 4. 异常处理
+            # 因为加了 @DB.atomic()，如果这里报错，数据库会自动回滚，不会删一半
+            print(f"删除组 {group_id} 成员失败: {e}")
+            return 0
 
     # # 通过user_id获取组
     # @classmethod
