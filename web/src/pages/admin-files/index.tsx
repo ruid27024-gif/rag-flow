@@ -27,7 +27,7 @@ import {
   removeGroupAdmin,
 } from '@/services/user-service';
 import { Plus, Settings, Trash2, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DialogConfigModal } from './DialogConfigModal';
 
 interface Group {
@@ -39,17 +39,41 @@ interface Group {
   member_count?: number;
 }
 
+// interface GroupMember {
+//   user_id: string;
+//   nickname?: string;
+//   created_by: string;
+//   created_by_nickname?: string;
+//   created_time: number;
+// }
+
 interface GroupMember {
+  // --- 原有基础字段 ---
   user_id: string;
-  nickname?: string;
+  nickname?: string; // 来自 User 表，LEFT JOIN 可能导致为空
+
   created_by: string;
   created_by_nickname?: string;
   created_time: number;
+
+  // --- 新增：人员信息 (来自 SyncPerson 表) ---
+  phone?: string | null;
+  gender?: string | null; // 可能是 '男'/'女' 或者 0/1
+
+  // --- 新增：部门信息 (来自 SyncDept 表) ---
+  mdmCode?: string | null; // 部门代码
+  nameOfAdminOrg?: string | null; // 部门名称
+  corporateName?: string | null; // 公司/企业名称
 }
 
-interface CandidateUser {
+export interface CandidateUser {
   user_id: string;
   nickname: string;
+  phone: string | null;
+  gender: string | null; // 通常是 '男'/'女' 或 0/1
+  mdmCode: string | null; // 部门代码
+  nameOfAdminOrg: string | null; // 部门名称
+  corporateName: string | null; // 公司/企业名称
 }
 
 const AdminFiles = () => {
@@ -100,6 +124,9 @@ const AdminFiles = () => {
   const [memberCurrentPage, setMemberCurrentPage] = useState(1);
   const memberPageSize = 10;
 
+  const [searchKeyword, setSearchKeyword] = useState('');
+
+  // 获取组
   const fetchGroups = async () => {
     setLoading(true);
     try {
@@ -117,6 +144,35 @@ const AdminFiles = () => {
     }
   };
 
+  // 删除群组的
+  const handleDeleteGroup = async (groupId: string) => {
+    // 1. 二次确认，防止误操作
+    if (!window.confirm('确定要删除这个群组吗？此操作不可恢复。')) {
+      return;
+    }
+
+    try {
+      // 2. 调用删除群组的 API
+      // 假设你的 API 函数叫 deleteGroupApi，参数是 groupId
+      const res = await groupService.deleteGroup(groupId);
+
+      // 3. 检查响应结果
+      if (res.data?.code === 0) {
+        message.success('删除成功');
+
+        // 4. 关键步骤：重新获取列表，更新页面状态
+        // 这里就是你提到的 fetchGroups (或者叫 fetchGroupList 等)
+        fetchGroups();
+      } else {
+        message.error(res.data?.message || '删除失败');
+      }
+    } catch (error) {
+      console.error('Failed to delete group:', error);
+      message.error('删除失败，请检查网络或联系管理员');
+    }
+  };
+
+  // 获取组员
   const fetchMembers = async (groupId: string) => {
     setMemberLoading(true);
     try {
@@ -151,6 +207,7 @@ const AdminFiles = () => {
     }
   };
 
+  // 获取组管理员
   const fetchGroupAdmins = async () => {
     setGroupAdminLoading(true);
     try {
@@ -185,6 +242,18 @@ const AdminFiles = () => {
     }
   };
 
+  // 2. 新增：根据搜索词过滤候选人列表
+  // 使用 useMemo 优化性能，只有当 candidates 或 searchKeyword 变化时才重新计算
+  const filteredCandidates = useMemo(() => {
+    if (!searchKeyword) return candidates; // 没输入时显示所有
+    return candidates.filter(
+      (user) =>
+        user.nickname.includes(searchKeyword) ||
+        (user.user_id && user.user_id.toString().includes(searchKeyword)),
+    );
+  }, [candidates, searchKeyword]);
+
+  // 添加组员的
   const handleAddGroupAdmin = async () => {
     if (!newGroupAdminId.trim()) return;
     setAddingGroupAdmin(true);
@@ -206,6 +275,7 @@ const AdminFiles = () => {
     }
   };
 
+  // 删除组管理员的
   const handleRemoveGroupAdmin = async (userId: string) => {
     try {
       const res = await removeGroupAdmin(userId);
@@ -221,6 +291,7 @@ const AdminFiles = () => {
     }
   };
 
+  // 获取组群信息
   const handleMyGroupClick = async () => {
     try {
       const { data } = await groupService.getMyGroup();
@@ -236,6 +307,7 @@ const AdminFiles = () => {
     }
   };
 
+  // 创建组
   const handleCreateMyGroup = async () => {
     if (!newGroupName.trim()) return;
     setCreating(true);
@@ -491,6 +563,7 @@ const AdminFiles = () => {
                       <TableHead className="min-w-[120px]">群组人数</TableHead>
                       <TableHead className="min-w-[160px]">创建人</TableHead>
                       <TableHead className="min-w-[200px]">创建时间</TableHead>
+                      <TableHead className="w-[80px]">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -518,11 +591,28 @@ const AdminFiles = () => {
                               ? new Date(group.create_time).toLocaleString()
                               : '-'}
                           </TableCell>
+                          {/* 新增操作列 */}
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              // 调用删除函数，传入当前组的 ID
+                              onClick={(e) => {
+                                // 阻止事件冒泡，防止触发行的双击事件
+                                e.stopPropagation();
+                                handleDeleteGroup(group.id);
+                              }}
+                              title="删除组"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center h-24">
+                        <TableCell colSpan={5} className="text-center h-24">
                           暂无数据
                         </TableCell>
                       </TableRow>
@@ -587,7 +677,7 @@ const AdminFiles = () => {
           ) : (
             <>
               <div className="rounded-md border mb-4 overflow-x-auto">
-                <Table>
+                {/* <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[180px]">用户</TableHead>
@@ -626,6 +716,87 @@ const AdminFiles = () => {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center h-24">
+                          暂无数据
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table> */}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {/* 1. 表头：新增了一列展示详细用户信息 */}
+                      <TableHead className="min-w-[180px]">用户</TableHead>
+                      <TableHead className="min-w-[200px]">用户信息</TableHead>
+                      <TableHead className="min-w-[180px]">添加人</TableHead>
+                      <TableHead className="min-w-[200px]">添加时间</TableHead>
+                      <TableHead className="w-[80px]">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {memberCurrentItems.length > 0 ? (
+                      memberCurrentItems.map((m) => (
+                        <TableRow key={`${m.user_id}-${m.created_time}`}>
+                          {/* 2. 用户名列：展示昵称或ID */}
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {m.nickname || m.user_id}
+                          </TableCell>
+
+                          {/* 3. 新增列：展示电话、性别、部门 */}
+                          <TableCell className="space-y-1 py-2">
+                            {/* 电话 */}
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              📞 {m.phone || '-'}
+                            </div>
+
+                            {/* 部门与公司 */}
+                            <div className="text-sm text-muted-foreground flex items-center gap-1 truncate max-w-[250px]">
+                              🏢
+                              <span className="truncate">
+                                {m.nameOfAdminOrg ||
+                                  m.corporateName ||
+                                  '未知部门'}
+                              </span>
+                            </div>
+
+                            {/* 性别 (可选，如果空间不够可以隐藏) */}
+                            {m.gender && (
+                              <div className="text-xs text-muted-foreground">
+                                {m.gender === '1' || m.gender === '男'
+                                  ? '♂ 男'
+                                  : '♀ 女'}
+                              </div>
+                            )}
+                          </TableCell>
+
+                          {/* 4. 添加人列 */}
+                          <TableCell className="whitespace-nowrap">
+                            {m.created_by_nickname || m.created_by}
+                          </TableCell>
+
+                          {/* 5. 时间列 */}
+                          <TableCell>
+                            {m.created_time
+                              ? new Date(m.created_time).toLocaleString()
+                              : '-'}
+                          </TableCell>
+
+                          {/* 6. 操作列 */}
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleRemoveMember(m.user_id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center h-24">
                           暂无数据
                         </TableCell>
                       </TableRow>
@@ -683,12 +854,15 @@ const AdminFiles = () => {
         </div>
       </Modal>
 
-      {/* 添加成员弹窗 */}
+      {/* 添加成员弹窗
       <Modal
         title="添加成员"
         open={isAddMemberModalOpen}
         onOk={handleAddMember}
-        onCancel={() => setIsAddMemberModalOpen(false)}
+        onCancel={() => {
+        setIsAddMemberModalOpen(false);
+        setSearchKeyword(""); // 关闭弹窗时清空搜索词
+        }}
         confirmLoading={addingMember}
       >
         <div className="p-4">
@@ -697,6 +871,7 @@ const AdminFiles = () => {
               加载候选用户...
             </div>
           ) : (
+            
             <Select value={newMemberUserId} onValueChange={setNewMemberUserId}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="请选择用户（未加入任何群组）" />
@@ -715,6 +890,80 @@ const AdminFiles = () => {
                 )}
               </SelectContent>
             </Select>
+          )}
+        </div>
+      </Modal> */}
+
+      <Modal
+        title="添加成员"
+        open={isAddMemberModalOpen}
+        onOk={handleAddMember}
+        onCancel={() => {
+          setIsAddMemberModalOpen(false);
+          setSearchKeyword(''); // 关闭弹窗时清空搜索词
+        }}
+        confirmLoading={addingMember}
+      >
+        <div className="p-4">
+          {candidateLoading ? (
+            <div className="text-center py-2 text-sm text-gray-500">
+              加载候选用户...
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {' '}
+              {/* 使用 space-y-4 增加搜索框和下拉框的间距 */}
+              {/* 3. 新增：搜索输入框 */}
+              <div className="relative">
+                <Input
+                  type="text"
+                  placeholder="搜索昵称或用户ID..."
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  className="w-full"
+                  // 如果使用的是原生 input，可以用:
+                  // className="border rounded px-3 py-2 w-full"
+                />
+                {/* 可选：加一个搜索图标 */}
+                <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
+                  🔍
+                </span>
+              </div>
+              {/* 4. 修改：下拉选择框，数据源改为 filteredCandidates */}
+              <Select
+                value={newMemberUserId}
+                onValueChange={setNewMemberUserId}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="请选择搜索到的用户" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredCandidates.length > 0 ? (
+                    filteredCandidates.map((user) => (
+                      <SelectItem key={user.user_id} value={user.user_id}>
+                        {/* 可以在这里展示更多信息，比如 ID */}
+                        <div className="flex justify-between items-center">
+                          <span>{user.nickname}</span>
+                          <span className="text-xs text-gray-400 ml-2">
+                            手机号: {user.phone}
+                          </span>
+                          <span className="text-xs text-gray-400 ml-2">
+                            部门名称: {user.nameOfAdminOrg}
+                          </span>
+                          <span className="text-xs text-gray-400 ml-2">
+                            mdmCode: {user.mdmCode}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="p-2 text-sm text-center text-gray-500">
+                      没有找到匹配的用户
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
       </Modal>

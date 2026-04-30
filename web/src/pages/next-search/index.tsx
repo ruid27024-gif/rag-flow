@@ -15,7 +15,7 @@ import {
   useFetchTenantInfo,
   useFetchUserInfo,
 } from '@/hooks/use-user-setting-request';
-import { Send, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -128,7 +128,7 @@ export default function SearchPage() {
         }
       </div>
       <div className="absolute right-5 top-4 ">
-        <Button
+        {/* <Button
           className="bg-text-primary  text-bg-base border-b-accent-primary border-b-2"
           onClick={() => {
             handleOperate().then((res) => {
@@ -141,7 +141,7 @@ export default function SearchPage() {
         >
           <Send />
           <div>{t('search.embedApp')}</div>
-        </Button>
+        </Button> */}
       </div>
       {!isSearching && (
         <div className="absolute left-5 bottom-12 ">

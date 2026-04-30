@@ -620,7 +620,7 @@ def list_files():
                 try:
 
                     # 2. 获取该目录下的文件
-                    files, count = FileService.get_by_pf_id_admin(
+                    files, count = FileService.get_by_pf_id_new(
                         current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
                     )
 
@@ -679,7 +679,7 @@ def list_files():
             # if not e:
             #     return get_data_error_result(message="Folder not found!")
 
-            files, total = FileService.get_by_pf_id(
+            files, total = FileService.get_by_pf_id_new(
                 current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
 
             parent_folder = FileService.get_parent_folder(pf_id)

@@ -11,6 +11,7 @@ class GroupService {
   }
 
   deleteGroup(groupId: string) {
+    console.log('准备删除:', groupId);
     return request.post(api.delete_group, { data: { group_id: groupId } });
   }
 

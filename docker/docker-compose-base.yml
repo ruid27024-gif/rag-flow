@@ -4,7 +4,7 @@ services:
       - elasticsearch
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/elasticsearch:${STACK_VERSION}
     volumes:
-      - /home/zyb/esdata_data:/usr/share/elasticsearch/data
+      - /home/zyb/0429/esdata_data_20260428:/usr/share/elasticsearch/data
     ports:
       - ${ES_PORT}:9200
     env_file: .env
@@ -167,7 +167,7 @@ services:
       - ${MYSQL_PORT}:3306
     volumes:
       # - mysql_data:/var/lib/mysql
-      - /home/zyb/mysql_data:/var/lib/mysql
+      - /home/zyb/0429/mysql_data_20260428:/var/lib/mysql
       - ./init.sql:/data/application/init.sql
     networks:
       - ragflow
@@ -189,7 +189,7 @@ services:
       - MINIO_ROOT_USER=${MINIO_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}
     volumes:
-      - /home/zyb/minio_data:/data
+      - /home/zyb/0429/minio_data_20260428:/data
     networks:
       - ragflow
     restart: unless-stopped

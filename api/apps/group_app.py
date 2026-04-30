@@ -161,7 +161,7 @@ async def new_group():
 
 
         # 建组的时候把 组id挂载到自己的根上
-        root_folder = FileService.get_root_folder(tenant_id)
+        root_folder = FileService.get_root_folder(current_user.id)
         root_id = root_folder["id"]
 
         # 组挂到自己的根上
@@ -236,24 +236,27 @@ async def delete_group():
             return error_response
         
 
-        GroupService.delete_by_id(group_id)
+        GroupService.model.delete().where(GroupService.model.group_id == group_id).execute()
         UserGroupService.remove_members_by_group_id(group_id)
         # 暂且断开1级别表的组号到"/"
         FileAdminService.delete_by_id(group_id)
 
         # 断开2级别表
         # 获取当前组的管理员
-        # 1. 构建查询
-        query = (AdminUser
-                .select()
-                .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
-                .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+        # 1. 构建查询  群里没人可能查不到
+        try:
+            query = (AdminUser
+                    .select()
+                    .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
+                    .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
 
-        # 2. 获取第一个结果
-        group_user = query.first()
-        group_user_id = group_user.user_id
+            # 2. 获取第一个结果
+            group_user = query.first()
+            group_user_id = group_user.user_id
 
-        FileGroupService.delete_by_id(group_user_id)
+            FileGroupService.delete_by_id(group_user_id)
+        except:
+            pass
 
 
 

@@ -7,7 +7,7 @@ url = "http://localhost:9222/v1/document/upload/report"
 
 # 2. 准备表单数据
 data = {
-    "dept_id": "100051",
+    "dept_id": "100148",
     "user_id": "105405",
     "file_name2": "12345.pdf"
 }

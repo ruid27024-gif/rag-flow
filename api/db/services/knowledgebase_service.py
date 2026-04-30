@@ -415,10 +415,28 @@ class KnowledgebaseService(CommonService):
         res = list(kbs.dicts())
         public_id = settings.REFERENCE_TENANT_ID
 
+        # 1. 创建三个列表，用于分类存放不同颜色的 kb
+        color_3_kbs = [] # 存放颜色为 3 的 kb
+        color_2_kbs = [] # 存放颜色为 2 的 kb
+        other_kbs = []   # 存放颜色为 1 以及没有 color 属性的 kb
+
+
         for kb in res:
             # 1. 获取租户ID
             tenant_id = kb["tenant_id"]
-            
+                # 全局库的id
+
+            if tenant_id == public_id:
+                kb["group_name"] = "全局参考库"
+                kb["color"] = 3
+
+            if AdminUser.query(user_id=tenant_id, role_level=1):
+                kb["color"] = 1
+
+            if AdminUser.query(user_id=tenant_id, role_level=2):
+                kb["color"] = 2
+
+
             # 2. 检查是否有映射关系
             if tenant_id in reversed_map:
                 group_id = reversed_map[tenant_id]
@@ -430,15 +448,20 @@ class KnowledgebaseService(CommonService):
                 kb["group_id"] = group_id
                 # 修正：取出对象里的属性，如果没有查到对象则设为 None
                 kb["group_name"] = group_obj.group_name if group_obj else None
+                kb["color"] = 3
 
-                # 全局库的id
+            color = kb.get("color")
+            if color == 3:
+                color_3_kbs.append(kb)
+            elif color == 2:
+                color_2_kbs.append(kb)
+            else:
+                # 这里包含了 color=1 和 color 不存在的所有情况
+                other_kbs.append(kb)
 
-            if tenant_id == public_id:
-                kb["group_name"] = "全局参考库"
-        
+        # 3. 按照指定顺序合并列表
+        res = color_3_kbs + color_2_kbs + other_kbs
         print(res)
-        
-        
 
         if page_number and items_per_page:
             # res = sorted(res, key=lambda x: (1 if x["group_name"] is not None else 0, x["group_name"] or ""))

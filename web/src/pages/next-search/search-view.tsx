@@ -92,7 +92,7 @@ export default function SearchingView({
             setIsSearching?.(false);
           }}
         >
-          RAGFlow
+          恒丰纸业
         </h1>
         <div
           className={cn(

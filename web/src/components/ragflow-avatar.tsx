@@ -5,9 +5,15 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 
 const PREDEFINED_COLORS = [
   { from: '#4F6DEE', to: '#67BDF9' },
-  { from: '#38A04D', to: '#93DCA2' },
-  { from: '#C35F2B', to: '#EDB395' },
   { from: '#633897', to: '#CBA1FF' },
+  { from: '#38A04D', to: '#93DCA2' },
+
+  { from: '#C35F2B', to: '#EDB395' },
+  { from: '#FF6B6B', to: '#FF8E53' }, // 5. 珊瑚红 (活力/醒目)
+  // { from: '#F093FB', to: '#F5576C' }, // 7. 樱花粉 (柔和/年轻)
+  { from: '#43E97B', to: '#38F9D7' }, // 8. 薄荷绿 (清爽/现代)
+  { from: '#FA709A', to: '#FEE140' }, // 9. 落日黄 (温暖/渐变)
+  // { from: '#30CFD0', to: '#330867' }, // 10. 赛博朋克 (深色/酷炫)
 ];
 
 const getStringHash = (str: string): number => {
@@ -28,8 +34,9 @@ const getStringHash = (str: string): number => {
 
 const getColorForName = (name: string): { from: string; to: string } => {
   const hash = getStringHash(name);
-  const index = hash % PREDEFINED_COLORS.length;
-  return PREDEFINED_COLORS[index];
+  const slicedColors = PREDEFINED_COLORS.slice(3);
+  const index = hash % slicedColors.length;
+  return slicedColors[index];
 };
 
 export const RAGFlowAvatar = memo(
@@ -39,10 +46,15 @@ export const RAGFlowAvatar = memo(
       name?: string;
       avatar?: string;
       isPerson?: boolean;
+      color?: number; // 👈 在这里添加这一行
     }
-  >(({ name, avatar, isPerson = false, className, ...props }, ref) => {
+  >(({ name, avatar, isPerson = false, color, className, ...props }, ref) => {
     // Generate initial letter logic
     const getInitials = (name?: string) => {
+      if (color === 3) {
+        return '参';
+      }
+
       if (typeof name !== 'string' || !name) return '';
       const parts = name?.trim().split(/\s+/);
       if (parts.length === 1) {
@@ -52,9 +64,40 @@ export const RAGFlowAvatar = memo(
     };
 
     const initials = getInitials(name);
-    const { from, to } = name
-      ? getColorForName(name)
-      : { from: 'hsl(0, 0%, 30%)', to: 'hsl(0, 0%, 80%)' };
+    // const { from, to } = name
+    //   ? getColorForName(name)
+    //   : { from: 'hsl(0, 0%, 30%)', to: 'hsla(0, 60%, 57%, 0.88)' };
+
+    // 2. 颜色逻辑修改
+    let from, to;
+
+    // 判断 color 是否为数字 (1, 2, 3...)
+    if (typeof color === 'number') {
+      // 获取对应的颜色配置
+      // 注意：数组索引是从 0 开始的，所以用 color - 1
+      console.log(color);
+      const colorConfig = PREDEFINED_COLORS[color - 1];
+
+      if (colorConfig) {
+        from = colorConfig.from;
+        to = colorConfig.to;
+      } else {
+        // 如果数字超出了数组范围（比如传了 99），给个默认兜底色
+        from = 'hsl(0, 0%, 30%)';
+        to = 'hsl(0, 0%, 80%)';
+      }
+    }
+    // 如果没有 color 数字，但有 name，走原来的随机颜色逻辑
+    else if (name) {
+      const colors = getColorForName(name);
+      from = colors.from;
+      to = colors.to;
+    }
+    // 都没有，走默认灰色
+    else {
+      from = 'hsl(0, 0%, 30%)';
+      to = 'hsl(0, 0%, 80%)';
+    }
 
     const fallbackRef = useRef<HTMLElement>(null);
     const [fontSize, setFontSize] = useState('0.875rem');

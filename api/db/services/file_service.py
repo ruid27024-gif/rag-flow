@@ -43,7 +43,7 @@ from rag.llm.cv_model import GptV4
 from common import settings
 from api.db.services.file_admin_service import FileAdminService
 from api.db.services.file_group_service import FileGroupService
-from api.apps import current_user
+
 
 class FileService(CommonService):
     # Service class for managing file operations and storage
@@ -109,7 +109,7 @@ class FileService(CommonService):
     # TODO 新增的
     @classmethod
     @DB.connection_context()
-    def get_by_pf_id_admin(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
+    def get_by_pf_id_new(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
         # 获取parent_id 是根目录下的行 (根目录下的目录/虚拟文件) 让前端进行渲染
         # 如果有关键字, 排除 / 本身 ，上一级
         if keywords:
@@ -137,45 +137,40 @@ class FileService(CommonService):
         from .user_service import UserService
         from api.apps import login_required, current_user
 
+        nickname = None
         # 开始解析每一行
         for file in res_files:
 
             # 获取文件夹/文件 的前缀(组 + nickname)
             # 获取用户
-            user = UserService.filter_by_id(file["tenant_id"])
+            file_owner = UserService.filter_by_id(file["tenant_id"])
 
-            # 判空后直接获取昵称
-            if user and user.id != current_user.id:
-                user_id = user.id
-                nickname = user.nickname
+            # 参考库的情况
+            if file_owner and file_owner.id != current_user.id and file["parent_id"] in FileService.get_all_root_id():
+                file_owner_id = file_owner.id
 
-                # 通过user_id获取组id
-                group_id = UserGroupService.get_group_id_by_id(user_id)
-                print(group_id)
-                if group_id:
-                    group_name = GroupService.get_name_by_id(group_id)
-                    if group_name:
-                        print(f"组名称为： {group_name}")
-                        pre = group_name + "/" + nickname
-                    else:
-                        pre = nickname
+                global_tenant_id = settings.REFERENCE_TENANT_ID
+                cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+                cfg_map_ids = cfg_map.values()
+
+                # 如果是全局参考库
+                if file_owner_id == global_tenant_id:
+                    nickname = "全局文献参考库"
+                elif file_owner_id in cfg_map_ids:
+                    nickname = "组内文献 + 报告参考库"
                 else:
-                    pre = nickname
+                    nickname = ""
 
-            else:
-                pre = ""
-
-            print(pre)
-
+            print(nickname)
             # 如果是文件夹
             if file["type"] == FileType.FOLDER.value:
-                if pre:
-                    if file['name'] == '.knowledgebase' :
-                        file['name'] = pre 
+                if nickname:
+                    if file["name"] == '.knowledgebase' :
+                        file["name"] = nickname
 
                     # 自建的文件夹
                     else:
-                        file['name'] = file['name']
+                        file["name"] = file.name
                         
 
                 # 计算大小
@@ -195,7 +190,7 @@ class FileService(CommonService):
                 continue
 
             # 如果是文件
-            kbs_info = cls.get_kb_id_by_file_id_new(file["id"], pre)
+            kbs_info = cls.get_kb_id_by_file_id(file["id"])
             file["kbs_info"] = kbs_info
 
         return res_files, count
@@ -646,71 +641,62 @@ class FileService(CommonService):
             raise RuntimeError("Database error (File doesn't exist)!")
         return file
 
-    # @classmethod
-    # @DB.connection_context()
-    # def get_all_parent_folders(cls, start_id):
-    #     # Get all parent folders in path
-    #     # Args:
-    #     #     start_id: Starting file ID
-    #     # Returns:
-    #     #     List of parent folder objects
-    #     parent_folders = []
-    #     current_id = start_id
+    @classmethod
+    @DB.connection_context()
+    def get_all_parent_folders(cls, start_id):
+        # Get all parent folders in path
+        # Args:
+        #     start_id: Starting file ID
+        # Returns:
+        #     List of parent folder objects
+        parent_folders = []
+        current_id = start_id
         
-    #     while current_id:
-    #         e, file = cls.get_by_id(current_id)
-    #         if e and file.parent_id != file.id:
+        while current_id:
+            e, file = cls.get_by_id(current_id)
+            if e and file.parent_id != file.id:
                 
-    #             from .user_service import UserService
-    #             from api.apps import login_required, current_user
+                from .user_service import UserService
+                from api.apps import login_required, current_user
+                
+                # 获取文件的拥有者（参考库、组参考库、自己）
+                file_owner = UserService.filter_by_id(file.tenant_id)
 
-    #             user = UserService.filter_by_id(file.tenant_id)
+                # 参考库的情况
+                if file_owner and file_owner.id != current_user.id and file.parent_id in FileService.get_all_root_id():
+                    file_owner_id = file_owner.id
 
-    #             if file.name == "/":
-    #                 file.name = user.nickname
+                    global_tenant_id = settings.REFERENCE_TENANT_ID
+                    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+                    cfg_map_ids = cfg_map.values()
 
+                    # 如果是全局参考库
+                    if file_owner_id == global_tenant_id:
+                        nickname = "全局文献参考库"
+                    elif file_owner_id in cfg_map_ids:
+                        nickname = "组内文献 + 报告参考库"
+                    else:
+                        nickname = ""
 
+                # 如果是文件夹
+                if file.type == FileType.FOLDER.value:
+                    if nickname:
+                        if file.name == '.knowledgebase' :
+                            file.name = nickname
 
-    #             # 判空后直接获取昵称
-    #             if user and user.id != current_user.id and file.parent_id in FileService.get_all_root_id():
-    #                 user_id = user.id
-    #                 nickname = user.nickname
-
-    #                 # 通过user_id获取组id
-    #                 group_id = UserGroupService.get_group_id_by_id(user_id)
-    #                 print(group_id)
-    #                 if group_id:
-    #                     group_name = GroupService.get_name_by_id(group_id)
-    #                     if group_name:
-    #                         print(f"组名称为： {group_name}")
-    #                         pre = group_name + "/" + nickname
-    #                     else:
-    #                         pre = nickname
-    #                 else:
-    #                     pre = nickname
-
-    #             else:
-    #                 pre = ""
-
-    #             # 如果是文件夹
-    #             if file.type == FileType.FOLDER.value:
-    #                 if pre:
-    #                     if file.name == '.knowledgebase' :
-    #                         file.name = pre + "/" + "knowledgebase"
-
-    #                     # 自建的文件夹
-    #                     else:
-    #                         file.name = pre + "/" + file.name
+                        # 自建的文件夹
+                        else:
+                            file.name = file.name
 
 
 
-
-    #             parent_folders.append(file)
-    #             current_id = file.parent_id
-    #         else:
-    #             parent_folders.append(file)
-    #             break
-    #     return parent_folders
+                # 递归一层一层向上获取
+                parent_folders.append(file)
+                current_id = file.parent_id
+            else:
+                parent_folders.append(file)
+                break
+        return parent_folders
 
     @classmethod
     @DB.connection_context()
@@ -748,6 +734,8 @@ class FileService(CommonService):
         #     Created file object
         if not cls.save(**file):
             raise RuntimeError("Database error (File)!")
+        
+        from api.apps import login_required, current_user
         try:
             if AdminUser.query(user_id=current_user.id, role_level=1):
                 FileAdminService.save(**file)
@@ -773,6 +761,7 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def delete(cls, file):
+        from api.apps import login_required, current_user
         try:
             if AdminUser.query(user_id=current_user.id, role_level=1):
                 FileAdminService.delete_by_id(**file)
@@ -787,6 +776,7 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def delete_by_pf_id(cls, folder_id):
+        from api.apps import login_required, current_user
         try:
             if AdminUser.query(user_id=current_user.id, role_level=1):
                 FileAdminService.model.delete().where(cls.model.parent_id == folder_id).execute()
@@ -804,6 +794,7 @@ class FileService(CommonService):
             files = cls.model.select().where((cls.model.tenant_id == user_id) & (cls.model.parent_id == folder_id))
             for file in files:
                 cls.delete_folder_by_pf_id(user_id, file.id)
+                from api.apps import login_required, current_user
                 try:
                     if AdminUser.query(user_id=current_user.id, role_level=1):
                         FileAdminService.delete_folder_by_pf_id(user_id, file.id)
@@ -875,6 +866,7 @@ class FileService(CommonService):
     def move_file(cls, file_ids, folder_id):
         try:
             cls.filter_update((cls.model.id << file_ids,), {"parent_id": folder_id})
+            from api.apps import login_required, current_user
             try:
                 if AdminUser.query(user_id=current_user.id, role_level=1):
                     FileAdminService.filter_update((cls.model.id << file_ids,), {"parent_id": folder_id})

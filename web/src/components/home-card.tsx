@@ -35,6 +35,7 @@ export function HomeCard({
             className="w-[32px] h-[32px]"
             avatar={data.avatar}
             name={data.name}
+            color={data.color}
           />
         </div>
         <div className="flex flex-col justify-between gap-1 flex-1 h-full w-[calc(100%-50px)]">

@@ -9,7 +9,7 @@ query = AdminUser.select().where(AdminUser.role_level == 2)
 
 # 获取到超级管理员
 admin_user1 = AdminUser.select().where(AdminUser.role_level == 1).first()
-
+File_Group.create_table(safe=True)
 # 遍历2级别管理员
 for user in query:
     # 组管理员写入表中
@@ -70,7 +70,7 @@ for user in query:
 
         # 拿到成员的根 --> 挂到组长的根上
         file = File.select().where((File.id == File.parent_id )& (File.tenant_id == user_group_id) & (File.tenant_id != user.user_id)).first()
-        # print(file.to_dict())
+        print(file.to_dict())
 
         if file:
             print(".......................................................")
@@ -115,7 +115,7 @@ file1_ = File.select().where((File.parent_id == File.id)
 
 
 file1.parent_id = file1_.id
-file1.name = '工艺研究一室参考库'
+file1.name = '工艺研究一室参考库 + 报告库'
 try:
     File_Group.create(**file1.to_dict())
 except Exception as e:
@@ -131,7 +131,7 @@ file2_ = File.select().where((File.parent_id == File.id)
 
 
 file2.parent_id = file2_.id
-file2.name = '工艺研究二室参考库'
+file2.name = '工艺研究二室参考库 + 报告库'
 try:
     File_Group.create(**file2.to_dict()) 
 except Exception as e:
@@ -150,7 +150,7 @@ file3_ = File.select().where((File.parent_id == File.id)
 
 
 file3.parent_id = file3_.id
-file3.name = '工艺研究三室参考库'
+file3.name = '工艺研究三室参考库 + 报告库'
 try:
     File_Group.create(**file3.to_dict()) 
 except Exception as e:
@@ -164,12 +164,13 @@ file4 = File.select().where((File.parent_id == File.id)
                         & (File.tenant_id == 'b76923563eb111f1942e345a60aae1f7')).first()
 
 
+# 组
 file4_ = File.select().where((File.parent_id == File.id)
-                            & (File.tenant_id == "e1fc1e3e3eb111f1942e345a60aae1f7")).first()
+                            & (File.tenant_id == "6679ef0a445811f1b3b7345a60aae1f7")).first()
 
 
 file4.parent_id = file4_.id
-file4.name = '新品事业部研发部参考库'
+file4.name = '新品事业部研发部参考库 + 报告库'
 
 try:
     File_Group.create(**file4.to_dict()) 
@@ -178,7 +179,7 @@ except Exception as e:
 
 
 
-
+# 1 挂5
 # 全局参考库
 file5 = File.select().where((File.parent_id == File.id)
                             & (File.tenant_id == 'e475b8cc215711f1b64c10ffe02ab235')).first()
@@ -212,5 +213,5 @@ file5.name = '全局参考库'
 
 try:
     File_Group.create(**file5.to_dict()) 
-except Exception as e:
-    pass 
+except:
+    pass

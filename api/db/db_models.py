@@ -846,7 +846,7 @@ class File_Admin(DataBaseModel):
 
 # 新增二级表
 class File_Group(DataBaseModel):
-    id = CharField(max_length=32, primary_key=True)
+    id = CharField(max_length=32)
     parent_id = CharField(max_length=32, null=False, help_text="parent folder id", index=True)
     tenant_id = CharField(max_length=32, null=False, help_text="tenant id", index=True)
     created_by = CharField(max_length=32, null=False, help_text="who created it", index=True)
@@ -1325,11 +1325,7 @@ class SyncPerson(Model):
     class Meta:
         database = DB
         db_table = 'sync_person'
-        table_settings = [
-            'ENGINE=InnoDB',
-            'DEFAULT CHARSET=utf8mb4',
-            'COLLATE=utf8mb4_unicode_ci'
-        ]
+
 
 
 def migrate_db():

@@ -1,4 +1,15 @@
 import json
+import sys
+import os
+
+# 获取当前脚本所在的目录 (/home/zyb/rag-flow/zzz)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录 (/home/zyb/rag-flow)
+project_root = os.path.dirname(current_dir)
+
+# 将项目根目录加入 sys.path
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from api.db.services.dept_service import SyncDeptService
 from api.db.db_models import DB, SyncDept  # 你现有的连接
@@ -18,7 +29,7 @@ def setup_and_insert(data_list):
         print(f"✅ 已插入 {count} 条数据")
 
 try:
-    with open('./dept.json', 'r', encoding='utf-8') as file:
+    with open('/home/zyb/rag-flow/zzz/dept.json', 'r', encoding='utf-8') as file:
         data = json.load(file)
         # print(data['rtnData']['result'][0])
         setup_and_insert(data['rtnData']['result'])

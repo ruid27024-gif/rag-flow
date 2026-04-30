@@ -20,6 +20,8 @@ export function DatasetCard({
   const { navigateToDataset } = useNavigatePage();
 
   return (
+    // 3. 应用背景色
+
     <HomeCard
       data={{
         ...dataset,
@@ -36,6 +38,9 @@ export function DatasetCard({
       sharedBadge={<SharedBadge>{dataset.nickname}</SharedBadge>}
       onClick={navigateToDataset(dataset.id)}
     />
+
+    // <div className={`relative rounded-lg shadow hover:shadow-md transition-shadow ${bgClass}`}>
+    // </div>
   );
 }
 

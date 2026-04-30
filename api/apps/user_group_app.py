@@ -1,7 +1,7 @@
 from quart import request
 
 from api.apps import current_user, login_required
-from api.db.db_models import AdminUser, Group, User, UserGroup
+from api.db.db_models import AdminUser, Group, User, UserGroup, SyncPerson, SyncDept
 from api.db.services.user_group_service import UserGroupService
 from api.utils.api_utils import get_json_result, get_request_json, server_error_response, validate_request
 from common.constants import RetCode
@@ -13,6 +13,7 @@ from api.db import FileType
 from api.db.services import UserService
 from peewee import IntegrityError
 from api.db.db_models import DB
+from peewee import JOIN
 
 def check_admin(user):
     is_admin = AdminUser.query(user_id=user.id, role_level=1)
@@ -59,21 +60,69 @@ async def list_my_group_members():
         user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
         nickname_by_user_id = {}
         if user_ids:
-            nickname_by_user_id = {
-                u.id: u.nickname
-                for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
-            }
+            # nickname_by_user_id = {
+            #     u.id: u.nickname
+            #     for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
+            # }
+
+            query = (
+                User
+                .select(
+                    User.id,
+                    User.nickname,
+                    SyncPerson.phone,
+                    SyncPerson.gender,
+                    SyncDept.mdmCode,         
+                    SyncDept.nameOfAdminOrg, 
+                    SyncDept.corporateName 
+                )
+                # 1. User 关联 SyncPerson
+                # 保持原样，假设 User.email 和 SyncPerson.phone 都是 unicode_ci
+                .join(
+                    SyncPerson, 
+                    on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                    join_type=JOIN.LEFT_OUTER
+                )
+                .switch(User)
+                # 2. SyncPerson 关联 SyncDept (关键修改点)
+                # 将 collate 改为 'utf8mb4_0900_ai_ci' 以匹配 SyncDept 表的默认规则
+                .join(
+                    SyncDept, 
+                    on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                    join_type=JOIN.LEFT_OUTER
+                )
+            )
+
+            results = (
+                query
+                .where(User.id.in_(user_ids))
+                .dicts() 
+            )
+
+            # 2. 处理结果：把列表转成以 id 为 key 的字典
+            # 结构示例: { 101: { "id": 101, "nickname": "...", "phone": "...", ... }, ... }
+            user_info_map = {item['id']: item for item in results}
+
 
         data = [
             {
                 "user_id": r.user_id,
-                "nickname": nickname_by_user_id.get(r.user_id),
+                "nickname": user_info_map.get(r.user_id, {}).get("nickname"),
                 "created_by": r.created_by,
                 "created_by_nickname": nickname_by_user_id.get(r.created_by),
                 "created_time": r.created_time,
+
+                "phone": user_info_map.get(r.user_id, {}).get("phone"),
+                "gender": user_info_map.get(r.user_id, {}).get("gender"),
+        
+                "mdmCode": user_info_map.get(r.user_id, {}).get("mdmCode"),
+                "nameOfAdminOrg": user_info_map.get(r.user_id, {}).get("nameOfAdminOrg"),
+                "corporateName": user_info_map.get(r.user_id, {}).get("corporateName"),
             }
             for r in rows
         ]
+
+        print(data)
         return get_json_result(data=data)
     except Exception as e:
         return server_error_response(e)
@@ -331,22 +380,19 @@ async def delete_user_group():
         if error_response:
             return error_response
 
+        # 删除1级表、二级表中的连接
+        FileAdminService.model.delete().where(FileAdminService.model.tenant_id == user_id).execute()
+        FileGroupService.model.delete().where(FileGroupService.model.tenant_id == user_id).execute()
 
 
         if pid is not None:
             deleted = UserGroupService.delete_by_id(pid)
-            # 删除1级表、二级表中的连接
-            FileAdminService.delete_by_id(pid)
-            FileGroupService.delete_by_id(pid)
+            
             return get_json_result(data={"deleted": deleted})
         
 
         if user_id and group_id:
             deleted = UserGroupService.delete_by_user_group(user_id=user_id, group_id=group_id)
-
-            FileAdminService.model.delete().where(FileAdminService.model.tenant_id == user_id).execute()
-            FileGroupService.model.delete().where(FileAdminService.model.tenant_id == user_id).execute()
-
             return get_json_result(data={"deleted": deleted})
 
         return get_json_result(
@@ -411,26 +457,79 @@ async def list_candidate_users():
         if error_response:
             return error_response
 
+
+        query = (
+            User
+            .select(
+                User.id,
+                User.nickname,
+                SyncPerson.phone,
+                SyncPerson.gender,
+                SyncDept.mdmCode,         
+                SyncDept.nameOfAdminOrg, 
+                SyncDept.corporateName 
+            )
+            # 1. User 关联 SyncPerson
+            # 保持原样，假设 User.email 和 SyncPerson.phone 都是 unicode_ci
+            .join(
+                SyncPerson, 
+                on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                join_type=JOIN.LEFT_OUTER
+            )
+            .switch(User)
+            # 2. SyncPerson 关联 SyncDept (关键修改点)
+            # 将 collate 改为 'utf8mb4_0900_ai_ci' 以匹配 SyncDept 表的默认规则
+            .join(
+                SyncDept, 
+                on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                join_type=JOIN.LEFT_OUTER
+            )
+        )
+
         # 1. Find all users who are already in any group
-        bound_user_ids = list({r.user_id for r in UserGroup.select(UserGroup.user_id)})
+        bound_user_ids = {r.user_id for r in UserGroup.select(UserGroup.user_id)}
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        group_ref_ids = set(cfg_map.values())
+        excluded_ids_list = list(bound_user_ids | group_ref_ids)
         
         # 2. Find users NOT in that list
-        if bound_user_ids:
+        if excluded_ids_list:
             candidates = list(
-                User.select(User.id, User.nickname).where(
-                    User.id.not_in(bound_user_ids),
+                query.where(
+                    User.id.not_in(excluded_ids_list),
                     User.id != settings.REFERENCE_TENANT_ID if settings.REFERENCE_TENANT_ID else True,
                 )
             )
         else:
             if settings.REFERENCE_TENANT_ID:
                 candidates = list(
-                    User.select(User.id, User.nickname).where(User.id != settings.REFERENCE_TENANT_ID)
+                    query.where(User.id != settings.REFERENCE_TENANT_ID)
                 )
             else:
-                candidates = list(User.select(User.id, User.nickname))
+                candidates = list(query)
 
-        data = [{"user_id": u.id, "nickname": u.nickname} for u in candidates]
+        # data = [{"user_id": u.id, "nickname": u.nickname, "phone": u.phone,
+        #         "gender": u.gender, "mdmCode": u.mdmCode, 
+        #         "nameOfAdminOrg": u.nameOfAdminOrg, "corporateName":u.corporateName} for u in candidates]
+
+        data = []
+        for u in candidates:
+            # 增加空值保护，防止关联数据为 None 时报错
+            sync_p = getattr(u, 'syncperson', None)
+            sync_d = getattr(u, 'syncdept', None)
+            
+            data.append({
+                "user_id": u.id, 
+                "nickname": u.nickname, 
+                "phone": sync_p.phone if sync_p else None,
+                "gender": sync_p.gender if sync_p else None,
+                "mdmCode": sync_d.mdmCode if sync_d else None, 
+                "nameOfAdminOrg": sync_d.nameOfAdminOrg if sync_d else None, 
+                "corporateName": sync_d.corporateName if sync_d else None
+            })
+
+        print(data[0])
+
         return get_json_result(data=data)
     except Exception as e:
         return server_error_response(e)
@@ -472,22 +571,87 @@ async def list_group_members():
         )
         user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
         nickname_by_user_id = {}
+        # if user_ids:
+        #     nickname_by_user_id = {
+        #         u.id: u.nickname
+        #         for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
+        #     }
+
+        # data = [
+        #     {
+        #         "user_id": r.user_id,
+        #         "nickname": nickname_by_user_id.get(r.user_id),
+        #         "created_by": r.created_by,
+        #         "created_by_nickname": nickname_by_user_id.get(r.created_by),
+        #         "created_time": r.created_time,
+        #     }
+        #     for r in rows
+        # ]
+
         if user_ids:
-            nickname_by_user_id = {
-                u.id: u.nickname
-                for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
-            }
+            # nickname_by_user_id = {
+            #     u.id: u.nickname
+            #     for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
+            # }
+
+            query = (
+                User
+                .select(
+                    User.id,
+                    User.nickname,
+                    SyncPerson.phone,
+                    SyncPerson.gender,
+                    SyncDept.mdmCode,         
+                    SyncDept.nameOfAdminOrg, 
+                    SyncDept.corporateName 
+                )
+                # 1. User 关联 SyncPerson
+                # 保持原样，假设 User.email 和 SyncPerson.phone 都是 unicode_ci
+                .join(
+                    SyncPerson, 
+                    on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                    join_type=JOIN.LEFT_OUTER
+                )
+                .switch(User)
+                # 2. SyncPerson 关联 SyncDept (关键修改点)
+                # 将 collate 改为 'utf8mb4_0900_ai_ci' 以匹配 SyncDept 表的默认规则
+                .join(
+                    SyncDept, 
+                    on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                    join_type=JOIN.LEFT_OUTER
+                )
+            )
+
+            results = (
+                query
+                .where(User.id.in_(user_ids))
+                .dicts() 
+            )
+
+            # 2. 处理结果：把列表转成以 id 为 key 的字典
+            # 结构示例: { 101: { "id": 101, "nickname": "...", "phone": "...", ... }, ... }
+            user_info_map = {item['id']: item for item in results}
+
 
         data = [
             {
                 "user_id": r.user_id,
-                "nickname": nickname_by_user_id.get(r.user_id),
+                "nickname": user_info_map.get(r.user_id, {}).get("nickname"),
                 "created_by": r.created_by,
-                "created_by_nickname": nickname_by_user_id.get(r.created_by),
+                "created_by_nickname": user_info_map.get(r.created_by, {}).get("nickname"),
                 "created_time": r.created_time,
+
+                "phone": user_info_map.get(r.user_id, {}).get("phone"),
+                "gender": user_info_map.get(r.user_id, {}).get("gender"),
+        
+                "mdmCode": user_info_map.get(r.user_id, {}).get("mdmCode"),
+                "nameOfAdminOrg": user_info_map.get(r.user_id, {}).get("nameOfAdminOrg"),
+                "corporateName": user_info_map.get(r.user_id, {}).get("corporateName"),
             }
             for r in rows
         ]
+
+        print(data)
         return get_json_result(data=data)
     except Exception as e:
         return server_error_response(e)

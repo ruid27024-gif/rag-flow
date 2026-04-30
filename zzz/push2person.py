@@ -1,4 +1,17 @@
 import json
+import sys
+import os
+
+# 获取当前脚本所在的目录 (/home/zyb/rag-flow/zzz)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录 (/home/zyb/rag-flow)
+project_root = os.path.dirname(current_dir)
+
+# 将项目根目录加入 sys.path
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+import json
 
 from api.db.services.person_service import SyncPersonService
 
@@ -20,7 +33,7 @@ def setup_and_insert(data_list):
         print(f"✅ 已插入 {count} 条数据")
 
 try:
-    with open('./people.json', 'r', encoding='utf-8') as file:
+    with open('/home/zyb/rag-flow/zzz/people.json', 'r', encoding='utf-8') as file:
         # 写入数据库
         data = json.load(file)
         print(data['rtnData']['result'][0])
@@ -40,14 +53,14 @@ try:
         #     SyncDept.mdmCode == 100534
         # ).first()
 
-        dept = SyncDept.select(SyncDept.mdmCode).where(
-            SyncDept.mdmName == '工艺研究一室（100146）'
-        ).first()
-
-        # person = SyncPerson.select(SyncPerson.mdmName).where(
-        #     SyncPerson.mdmCode == 105405
+        # dept = SyncDept.select(SyncDept.mdmCode).where(
+        #     SyncDept.mdmName == '工艺研究一室（100146）'
         # ).first()
-        print(dept.mdmCode)
+
+        # # person = SyncPerson.select(SyncPerson.mdmName).where(
+        # #     SyncPerson.mdmCode == 105405
+        # # ).first()
+        # print(dept.mdmCode)
 
 
 except FileNotFoundError:

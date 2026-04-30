@@ -318,7 +318,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 <FormItem>
                   <FormLabel>
                     <span className="text-destructive mr-1"> *</span>
-                    {t('search.name')}
+                    {/* {t('search.name')} */ '搜索主题'}
                   </FormLabel>
                   <FormControl>
                     <Input placeholder={t('search.name')} {...field} />

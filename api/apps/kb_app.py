@@ -62,28 +62,28 @@ async def create():
 
 
     # 如果是管理员或者参考库的用户(只有管理员和公共库可以创建)
-    if AdminUser.query(user_id=current_user.id) or current_user.id in tids or current_user.id == public_id:
-        e, res = KnowledgebaseService.create_with_name(
-            name = req.pop("name", None),
-            tenant_id = current_user.id,
-            parser_id = req.pop("parser_id", None),
-            **req
-        )
+    # if AdminUser.query(user_id=current_user.id) or current_user.id in tids or current_user.id == public_id:
+    e, res = KnowledgebaseService.create_with_name(
+        name = req.pop("name", None),
+        tenant_id = current_user.id,
+        parser_id = req.pop("parser_id", None),
+        **req
+    )
 
-        if not e:
-            return res
+    if not e:
+        return res
 
-        try:
-            if not KnowledgebaseService.save(**res):
-                return get_data_error_result()
-            return get_json_result(data={"kb_id":res["id"]})
-        except Exception as e:
-            return server_error_response(e)
+    try:
+        if not KnowledgebaseService.save(**res):
+            return get_data_error_result()
+        return get_json_result(data={"kb_id":res["id"]})
+    except Exception as e:
+        return server_error_response(e)
         
     # ---------------- 新增的代码块 ----------------
-    else:
-        print("暂无权限")
-        return get_data_error_result(message="抱歉！当前用户暂无权限创建知识库")
+    # else:
+    #     print("暂无权限")
+    #     return get_data_error_result(message="抱歉！当前用户暂无权限创建知识库")
 
 
 @manager.route('/update', methods=['post'])  # noqa: F821
@@ -92,6 +92,15 @@ async def create():
 @not_allowed_parameters("id", "tenant_id", "created_by", "create_time", "update_time", "create_date", "update_date", "created_by")
 async def update():
     req = await get_request_json()
+
+    if "group_id" in req:
+        del req["group_id"]
+
+    if "group_name" in req:
+        del req["group_name"]
+
+    if "color" in req:
+        del req["color"]
     if not isinstance(req["name"], str):
         return get_data_error_result(message="Dataset name must be string.")
     if req["name"].strip() == "":
