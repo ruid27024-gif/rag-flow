@@ -1,15 +1,6 @@
 import EmbedDialog from '@/components/embed-dialog';
 import { useShowEmbedModal } from '@/components/embed-dialog/use-show-embed-dialog';
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
-import { PageHeader } from '@/components/page-header';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form } from '@/components/ui/form';
@@ -32,7 +23,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMount } from 'ahooks';
 import { isEmpty, omit } from 'lodash';
-import { ArrowUpRight, LogOut, Send } from 'lucide-react';
+import { ArrowUpRight, LogOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -58,8 +49,10 @@ export default function Chat() {
 
   const { fetchConversationManually } = useFetchConversationManually();
 
+  // 获取过往的对话
   const { handleConversationCardClick, controller, stopOutputMessage } =
     useHandleClickConversationCard();
+  // 是否设置配置
   const { visible: settingVisible, switchVisible: switchSettingVisible } =
     useSetModalState(false);
 
@@ -81,6 +74,11 @@ export default function Chat() {
   // Form logic moved from ChatSettings
   const formSchema = useChatSettingSchema();
   const { setDialog, loading } = useSetDialog();
+
+  // 定义一个数组状态 用来存储子组件session中传回的数组
+  const [kbIds, setKbIds] = useState<string[]>([]);
+
+  // 这个 setKbIds 就是你要传给子组件的“写入函数”
 
   type FormSchemaType = z.infer<typeof formSchema>;
 
@@ -144,6 +142,7 @@ export default function Chat() {
     form.reset(nextData as FormSchemaType);
   }, [data, form]);
 
+  // 获取对话的设置
   const fetchConversation: typeof handleConversationCardClick = useCallback(
     async (conversationId, isNew) => {
       if (conversationId && !isNew) {
@@ -190,50 +189,37 @@ export default function Chat() {
       </section>
     );
   }
-
+  // 保存后端 -> 强制刷新 -> 重新拉取全量数据”
+  // 先获取currentConversation, setting和kb_ids是通过表单保存后端 -> 强制刷新 -> 重新拉取全量数据再次调用fetchConversation更新currentConversation
+  // 然后是通过currentConversation 传入对话模型的
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
         className="h-full flex flex-col pr-5"
       >
-        <PageHeader>
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink onClick={navigateToChatList}>
-                  {t('chat.chat')}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{data.name}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <Button onClick={showEmbedModal}>
-            <Send />
-            {t('common.embedIntoSite')}
-          </Button>
-        </PageHeader>
         <div className="flex flex-1 min-h-0 pb-9">
+          {/* 左边栏 */}
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
             switchSettingVisible={switchSettingVisible}
           ></Sessions>
 
+          {/* 右侧聊天栏目 */}
           <Card className="flex-1 min-w-0 bg-transparent border h-full">
+            {/* 两个大卡片）默认从左到右横向排列 */}
             <CardContent className="flex p-0 h-full">
+              {/* 左边的聊天主面板 */}
               <Card className="flex flex-col flex-1 bg-transparent min-w-0">
-                <CardHeader
+                {/* 聊天头部 */}
+                {/* <CardHeader
                   className={cn('p-5', { 'border-b': hasSingleChatBox })}
-                >
+                > */}
+
+                <CardHeader className={cn('py-2 px-5')}>
                   <CardTitle className="flex justify-between items-center text-base">
-                    <div className="flex items-center gap-4 flex-1 min-w-0 mr-4">
-                      <div className="truncate font-bold">
-                        {currentConversationName}
-                      </div>
+                    <div className="flex items-center gap-4 flex-1 min-w-0 ml-[-8px]">
                       <div
                         className={cn('flex items-center gap-2', {
                           hidden: settingVisible,
@@ -242,14 +228,20 @@ export default function Chat() {
                         <div className="w-[240px]">
                           <KnowledgeBaseFormField hideLabel />
                         </div>
-                        <SavingButton loading={loading} />
+
+                        <SavingButton
+                          loading={loading}
+                          className="bg-white text-black hover:bg-gray-100 border"
+                        />
                       </div>
                     </div>
+
                     <Button variant={'ghost'} onClick={switchDebugMode}>
                       <ArrowUpRight /> {t('chat.multipleModels')}
                     </Button>
                   </CardTitle>
                 </CardHeader>
+                {/* 消息展示区 */}
                 <CardContent className="flex-1 p-0 min-h-0">
                   <SingleChatBox
                     controller={controller}
@@ -258,6 +250,7 @@ export default function Chat() {
                   ></SingleChatBox>
                 </CardContent>
               </Card>
+              {/* 聊天设置右边栏 */}
               <ChatSettings
                 className={cn({ hidden: !settingVisible })}
                 switchSettingVisible={switchSettingVisible}

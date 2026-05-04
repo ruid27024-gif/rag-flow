@@ -280,22 +280,28 @@ def repair_bad_citation_formats(answer: str, kbinfos: dict, idx: set):
 
 async def async_chat(dialog, messages, stream=True, **kwargs):
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
+    # 无kb搜索的情况
     if not dialog.kb_ids and not dialog.prompt_config.get("tavily_api_key"):
+        # 直接走纯对话
         async for ans in async_chat_solo(dialog, messages, stream):
             yield ans
         return
 
     chat_start_ts = timer()
 
+    # 如果是图片理解模型
     if TenantLLMService.llm_id2llm_type(dialog.llm_id) == "image2text":
         llm_model_config = TenantLLMService.get_model_config(dialog.tenant_id, LLMType.IMAGE2TEXT, dialog.llm_id)
+    # 否则chat
     else:
         llm_model_config = TenantLLMService.get_model_config(dialog.tenant_id, LLMType.CHAT, dialog.llm_id)
+
 
     max_tokens = llm_model_config.get("max_tokens", 8192)
 
     check_llm_ts = timer()
 
+    # Langfuse 追踪初始化
     langfuse_tracer = None
     trace_context = {}
     langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=dialog.tenant_id)
@@ -307,23 +313,34 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             trace_context = {"trace_id": trace_id}
 
     check_langfuse_tracer_ts = timer()
+    # 加载模型
     kbs, embd_mdl, rerank_mdl, chat_mdl, tts_mdl = get_models(dialog)
     toolcall_session, tools = kwargs.get("toolcall_session"), kwargs.get("tools")
+    # 绑定工具
     if toolcall_session and tools:
         chat_mdl.bind_tools(toolcall_session, tools)
     bind_models_ts = timer()
 
+    # 准备检索输入
     retriever = settings.retriever
+    # 最近三条用户问题
     questions = [m["content"] for m in messages if m["role"] == "user"][-3:]
+    # 附件处理
     attachments = kwargs["doc_ids"].split(",") if "doc_ids" in kwargs else []
     attachments_= ""
+    # 前端传入的文档id
     if "doc_ids" in messages[-1]:
         attachments = messages[-1]["doc_ids"]
+
+    # 上传的文件内容拼接到 system promp
     if "files" in messages[-1]:
         attachments_ = "\n\n".join(FileService.get_files(messages[-1]["files"]))
 
+    # Prompt 参数处理
     prompt_config = dialog.prompt_config
+    # 选择了哪些知识库
     field_map = KnowledgebaseService.get_field_map(dialog.kb_ids)
+    # 尝试 SQL 检索（优先）
     # try to use sql if field mapping is good to go
     if field_map:
         logging.debug("Use SQL to retrieval:{}".format(questions[-1]))
@@ -332,6 +349,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             yield ans
             return
 
+    # 参数补全 & 多轮处理
     for p in prompt_config["parameters"]:
         if p["key"] == "knowledge":
             continue
@@ -339,15 +357,16 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             raise KeyError("Miss parameter: " + p["key"])
         if p["key"] not in kwargs:
             prompt_config["system"] = prompt_config["system"].replace("{%s}" % p["key"], " ")
-
+    # 把多轮对话整合成一个完整的问题
     if len(questions) > 1 and prompt_config.get("refine_multiturn"):
         questions = [await full_question(dialog.tenant_id, dialog.llm_id, messages)]
     else:
         questions = questions[-1:]
-
+    # 跨语言处理
     if prompt_config.get("cross_languages"):
         questions = [await cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"])]
 
+    # 按标签 / 元数据筛选文档
     if dialog.meta_data_filter:
         metas = DocumentService.get_meta_by_kbs(dialog.kb_ids)
         attachments = await apply_meta_data_filter(
@@ -357,7 +376,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             chat_mdl,
             attachments,
         )
-
+    # 关键词增强
     if prompt_config.get("keyword", False):
         questions[-1] += await keyword_extraction(chat_mdl, questions[-1])
 
@@ -367,9 +386,11 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
     knowledges = []
 
+    # 知识库检索核心
     if attachments is not None and "knowledge" in [p["key"] for p in prompt_config["parameters"]]:
         tenant_ids = list(set([kb.tenant_id for kb in kbs]))
         knowledges = []
+        #  Deep Research（推理型）启动深度推理
         if prompt_config.get("reasoning", False):
             reasoner = DeepResearcher(
                 chat_mdl,
@@ -386,14 +407,16 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     doc_ids=attachments,
                 ),
             )
-
+            # 流式返回思考过程
             async for think in reasoner.thinking(kbinfos, attachments_ + " ".join(questions)):
                 if isinstance(think, str):
                     thought = think
                     knowledges = [t for t in think.split("\n") if t]
                 elif stream:
                     yield think
+        # 普通 RAG 检索
         else:
+            # 向量检索 重排序 TOC 增强 KG 检索 Tavily 搜索
             if embd_mdl:
                 kbinfos = retriever.retrieval(
                     " ".join(questions),
@@ -425,12 +448,14 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                                                        LLMBundle(dialog.tenant_id, LLMType.CHAT))
                 if ck["content_with_weight"]:
                     kbinfos["chunks"].insert(0, ck)
-
+            # 组装 Prompt
             knowledges = kb_prompt(kbinfos, max_tokens)
+            # print(kbinfos)
 
     logging.debug("{}->{}".format(" ".join(questions), "\n->".join(knowledges)))
 
     retrieval_ts = timer()
+    # 没检索到 → 返回兜底答案
     if not knowledges and prompt_config.get("empty_response"):
         empty_res = prompt_config["empty_response"]
         yield {"answer": empty_res, "reference": kbinfos, "prompt": "\n\n### Query:\n%s" % " ".join(questions),
@@ -446,16 +471,21 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     if knowledges and (prompt_config.get("quote", True) and kwargs.get("quote", True)):
         prompt4citation = citation_prompt()
     msg.extend([{"role": m["role"], "content": re.sub(r"##\d+\$\$", "", m["content"])} for m in messages if m["role"] != "system"])
+    # Token 裁剪 & 生成配置
     used_token_count, msg = message_fit_in(msg, int(max_tokens * 0.95))
     assert len(msg) >= 2, f"message_fit_in has bug: {msg}"
     prompt = msg[0]["content"]
 
+    # 防止 prompt 超长
     if "max_tokens" in gen_conf:
         gen_conf["max_tokens"] = min(gen_conf["max_tokens"], max_tokens - used_token_count)
 
-    def decorate_answer(answer):
+    # 装饰最终结果（decorate_answer）
+    async def decorate_answer(answer):
+        # 读取和修改这些外部变量的值
         nonlocal embd_mdl, prompt_config, knowledges, kwargs, kbinfos, prompt, retrieval_ts, questions, langfuse_tracer
 
+        # 参考文献或知识库信息
         refs = []
         ans = answer.split("</think>")
         think = ""
@@ -463,9 +493,45 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             think = ans[0] + "</think>"
             answer = ans[1]
 
+        print(questions)
+        suggestion_system_prompt = f"""
+        你是一个智能助手。请根据提供的对话历史，生成 3 个用户可能追问的简短问题。
+        要求：
+        . 问题要有深度或相关性。
+        . 直接返回纯 JSON 数组，不要包含 Markdown 格式（如 ```json），例如：["问题1", "问题2", "问题3"]。
+        用户: {questions[-1]}
+        AI: {answer}
+        """
+
+        suggestions = await chat_mdl.async_chat(suggestion_system_prompt, [])
+        print(suggestions)
+        import json
+        try:
+            # 1. 拿到原始字符串 (例如: '["问题1", "问题2"]')
+            raw_suggestions = await chat_mdl.async_chat(suggestion_system_prompt, [])
+
+            # 2. 清洗数据 (防止模型不听话带上了 ```json ... ```)
+            clean_text = raw_suggestions.replace("```json", "").replace("```", "").strip()
+
+            # 3. 解析 JSON (把字符串变成 Python 列表)
+            suggestions = json.loads(clean_text)
+
+            # 确保它是列表类型 (防呆)
+            if not isinstance(suggestions, list):
+                suggestions = []
+
+        except Exception as e:
+            print(f"生成建议问题解析失败: {e}")
+            suggestions = []  # 失败了给个空列表，别让程序崩了
+
+
+        # 处理引用与知识库
         if knowledges and (prompt_config.get("quote", True) and kwargs.get("quote", True)):
+            # 用于存储被引用的知识块的索引···
             idx = set([])
+            # 判断是否需要自动插入引用 <--存在嵌入模型 (embd_mdl)，并且回答中还没有包含 [ID:x] 格式的引用标记。
             if embd_mdl and not re.search(r"\[ID:([0-9]+)\]", answer):
+                # 调用 retriever.insert_citations 方法。它会根据回答内容和知识库块的文本、向量信息，自动在 answer 中插入引用标记（如 [ID:1]），并返回修改后的回答和被引用的知识块索引 idx。
                 answer, idx = retriever.insert_citations(
                     answer,
                     [ck["content_ltks"] for ck in kbinfos["chunks"]],
@@ -474,15 +540,19 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     tkweight=1 - dialog.vector_similarity_weight,
                     vtweight=dialog.vector_similarity_weight,
                 )
+            # 如果回答中已经存在 [ID:x] 格式的标记，则通过正则表达式找出所有标记，并将有效的索引 i 添加到 idx 集合中。
             else:
                 for match in re.finditer(r"\[ID:([0-9]+)\]", answer):
                     i = int(match.group(1))
                     if i < len(kbinfos["chunks"]):
                         idx.add(i)
-
+            # 用于修复可能存在的错误引用格式
             answer, idx = repair_bad_citation_formats(answer, kbinfos, idx)
 
+            # 将索引集合 idx 从知识块的索引转换为它们所属的文档ID (doc_id)。 引用的
             idx = set([kbinfos["chunks"][int(i)]["doc_id"] for i in idx])
+
+            # 从召回中过滤 引用的文档
             recall_docs = [d for d in kbinfos["doc_aggs"] if d["doc_id"] in idx]
             if not recall_docs:
                 recall_docs = kbinfos["doc_aggs"]
@@ -493,6 +563,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 if c.get("vector"):
                     del c["vector"]
 
+            # print(refs)
         if answer.lower().find("invalid key") >= 0 or answer.lower().find("invalid api") >= 0:
             answer += " Please set LLM API-Key in 'User Setting -> Model providers -> API-Key'"
         finish_chat_ts = timer()
@@ -529,14 +600,18 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             langfuse_generation.update(output=langfuse_output)
             langfuse_generation.end()
 
-        return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time()}
 
+
+        return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time(), "suggestions":suggestions}
+
+    # Langfuse Generation 开始
     if langfuse_tracer:
         langfuse_generation = langfuse_tracer.start_generation(
             trace_context=trace_context, name="chat", model=llm_model_config["llm_name"],
             input={"prompt": prompt, "prompt4citation": prompt4citation, "messages": msg}
         )
 
+    # 流式 / 非流式输出
     if stream:
         last_ans = ""
         answer = ""
@@ -548,11 +623,15 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             if num_tokens_from_string(delta_ans) < 16:
                 continue
             last_ans = answer
-            yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans)}
+            # 实时的页面展示
+            yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans), "suggestions":[]}
         delta_ans = answer[len(last_ans):]
         if delta_ans:
-            yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans)}
-        yield decorate_answer(thought + answer)
+            yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans), "suggestions":[]}
+        # 最终的交付
+        final_package = await decorate_answer(thought + answer)
+        yield final_package
+        # yield decorate_answer(thought + answer)
     else:
         answer = await chat_mdl.async_chat(prompt + prompt4citation, msg[1:], gen_conf)
         user_content = msg[-1].get("content", "[content not available]")

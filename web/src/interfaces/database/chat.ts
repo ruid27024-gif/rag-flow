@@ -130,6 +130,7 @@ export interface IAnswer {
   answer: string;
   attachment?: IAttachment;
   reference?: IReference;
+  suggestions?: string[];
   conversationId?: string;
   prompt?: string;
   id?: string;
@@ -187,6 +188,7 @@ export interface IExternalChatInfo {
 export interface IMessage extends Message {
   id: string;
   reference?: IReference; // the latest news has reference
+  suggestions?: string[];
   conversationId?: string; // To distinguish which conversation the message belongs to
 }
 

@@ -38,6 +38,7 @@ export function SingleChatBox({
     derivedMessages,
     isUploading,
     handleInputChange,
+    setValue,
     handlePressEnter,
     regenerateMessage,
     removeMessageById,
@@ -55,6 +56,7 @@ export function SingleChatBox({
   const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
     useClickDrawer();
 
+  // console.log(derivedMessages);
   useEffect(() => {
     const messages = conversation?.message;
     if (Array.isArray(messages)) {
@@ -69,8 +71,18 @@ export function SingleChatBox({
     }
   }, [conversationId, setDerivedMessages]);
 
+  // ✅ 新增：处理建议列表点击的函数
+  // ✅ 修改：构造一个符合 ChangeEventHandler 的事件对象
+  const handleSuggestionClick = (suggestion: string) => {
+    setValue(suggestion);
+
+    // 2. 直接调用现有的发送逻辑
+    handlePressEnter();
+  };
+
   return (
     <section className="flex flex-col p-5 h-full">
+      {/* 消息滚动区域 */}
       <div ref={messageContainerRef} className="flex-1 overflow-auto min-h-0">
         <div className="w-full pr-5">
           {derivedMessages?.map((message, i) => {
@@ -98,12 +110,16 @@ export function SingleChatBox({
                 removeMessageById={removeMessageById}
                 regenerateMessage={regenerateMessage}
                 sendLoading={sendLoading}
+                visibleAvatar={false}
+                onSuggestionClick={handleSuggestionClick}
               ></MessageItem>
             );
           })}
         </div>
+        {/* 用于滚动到底部的锚点 */}
         <div ref={scrollRef} />
       </div>
+      {/* 底部输入框 */}
       <NextMessageInput
         disabled={disabled}
         sendDisabled={sendDisabled}
@@ -120,6 +136,7 @@ export function SingleChatBox({
         isUploading={isUploading}
         removeFile={removeFile}
       />
+      {/* PDF 预览弹窗 */}
       {visible && (
         <PdfSheet
           visible={visible}

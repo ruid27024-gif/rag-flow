@@ -150,6 +150,7 @@ export function KnowledgeBaseFormField({
               maxCount={100}
               defaultValue={field.value}
               {...field}
+              nowrap={true}
             />
           </FormControl>
         </FormItem>

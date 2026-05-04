@@ -274,6 +274,8 @@ export const useSendMessageWithSse = (
                 const val = JSON.parse(value?.data || '');
                 const d = val?.data;
                 if (typeof d !== 'boolean') {
+                  // console.log(d)
+                  // console.log(".......................")
                   setAnswer({
                     ...d,
                     conversationId: body?.conversation_id,
@@ -473,12 +475,14 @@ export const useSelectDerivedMessages = () => {
   // Add the streaming message to the last item in the message list
   const addNewestAnswer = useCallback((answer: IAnswer) => {
     setDerivedMessages((pre) => {
+      // console.log(answer)
       return [
         ...(pre?.slice(0, -1) ?? []),
         {
           role: MessageType.Assistant,
           content: answer.answer,
           reference: answer.reference,
+          suggestions: answer.suggestions,
           id: buildMessageUuid({
             id: answer.id,
             role: MessageType.Assistant,

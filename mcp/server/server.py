@@ -144,6 +144,7 @@ class RAGFlowConnector:
         keyword: bool = False,
         force_refresh: bool = False,
     ):
+        print("Retrieving documents...")
         if document_ids is None:
             document_ids = []
         

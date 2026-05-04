@@ -125,6 +125,7 @@ const multiSelectVariants = cva(
 interface MultiSelectProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof multiSelectVariants> {
+  nowrap?: boolean;
   /**
    * An array of option objects to be displayed in the multi-select component.
    * Each option object has a label, value, and an optional icon.
@@ -189,6 +190,7 @@ export const MultiSelect = React.forwardRef<
 >(
   (
     {
+      nowrap = false,
       options,
       onValueChange,
       variant,
@@ -201,6 +203,7 @@ export const MultiSelect = React.forwardRef<
       className,
       showSelectAll = true,
       ...props
+      // 默认为 false，保持原有换行行为 // 默认为 false，保持原有换行行为
     },
     ref,
   ) => {
@@ -285,6 +288,14 @@ export const MultiSelect = React.forwardRef<
             {selectedValues.length > 0 ? (
               <div className="flex justify-between items-center w-full group">
                 <div className="flex flex-wrap items-center">
+                  {/* <div
+                  className={cn(
+                    "flex items-center gap-1.5 py-1 w-full",
+                    nowrap
+                      ? "flex-nowrap overflow-hidden group-hover:flex-wrap group-hover:overflow-visible"
+                      : "flex-wrap"
+                  )} 
+                >*/}
                   {selectedValues?.slice(0, maxCount)?.map((value) => {
                     const option = flatOptions.find((o) => o.value === value);
                     const IconComponent = option?.icon;

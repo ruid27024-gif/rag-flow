@@ -8,7 +8,6 @@ import { useParams, useSearchParams } from 'umi';
 // import Pdf from './pdf';
 // import Text from './text';
 
-import { DocPreviewer } from '@/components/document-preview/doc-preview';
 import { ExcelCsvPreviewer } from '@/components/document-preview/excel-preview';
 import { ImagePreviewer } from '@/components/document-preview/image-preview';
 import Md from '@/components/document-preview/md';
@@ -24,8 +23,11 @@ const DocumentViewer = () => {
   const [currentQueryParameters] = useSearchParams();
   const ext = currentQueryParameters.get('ext');
   const prefix = currentQueryParameters.get('prefix');
+
   const api = `${api_host}/${prefix || 'file'}/get/${documentId}`;
   // request.head
+
+  console.log(api);
 
   if (ext === 'html' && documentId) {
     previewHtmlFile(documentId);
@@ -43,14 +45,16 @@ const DocumentViewer = () => {
       {ext === 'md' && <Md url={api} className="!h-dvh p-5"></Md>}
       {ext === 'txt' && <TxtPreviewer url={api}></TxtPreviewer>}
 
-      {ext === 'pdf' && (
-        <PdfPreview url={api} className="!h-dvh p-5"></PdfPreview>
-      )}
+      {ext === 'pdf' ||
+        ext === 'docx' ||
+        (ext === 'doc' && (
+          <PdfPreview url={api} className="!h-dvh p-5"></PdfPreview>
+        ))}
       {(ext === 'xlsx' || ext === 'xls') && (
         <ExcelCsvPreviewer url={api}></ExcelCsvPreviewer>
       )}
 
-      {ext === 'docx' && <DocPreviewer url={api}></DocPreviewer>}
+      {/* {ext === 'docx' && <DocPreviewer url={api}></DocPreviewer>} */}
     </section>
   );
 };

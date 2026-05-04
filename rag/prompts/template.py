@@ -9,7 +9,7 @@ _loaded_prompts = {}
 def load_prompt(name: str) -> str:
     if name in _loaded_prompts:
         return _loaded_prompts[name]
-
+    # citation_prompt
     path = os.path.join(PROMPT_DIR, f"{name}.md")
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Prompt file '{name}.md' not found in prompts/ directory.")

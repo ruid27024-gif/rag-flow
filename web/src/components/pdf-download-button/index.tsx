@@ -189,6 +189,15 @@ export function removePDFDownloadInfo(
     const startPattern = /\{[^{}]*"filename"[^{}]*"base64"[^{}]*\}/g;
     cleaned = cleaned.replace(startPattern, '').trim();
 
+    // // ================== 新增代码开始 ==================
+    // // 1. 移除 Markdown 水平分割线 (---, ***, ___)
+    // // 匹配行首，可能存在的引用符(>)，可选空格，3个以上的 - * 或 _，以及后面的空格直到行尾
+    // cleaned = cleaned.replace(/^(?:\s*>?\s*)?([-*_])\1{2,}\s*$/gm, '');
+
+    // // 2. 清理移除分割线后可能留下的多余空行
+    // cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+    // // ================== 新增代码结束 ==================
+
     return cleaned;
   } catch {
     return content;

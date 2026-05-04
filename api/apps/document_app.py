@@ -747,10 +747,11 @@ async def metadata_update():
     updated = DocumentService.batch_update_metadata(kb_id, target_doc_ids, updates, deletes)
     return get_json_result(data={"updated": updated, "matched_docs": len(target_doc_ids)})
 
-
+# 获取缩略图的
 @manager.route("/thumbnails", methods=["GET"])  # noqa: F821
 # @login_required
 def thumbnails():
+    print("获取缩略图")
     doc_ids = request.args.getlist("doc_ids")
     if not doc_ids:
         return get_json_result(data=False, message='Lack of "Document ID"', code=RetCode.ARGUMENT_ERROR)
@@ -977,18 +978,51 @@ async def rename():
     except Exception as e:
         return server_error_response(e)
 
-
+# 获取原始文件
 @manager.route("/get/<doc_id>", methods=["GET"])  # noqa: F821
 # @login_required
 async def get(doc_id):
+    print("获取二进制流")
     try:
         e, doc = DocumentService.get_by_id(doc_id)
         if not e:
             return get_data_error_result(message="Document not found!")
 
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
+        print(b, n)
         data = await asyncio.to_thread(settings.STORAGE_IMPL.get, b, n)
         response = await make_response(data)
+
+        # --- 👇 核心修改开始：优先信任文件头检测 ---
+
+        real_content_type = None
+
+        # 确保 data 是 bytes 类型并进行魔数检测
+        if isinstance(data, bytes):
+            # 检查是否是 PDF (%PDF)
+            if data.startswith(b'%PDF'):
+                real_content_type = 'application/pdf'
+                print(f"⚠️ 修正：文件 {doc.name} 实际是 PDF，将强制设置为 PDF 类型。")
+
+            # 检查是否是 DOCX (PK...) - 可选，为了严谨可以加上
+            elif data.startswith(b'PK'):
+                # 简单判断，实际上 docx/pptx/xlsx 都是 zip 格式
+                if doc.name.lower().endswith('.docx'):
+                    real_content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                elif doc.name.lower().endswith('.pptx'):
+                    real_content_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentationml'
+                else:
+                    # 如果不知道具体是什么，但肯定是 zip 类，暂时不覆盖，交给后面逻辑处理
+                    pass
+
+        # 如果检测到了真实类型，直接设置并返回，不再执行后面的文件名逻辑
+        if real_content_type:
+            response.headers.set("Content-Type", real_content_type)
+            # 建议：同时也修正下载时的文件名，防止浏览器混淆
+            # response.headers.set("Content-Disposition", f'inline; filename="{doc.id}.pdf"')
+            return response
+
+        # --- 👆 核心修改结束 ---
 
         ext = re.search(r"\.([^.]+)$", doc.name.lower())
         ext = ext.group(1) if ext else None
@@ -999,6 +1033,8 @@ async def get(doc_id):
             else:
                 content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
             response.headers.set("Content-Type", content_type)
+
+
         return response
     except Exception as e:
         return server_error_response(e)

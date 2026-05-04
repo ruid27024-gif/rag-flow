@@ -58,6 +58,7 @@ const buttonVariants = cva(
           hover:bg-state-error-5 hover:text-state-error
           focus-visible:text-state-error focus-visible:bg-state-error-5
         `,
+        none: '',
       },
       size: {
         default: 'h-8 px-2.5 py-1.5 ',
@@ -102,7 +103,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <Comp
         className={cn(
-          'bg-bg-card',
+          // 'bg-bg-card',
           { 'block w-full': block },
           buttonVariants({ variant, size, className }),
         )}

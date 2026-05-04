@@ -28,12 +28,11 @@ from io import BytesIO
 from common.decorator import singleton
 from common import settings
 import sys
-from .pdf_utils import is_scanned_pdf_from_stream, parse_pdf_stream,convert_md_to_pdf
 
 def convert_to_pdf(file_path):
     """
     Converts a doc or docx file to pdf format.
-    
+
     Args:
         file_path (str): The absolute path to the doc/docx file.
     """
@@ -43,13 +42,13 @@ def convert_to_pdf(file_path):
 
     # Determine output directory (same as input file)
     output_dir = os.path.dirname(file_path)
-    
+
     # Construct the libreoffice command
     # libreoffice --headless --convert-to pdf <file_path> --outdir <output_dir>
     # Add LD_LIBRARY_PATH to environment variables
     env = os.environ.copy()
     env['LD_LIBRARY_PATH'] = '/usr/lib/libreoffice/program:' + env.get('LD_LIBRARY_PATH', '')
-    
+
     command = [
         "libreoffice",
         "--headless",
@@ -59,23 +58,23 @@ def convert_to_pdf(file_path):
         "--outdir",
         output_dir
     ]
-    
+
     print(f"DEBUG-HY: Starting conversion for: {file_path}")
     print(f"DEBUG-HY:Output directory: {output_dir}")
-    
+
     try:
         # Run the command
         result = subprocess.run(
-            command, 
-            check=True, 
-            stdout=subprocess.PIPE, 
+            command,
+            check=True,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env
         )
         print("DEBUG-HY: Conversion completed successfully.")
         print("LibreOffice Output:")
         print(result.stdout.decode())
-        
+
         # Verify output file exists
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         pdf_path = os.path.join(output_dir, base_name + ".pdf")
@@ -85,7 +84,7 @@ def convert_to_pdf(file_path):
         else:
             print("DEBUG-HY: Warning: PDF file not found despite successful command execution.")
             return None
-            
+
     except subprocess.CalledProcessError as e:
         print("DEBUG-HY: Error during conversion.")
         print("DEBUG-HY: Return code:", e.returncode)
@@ -94,6 +93,120 @@ def convert_to_pdf(file_path):
     except Exception as e:
         print(f"DEBUG-HY: An unexpected error occurred: {e}")
         return None
+
+# import os
+# import subprocess
+#
+# import os
+# import subprocess
+# import tempfile
+# import shutil
+#
+#
+# def convert_to_pdf(file_path):
+#     """
+#     稳健版：使用临时目录，修复路径问题，防止进程卡死
+#     """
+#     # 1. 检查源文件
+#     if not os.path.exists(file_path):
+#         print(f"Error: File '{file_path}' does not exist.")
+#         return None
+#
+#     # 2. 指定 LibreOffice 路径 (建议检查环境变量，或者直接写死)
+#     # 注意：这里保留反斜杠，因为这是 Windows 本地路径
+#     libreoffice_exe = r"C:\Program Files\LibreOffice\program\soffice.exe"
+#
+#     if not os.path.exists(libreoffice_exe):
+#         print(f"CRITICAL ERROR: LibreOffice not found at: {libreoffice_exe}")
+#         print("HINT: Please install LibreOffice or update the path.")
+#         return None
+#
+#     # 3. 创建临时目录用于输出 (避免与原文件冲突)
+#     # 使用 mkdtemp 创建一个唯一的临时文件夹
+#     temp_output_dir = tempfile.mkdtemp()
+#
+#     try:
+#         # 构建命令参数列表 (推荐方式，比 shell=True 更安全，避免转义问题)
+#         # --headless: 无头模式
+#         # --convert-to pdf: 转换格式
+#         # --outdir: 输出目录 (指向临时目录)
+#         cmd = [
+#             libreoffice_exe,
+#             "--headless",
+#             "--convert-to", "pdf",
+#             "--outdir", temp_output_dir,
+#             file_path  # 输入文件路径 (LibreOffice 能够处理 Windows 路径)
+#         ]
+#
+#         print(f"DEBUG: Starting conversion for: {os.path.basename(file_path)}")
+#
+#         # 4. 执行转换
+#         # startupinfo 用于在 Windows 下不显示黑色命令行窗口
+#         startupinfo = None
+#         if os.name == 'nt':
+#             startupinfo = subprocess.STARTUPINFO()
+#             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+#
+#         result = subprocess.run(
+#             cmd,
+#             stdout=subprocess.PIPE,
+#             stderr=subprocess.PIPE,
+#             timeout=60,  # 60秒超时
+#             startupinfo=startupinfo
+#         )
+#
+#         # 5. 检查结果
+#         if result.returncode == 0:
+#             # 在临时目录中寻找生成的 PDF
+#             # 文件名应该与源文件相同，只是后缀变了
+#             base_name = os.path.basename(file_path)
+#             # 移除后缀并加上 .pdf
+#             name_without_ext = os.path.splitext(base_name)[0]
+#             generated_pdf_name = name_without_ext + ".pdf"
+#             temp_pdf_path = os.path.join(temp_output_dir, generated_pdf_name)
+#
+#             if os.path.exists(temp_pdf_path):
+#                 # 目标路径 (与原文件同目录)
+#                 final_pdf_path = os.path.join(os.path.dirname(file_path), generated_pdf_name)
+#
+#                 # 移动文件 (如果目标已存在则覆盖)
+#                 shutil.move(temp_pdf_path, final_pdf_path)
+#                 print(f"SUCCESS: PDF saved to: {final_pdf_path}")
+#                 return final_pdf_path
+#             else:
+#                 print("ERROR: Conversion finished but PDF file not found in temp dir.")
+#                 # 调试：列出临时目录内容
+#                 print(f"DEBUG: Temp dir contents: {os.listdir(temp_output_dir)}")
+#                 return None
+#         else:
+#             print(f"ERROR: LibreOffice exited with code {result.returncode}")
+#             # 尝试解码错误日志 (LibreOffice 有时输出 GBK 编码)
+#             try:
+#                 err_msg = result.stderr.decode('gbk', errors='ignore')
+#             except:
+#                 err_msg = result.stderr.decode('utf-8', errors='ignore')
+#             print(f"DEBUG: Error details: {err_msg}")
+#             return None
+#
+#     except subprocess.TimeoutExpired:
+#         print("ERROR: Conversion timed out. Force killing process.")
+#         return None
+#     except Exception as e:
+#         print(f"ERROR: Unexpected exception: {e}")
+#         return None
+#     finally:
+#         # 6. 清理临时目录
+#         if os.path.exists(temp_output_dir):
+#             try:
+#                 shutil.rmtree(temp_output_dir)
+#             except:
+#                 pass  # 忽略清理失败，让系统稍后清理
+
+
+# 测试调用
+# convert_to_pdf_robust(r"D:\test\example.docx")
+
+
 
 @singleton
 class RAGFlowMinio:
@@ -216,6 +329,9 @@ class RAGFlowMinio:
                 ext = ext.lower()
                 pdf_cache_name = base + ".pdf"
 
+
+
+
                 if ext == ".pdf":
                     # PDF：先查缓存（同名 .pdf），命中直接返回；否则读原对象并写入缓存
                     r = self.conn.get_object(bucket, filename)
@@ -246,6 +362,9 @@ class RAGFlowMinio:
                         pass
                     return content
 
+
+
+
                 elif ext in [".doc", ".docx"]:
                     # DOC/DOCX：优先查同名 .pdf 缓存；未命中则读取原对象并转换为 PDF，写回缓存并返回 PDF 二进制
                     try:
@@ -264,10 +383,24 @@ class RAGFlowMinio:
                     except Exception:
                         pass
 
+                    # 1. 获取当前文件所在的文件夹路径 (绝对路径)
+                    # 结果类似: C:\Users\...\rag-flow\rag\utils
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+                    # 2. 手动拼接相对路径逻辑
+                    # 这里的 ".." 是字符串拼接，不是依赖系统环境，所以是安全的
+                    # 意思就是：当前目录 -> 上一级 -> 再上一级 -> temp_pdf
+                    save_dir = os.path.join(current_dir, "..", "..", "temp_pdf")
+
+                    # 3. 创建目录
+                    os.makedirs(save_dir, exist_ok=True)
+
+                    print(f"最终绝对路径是: {os.path.abspath(save_dir)}")
+
                     r = self.conn.get_object(bucket, filename)
                     print(f"【DEBUG-HY】: get {bucket}/{filename}, type is {type(r)}", file=sys.stderr, flush=True)
                     orig_bytes = r.read()
-                    save_dir = "/home/hit802/temp_docs"
+
                     save_path = os.path.join(save_dir, filename)
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     with open(save_path, "wb") as f:

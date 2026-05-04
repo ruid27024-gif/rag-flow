@@ -377,9 +377,10 @@ class Dealer:
         ranks = {"total": 0, "chunks": [], "doc_aggs": {}}
         if not question:
             return ranks
-
+        print("heloo")
         # Ensure RERANK_LIMIT is multiple of page_size
         RERANK_LIMIT = math.ceil(64 / page_size) * page_size if page_size > 1 else 1
+        # 构建一个请求字典 req，其中包含了调用底层搜索引擎所需的所有参数
         req = {
             "kb_ids": kb_ids,
             "doc_ids": doc_ids,
@@ -395,8 +396,10 @@ class Dealer:
         if isinstance(tenant_ids, str):
             tenant_ids = tenant_ids.split(",")
 
+        # 执行检索与重排序 混合检索
         sres = self.search(req, [index_name(tid) for tid in tenant_ids], kb_ids, embd_mdl, highlight, rank_feature=rank_feature)
 
+        # 重排序
         if rerank_mdl and sres.total > 0:
             sim, tsim, vsim = self.rerank_by_model(
                 rerank_mdl,
@@ -406,6 +409,7 @@ class Dealer:
                 vector_similarity_weight,
                 rank_feature=rank_feature,
             )
+        # 如果没有重排序模型，则根据所使用的搜索引擎类型进行处理：
         else:
             if settings.DOC_ENGINE_INFINITY:
                 # Don't need rerank here since Infinity normalizes each way score before fusion.
@@ -422,32 +426,36 @@ class Dealer:
                     vector_similarity_weight,
                     rank_feature=rank_feature,
                 )
-
+        # 将分数列表转换为 NumPy 数组 sim_np 以便高效处理
         sim_np = np.array(sim, dtype=np.float64)
         if sim_np.size == 0:
             ranks["doc_aggs"] = []
             return ranks
-
+        # 使用 np.argsort 对分数数组进行降序排序
         sorted_idx = np.argsort(sim_np * -1)
 
+        # 根据 similarity_threshold 过滤掉低分结果
         valid_idx = [int(i) for i in sorted_idx if sim_np[i] >= similarity_threshold]
         filtered_count = len(valid_idx)
         ranks["total"] = int(filtered_count)
 
+        # 如果过滤后没有剩余结果，则返回空结果
         if filtered_count == 0:
             ranks["doc_aggs"] = []
             return ranks
-
+        # 实现分页逻辑。根据 page 和 page_size 计算出当前页应该返回哪些结果的索引，并存储在 page_idx 中。这里使用了取模运算，可能是为了实现一种循环分页或确保在重排序窗口内的分页正确性。
         max_pages = max(RERANK_LIMIT // max(page_size, 1), 1)
         page_index = (page - 1) % max_pages
         begin = page_index * page_size
         end = begin + page_size
         page_idx = valid_idx[begin:end]
 
+        # 构建最终结果
         dim = len(sres.query_vector)
         vector_column = f"q_{dim}_vec"
         zero_vector = [0.0] * dim
 
+        # 遍历当前页的每一个结果索引 i，从 sres 中提取对应的文本块（chunk）数据，并将其组装成一个包含内容、元数据、各种相似度分数的字典 d
         for i in page_idx:
             id = sres.ids[i]
             chunk = sres.field[id]
@@ -478,13 +486,17 @@ class Dealer:
                 else:
                     d["highlight"] = d["content_with_weight"]
             ranks["chunks"].append(d)
-
+        # 如果 aggs=True，则遍历所有有效结果（不仅仅是当前页），统计每个文档有多少个文本块被检索到。结果存储在 ranks["doc_aggs"] 字典中，键为文档名，值为包含文档ID和命中块数的字典
+        aggs = True
         if aggs:
+
             for i in valid_idx:
                 id = sres.ids[i]
                 chunk = sres.field[id]
                 dnm = chunk.get("docnm_kwd", "")
                 did = chunk.get("doc_id", "")
+
+                print(did)
                 if dnm not in ranks["doc_aggs"]:
                     ranks["doc_aggs"][dnm] = {"doc_id": did, "count": 0}
                 ranks["doc_aggs"][dnm]["count"] += 1
@@ -500,6 +512,9 @@ class Dealer:
                     key=lambda x: x[1]["count"] * -1,
                 )
             ]
+
+            print("-------------------------")
+            print(ranks["doc_aggs"])
         else:
             ranks["doc_aggs"] = []
 

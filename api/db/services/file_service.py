@@ -511,55 +511,55 @@ class FileService(CommonService):
             except Exception as e:
                     print(f"错误详情: {e}")
             return kb_folder
-        # 如果存在.knowladge
-        try:
-            # 管理员只放1级表
-            if AdminUser.query(user_id=tenant_id, role_level=1):
-                knowladge_id = kb_folder.id
-                file = {
-                    "id": knowladge_id,
-                    "parent_id": root_id,
-                    "tenant_id": tenant_id,
-                    "created_by": tenant_id,
-                    "name": KNOWLEDGEBASE_FOLDER_NAME,
-                    "type": kb_folder.type,
-                    "size": kb_folder.size,
-                    "location": kb_folder.location,
-                    "source_type": FileSource.KNOWLEDGEBASE,
-                }
-                FileAdminService.save(**file)
-            if AdminUser.query(user_id=tenant_id, role_level=2):
-                knowladge_id = kb_folder.id
-                file = {
-                    "id": knowladge_id,
-                    "parent_id": root_id,
-                    "tenant_id": tenant_id,
-                    "created_by": tenant_id,
-                    "name": KNOWLEDGEBASE_FOLDER_NAME,
-                    "type": kb_folder.type,
-                    "size": kb_folder.size,
-                    "location": kb_folder.location,
-                    "source_type": FileSource.KNOWLEDGEBASE,
-                }
-                FileAdminService.save(**file)
-                FileGroupService.save(**file)
-            else:
-                knowladge_id = kb_folder.id
-                file = {
-                    "id": knowladge_id,
-                    "parent_id": root_id,
-                    "tenant_id": tenant_id,
-                    "created_by": tenant_id,
-                    "name": KNOWLEDGEBASE_FOLDER_NAME,
-                    "type": kb_folder.type,
-                    "size": kb_folder.size,
-                    "location": kb_folder.location,
-                    "source_type": FileSource.KNOWLEDGEBASE,
-                }
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
-        except Exception as e:
-            print(f"❌ 错误详情: {e}")
+        # # 如果存在.knowladge
+        # try:
+        #     # 管理员只放1级表
+        #     if AdminUser.query(user_id=tenant_id, role_level=1):
+        #         knowladge_id = kb_folder.id
+        #         file = {
+        #             "id": knowladge_id,
+        #             "parent_id": root_id,
+        #             "tenant_id": tenant_id,
+        #             "created_by": tenant_id,
+        #             "name": KNOWLEDGEBASE_FOLDER_NAME,
+        #             "type": kb_folder.type,
+        #             "size": kb_folder.size,
+        #             "location": kb_folder.location,
+        #             "source_type": FileSource.KNOWLEDGEBASE,
+        #         }
+        #         FileAdminService.save(**file)
+        #     if AdminUser.query(user_id=tenant_id, role_level=2):
+        #         knowladge_id = kb_folder.id
+        #         file = {
+        #             "id": knowladge_id,
+        #             "parent_id": root_id,
+        #             "tenant_id": tenant_id,
+        #             "created_by": tenant_id,
+        #             "name": KNOWLEDGEBASE_FOLDER_NAME,
+        #             "type": kb_folder.type,
+        #             "size": kb_folder.size,
+        #             "location": kb_folder.location,
+        #             "source_type": FileSource.KNOWLEDGEBASE,
+        #         }
+        #         FileAdminService.save(**file)
+        #         FileGroupService.save(**file)
+        #     else:
+        #         knowladge_id = kb_folder.id
+        #         file = {
+        #             "id": knowladge_id,
+        #             "parent_id": root_id,
+        #             "tenant_id": tenant_id,
+        #             "created_by": tenant_id,
+        #             "name": KNOWLEDGEBASE_FOLDER_NAME,
+        #             "type": kb_folder.type,
+        #             "size": kb_folder.size,
+        #             "location": kb_folder.location,
+        #             "source_type": FileSource.KNOWLEDGEBASE,
+        #         }
+        #         FileGroupService.save(**file)
+        #         FileAdminService.save(**file)
+        # except Exception as e:
+        #     print(f"❌ 错误详情: {e}")
 
         return kb_folder.to_dict()
 
@@ -784,7 +784,7 @@ class FileService(CommonService):
                 FileGroupService.model.delete().where(cls.model.parent_id == folder_id).execute()
                 FileAdminService.model.delete().where(cls.model.parent_id == folder_id).execute()
         except Exception as e:
-            print("1、2级表文件名称未能挂载到知识库")
+            print("删除失败")
         return cls.model.delete().where(cls.model.parent_id == folder_id).execute()
 
     @classmethod
@@ -802,7 +802,7 @@ class FileService(CommonService):
                         FileGroupService.delete_folder_by_pf_id(user_id, file.id)
                         FileAdminService.delete_folder_by_pf_id(user_id, file.id)
                 except Exception as e:
-                    print("1、2级表文件名称未能挂载到知识库")
+                    print("删除失败")
 
             return (cls.model.delete().where((cls.model.tenant_id == user_id) & (cls.model.id == folder_id)).execute(),)
         except Exception:
@@ -849,6 +849,8 @@ class FileService(CommonService):
             "location": doc["location"],
             "source_type": FileSource.KNOWLEDGEBASE,
         }
+
+        print(file)
         cls.save(**file)
         try:
             if AdminUser.query(user_id=tenant_id, role_level=1):

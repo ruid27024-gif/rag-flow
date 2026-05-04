@@ -845,6 +845,8 @@ async def parse_author_info(task: dict):
     set_progress(task_id, prog=0.01, msg="Parsing author info...")
     st = timer()
     bucket, name = File2DocumentService.get_storage_address(doc_id=task["doc_id"])
+    print(bucket)
+    print(name)
     print(f"【DEBUG-HY】: parse_author_info filename: {name}", file=sys.stderr, flush=True)
     binary = await get_storage_binary(bucket, name)
     logging.info("From minio({}) {}/{}".format(timer() - st, name, name))

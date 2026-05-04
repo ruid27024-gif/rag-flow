@@ -25,26 +25,115 @@ const NewDocumentLink = ({
   className,
 }: IProps) => {
   let nextLink = link;
+  // 获取后缀
   const extension = getExtension(documentName);
   if (!link) {
     nextLink = `/document/${documentId}?ext=${extension}&prefix=${prefix}`;
   }
+  console.log(nextLink);
+  // 2. 处理下载的函数
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation(); // 阻止事件冒泡，避免触发父元素的点击事件
+    const downloadLink = document.createElement('a');
+    downloadLink.href = `/v1/document/get/${documentId}?ext=pdf`;
+    // download 属性会提示浏览器下载资源，而不是导航到该资源
+    // 其值可以作为下载文件的默认文件名
+    downloadLink.download = documentName || 'download';
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+  };
 
+  // return (
+  //   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+  //   <a
+  //     target="_blank"
+  //     onClick={
+  //       !preventDefault || isSupportedPreviewDocumentType(extension)
+  //         ? undefined
+  //         : (e) => e.preventDefault()
+  //     }
+  //     href={nextLink}
+  //     rel="noreferrer"
+  //     style={{ color: className ? '' : color, wordBreak: 'break-all' }}
+  //     className={className}
+  //   >
+  //     {children}
+  //   </a>
+
+  //   {isSupportedPreviewDocumentType(extension) && (
+  //       <button
+  //         onClick={handleDownload}
+  //         style={{
+  //           cursor: 'pointer',
+  //           padding: '2px 6px',
+  //           fontSize: '12px',
+  //           border: '1px solid #ccc',
+  //           borderRadius: '4px',
+  //           backgroundColor: '#f0f0f0'
+  //         }}
+  //       >
+  //         下载
+  //       </button>
+  //     )}
+  //     </span>
+  // );
+
+  // NewDocumentLink 组件内部
   return (
-    <a
-      target="_blank"
-      onClick={
-        !preventDefault || isSupportedPreviewDocumentType(extension)
-          ? undefined
-          : (e) => e.preventDefault()
-      }
-      href={nextLink}
-      rel="noreferrer"
-      style={{ color: className ? '' : color, wordBreak: 'break-all' }}
-      className={className}
+    // 修改点：
+    // 1. 移除 style 中的 wordBreak: 'break-all' (这会强制换行，与截断冲突)
+    // 2. 确保 className 被正确应用
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        width: '100%',
+      }}
     >
-      {children}
-    </a>
+      <a
+        target="_blank"
+        onClick={
+          !preventDefault || isSupportedPreviewDocumentType(extension)
+            ? undefined
+            : (e) => e.preventDefault()
+        }
+        href={nextLink}
+        rel="noreferrer"
+        style={{ color: className ? '' : color }} // 移除了 wordBreak
+        className={className} // 确保这里的 className 接收到了父组件传来的 'flex-1 truncate'
+      >
+        {children}
+      </a>
+
+      {isSupportedPreviewDocumentType(extension) && (
+        <button
+          onClick={handleDownload}
+          // 按钮样式保持不变，或者加一个 flex-shrink-0 防止被压缩
+          // style={{
+          //     cursor: 'pointer',
+          //     padding: '2px 6px',
+          //     fontSize: '12px',
+          //     border: '1px solid #ccc',
+          //     borderRadius: '4px',
+          //     backgroundColor: '#f0f0f0',
+          //     flexShrink: 0 // 防止按钮被压缩
+          // }}
+
+          className="
+                    cursor-pointer
+                    px-2 py-1 text-xs border rounded-md
+                    bg-gray-100 text-gray-700 border-gray-300
+                    hover:bg-gray-200
+                    dark:bg-slate-800 dark:text-gray-200 dark:border-slate-600 dark:hover:bg-slate-700
+                    flex-shrink-0
+                "
+        >
+          下载
+        </button>
+      )}
+    </span>
   );
 };
 
