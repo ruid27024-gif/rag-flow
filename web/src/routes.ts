@@ -21,6 +21,8 @@ export enum Routes {
   SearchShare = '/next-search/share',
   Chats = '/next-chats',
   Chat = '/next-chat',
+  ChatsDefault = '/next-chats-default',
+  ChatDefault = '/next-chat-default',
   Files = '/files',
   ProfileSetting = '/profile-setting',
   Profile = '/profile',
@@ -143,6 +145,11 @@ const routes = [
     path: Routes.Chat + '/:id',
     layout: false,
     component: `@/pages${Routes.Chats}/chat`,
+  },
+  {
+    path: Routes.ChatDefault + '/:id',
+    layout: false,
+    component: `@/pages${Routes.ChatsDefault}/chat`,
   },
   {
     path: Routes.Searches,

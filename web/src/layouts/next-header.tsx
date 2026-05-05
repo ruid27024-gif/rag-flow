@@ -71,7 +71,7 @@ export function Header() {
       { path: Routes.Chats, name: t('header.chat'), icon: MessageSquareText },
       {
         path: 'create-dialog-api',
-        name: '新建对话',
+        name: '恒丰纸业小助手',
         icon: MessageSquareText,
         isApi: true,
       },
@@ -125,7 +125,7 @@ export function Header() {
         });
         const res = await response.json();
         if (res.retcode === 0 && res.data?.id) {
-          navigate(`${Routes.Chat}/${res.data.id}`);
+          navigate(`${Routes.ChatDefault}/${res.data.id}`);
         } else {
           message.error(res.msg || '新建对话失败！');
         }

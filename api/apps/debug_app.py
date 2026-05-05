@@ -10,8 +10,8 @@ from common.misc_utils import get_uuid
 # debug_app = Blueprint('debug_app', __name__, url_prefix='/debug')
 
 # CONFIG_FILE_PATH = '/home/hit802/RAG1/dialog_3ad8d622f11511f0ad4410ffe02ab235.json'
-# CONFIG_FILE_PATH = './dialog_3.json'
-CONFIG_FILE_PATH = 'conf/dialog_3ad8d622f11511f0ad4410ffe02ab235.json'
+CONFIG_FILE_PATH = r'C:\Users\28023\Desktop\rag-flow\api\apps\dialog_3.json'
+# CONFIG_FILE_PATH = 'conf/dialog_3ad8d622f11511f0ad4410ffe02ab235.json'
 
 @manager.route('/config', methods=['GET'])  # noqa: F821
 async def get_config():

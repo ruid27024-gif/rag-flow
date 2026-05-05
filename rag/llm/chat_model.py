@@ -1259,7 +1259,7 @@ class LiteLLMBase(ABC):
             if not hist or hist[0].get("role") != "system":
                 hist.insert(0, {"role": "system", "content": system})
 
-        logging.info("[HISTORY]" + json.dumps(hist, ensure_ascii=False, indent=2))
+        logging.info("[HISTORY]" + json.dumps(hist, ensure_ascii=True, indent=2))
         if self.model_name.lower().find("qwen3") >= 0:
             kwargs["extra_body"] = {"enable_thinking": False}
 

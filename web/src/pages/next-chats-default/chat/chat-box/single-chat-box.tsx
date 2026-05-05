@@ -240,7 +240,7 @@ export function SingleChatBox({
               'linear-gradient(to right, #166534, #059669, #0d9488)',
           }}
         >
-          我是恒丰纸业智能小助手
+          我是恒丰纸业统一配置问答智能小助手
         </p>
 
         <p
@@ -335,6 +335,7 @@ export function SingleChatBox({
             // 🎯 核心逻辑：判断是否只有一条消息（即初始状态）
             const isOnlyWelcomeMessage =
               derivedMessages.length === 1 && i === 0;
+            console.log(derivedMessages.length);
 
             if (isOnlyWelcomeMessage) {
               // ✅ 情况 A：只有一条消息，显示带昵称的欢迎页
@@ -393,7 +394,7 @@ export function SingleChatBox({
                         'linear-gradient(to right, #166534, #059669, #0d9488)',
                     }}
                   >
-                    我是恒丰纸业智能小助手
+                    我是恒丰纸业统一配置问答智能小助手
                   </p>
 
                   <p

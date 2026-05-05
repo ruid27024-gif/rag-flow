@@ -259,7 +259,7 @@ export default function Chat() {
                   </CardTitle>
                 </CardHeader>
                 {/* 消息展示区 */}
-                <CardContent className="flex-1 p-0 min-h-0">
+                <CardContent className="flex-1 p-0 min-h-[300px]">
                   <SingleChatBox
                     controller={controller}
                     stopOutputMessage={stopOutputMessage}

@@ -86,6 +86,10 @@ async def set_dialog_config():
 @login_required
 async def set_dialog():
     req = await get_request_json()
+    # 👇 在这里添加打印
+    print("======================================")
+    print("🚀 前端发来的请求数据 (req):", req)
+    print("======================================")
     dialog_id = req.get("dialog_id", "")
     is_create = not dialog_id
     name = req.get("name", "New Dialog")
