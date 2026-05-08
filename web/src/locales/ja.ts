@@ -38,14 +38,15 @@ export default {
       japanese: '日本語',
     },
     login: {
-      login: 'ログイン',
-      signUp: 'サインアップ',
+      loginTitle: 'ログイン',
+      signUpTitle: 'サインアップ',
+
       loginDescription: 'お帰りなさい！またお会いできて嬉しいです。',
       registerDescription: 'ご登録ありがとうございます！',
       emailLabel: 'メールアドレス',
       emailPlaceholder: 'メールアドレスを入力してください',
-      passwordLabel: 'パスワード',
-      passwordPlaceholder: 'パスワードを入力してください',
+      passwordLabel: 'メールアドレス / 携帯電話番号',
+      passwordPlaceholder: 'メールアドレスまたは携帯電話番号を入力してください',
       rememberMe: 'ログイン状態を保持する',
       signInTip: 'アカウントをお持ちでないですか？',
       signUpTip: 'すでにアカウントをお持ちですか？',
@@ -53,13 +54,14 @@ export default {
       nicknamePlaceholder: 'ニックネームを入力してください',
       register: 'アカウント作成',
       continue: '続行',
-      title: 'スマートアシスタントの構築を開始しましょう。',
+      title: '知識ベース検索拡張生成エンジン',
+      Company: '恒豊紙業（こうほうしぎょう）',
       description:
         '無料でサインアップして、最先端のRAGテクノロジーを探索してください。ナレッジベースやAIを作成して、ビジネスを強化しましょう。',
       review: '500件以上のレビューより',
     },
     header: {
-      knowledgeBase: 'ナレッジベース',
+      dataset: 'ナレッジベース',
       chat: 'チャット',
       register: '登録',
       signin: 'ログイン',
@@ -69,6 +71,7 @@ export default {
       fileManager: 'ファイル管理',
       flow: 'エージェント',
       search: '検索',
+      admin: 'アドミン',
     },
     knowledgeList: {
       welcome: 'お帰りなさい',
@@ -727,6 +730,7 @@ export default {
       uploadLimit:
         'RAGFlowは、単一またはバッチでのファイルアップロードをサポートします。ローカルにデプロイされた RAGFlow の場合: アップロードごとの合計ファイルサイズ制限は 1GB、バッチアップロードの制限は 32 ファイルです。アカウントごとのファイル総数には制限がありません。demo.ragflow.io の場合: アップロードごとの合計ファイルサイズ制限は 10MB、各ファイルは 10MB を超えず、アカウントごとに最大 128 ファイルまでです。',
       destinationFolder: '保存先フォルダ',
+      files: 'ファイル',
     },
     flow: {
       cite: '引用',

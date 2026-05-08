@@ -97,9 +97,9 @@ export function SideBar() {
 
       <div className="p-6 mt-auto ">
         <div className="flex items-center gap-2 mb-6 justify-between">
-          <div className="mr-2 px-2 text-accent-primary rounded-md">
+          {/* <div className="mr-2 px-2 text-accent-primary rounded-md">
             {version}
-          </div>
+          </div> */}
           <ThemeToggle />
         </div>
         <Button

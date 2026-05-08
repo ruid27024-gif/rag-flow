@@ -5,10 +5,7 @@ import {
   LlmSettingFieldItems,
   LlmSettingSchema,
 } from '@/components/llm-setting-items/next';
-import {
-  MetadataFilter,
-  MetadataFilterSchema,
-} from '@/components/metadata-filter';
+import { MetadataFilterSchema } from '@/components/metadata-filter';
 import { SimilaritySliderFormField } from '@/components/similarity-slider';
 import { Button } from '@/components/ui/button';
 import { SingleFormSlider } from '@/components/ui/dual-range-slider';
@@ -396,9 +393,9 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                 </FormItem>
               )}
             />
-            <MetadataFilter prefix="search_config."></MetadataFilter>
+            {/* <MetadataFilter prefix="search_config."></MetadataFilter> */}
             <SimilaritySliderFormField
-              isTooltipShown
+              // isTooltipShown
               similarityName="search_config.similarity_threshold"
               vectorSimilarityWeightName="search_config.vector_similarity_weight"
               numberInputClassName="rounded-sm"

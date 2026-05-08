@@ -123,7 +123,8 @@ async def set_dialog():
 
     if not is_create:
         if not req.get("kb_ids", []) and not prompt_config.get("tavily_api_key") and "{knowledge}" in prompt_config['system']:
-            return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no dataset / Tavily used here.")
+            # return get_data_error_result(message="请先在左上方选择您的知识库再进行问答")
+            pass
 
         for p in prompt_config["parameters"]:
             if p["optional"]:
@@ -176,6 +177,200 @@ async def set_dialog():
             dia = dia.to_dict()
             dia.update(req)
             dia["kb_ids"], dia["kb_names"] = get_kb_names(dia["kb_ids"])
+            return get_json_result(data=dia)
+    except Exception as e:
+        return server_error_response(e)
+    
+
+# 前端只能更改知识库版本
+@manager.route('/set_by_config', methods=['POST'])  # noqa: F821
+# @validate_request("prompt_config")
+@login_required
+async def set_dialog_by_config():
+    req = await get_request_json()
+    # 👇 在这里添加打印
+    print("======================================")
+    print("hello")
+    print("🚀 前端发来的请求数据 (req):", req)
+    print("======================================")
+    dialog_id = req.get("dialog_id", "")
+    is_create = not dialog_id
+    name = req.get("name", "New Dialog")
+
+    if not isinstance(name, str):
+        return get_data_error_result(message="Dialog name must be string.")
+    if name.strip() == "":
+        return get_data_error_result(message="Dialog name can't be empty.")
+    if len(name.encode("utf-8")) > 255:
+        return get_data_error_result(message=f"Dialog name length is {len(name)} which is larger than 255")
+
+    # 重名了
+    if is_create and DialogService.query(tenant_id=current_user.id, name=name.strip()):
+        name = name.strip()
+        # 生成一个不重复的名字
+        name = duplicate_name(
+            DialogService.query,
+            name=name,
+            tenant_id=current_user.id,
+            status=StatusEnum.VALID.value)
+
+    CONFIG_FILE_PATH = '/home/zyb/rag-flow/api/apps/dialog_3.json'
+    # 忽略req直接从配置文件加载相关参数
+    from quart import request, jsonify
+    import json
+    import os
+    if not os.path.exists(CONFIG_FILE_PATH):
+        return jsonify({"msg": "Config file not found", "retcode": 404}), 404
+
+    with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
+        config_data = json.load(f)
+
+    description = req.get("description", "")
+    icon = req.get("icon", config_data.get("icon", ""))
+
+    top_n = config_data.get("top_n", 6)
+    top_k = config_data.get("top_k", 1024)
+    rerank_id = req.get("rerank_id", config_data.get("rerank_id", ""))
+
+    # if not rerank_id:
+    #     req["rerank_id"] = ""
+
+    similarity_threshold = config_data.get("similarity_threshold", 0.1)
+    vector_similarity_weight = config_data.get("vector_similarity_weight", 0.3)
+    llm_setting = config_data.get("llm_setting", {})
+
+    meta_data_filter = config_data.get("meta_data_filter", {})
+    prompt_config = config_data.get("prompt_config", {})
+
+    prompt_config["prologue"] = req.get("prompt_config", {}).get("prologue", prompt_config.get("prologue", ""))
+    prompt_config["empty_response"] = req.get("prompt_config", {}).get("empty_response", prompt_config.get("empty_response", ""))
+
+    # 如果不是新建
+    if not is_create:
+        # 检查“知识”来源是否已配置
+        if not req.get("kb_ids", []) and not prompt_config.get("tavily_api_key") and "{knowledge}" in prompt_config['system']:
+            # return get_data_error_result(message="Please remove `{knowledge}` in system prompt since no dataset / Tavily used here.")
+            pass
+
+        # 确认一边必填参数
+        for p in prompt_config["parameters"]:
+            if p["optional"]:
+                continue
+            if prompt_config["system"].find("{%s}" % p["key"]) < 0:
+                return get_data_error_result(
+                    message="Parameter '{}' is not used".format(p["key"]))
+
+    try:
+        e, tenant = TenantService.get_by_id(current_user.id)
+        if not e:
+            return get_data_error_result(message="Tenant not found!")
+
+
+        kbs = KnowledgebaseService.get_by_ids(req.get("kb_ids", []))
+
+        # // 判断embedding模型
+        embd_ids = [TenantLLMService.split_model_name_and_factory(kb.embd_id)[0] for kb in kbs]  # remove vendor suffix for comparison
+        embd_count = len(set(embd_ids))
+        if embd_count > 1:
+            return get_data_error_result(message=f'Datasets use different embedding models: {[kb.embd_id for kb in kbs]}"')
+
+        # llm_id = config_data.get("llm_id", tenant.llm_id)
+        llm_id = req.get("llm_id", "")
+
+        if not dialog_id:
+            dia = {
+                "id": get_uuid(),
+                "tenant_id": current_user.id,
+                "name": name,
+                "kb_ids": req.get("kb_ids", []), # 允许用户选择知识库
+                "description": description,
+                "llm_id": llm_id,
+                "llm_setting": llm_setting,
+                "prompt_config": prompt_config,
+                "meta_data_filter": meta_data_filter,
+                "top_n": top_n,
+                "top_k": top_k,
+                "rerank_id": rerank_id,
+                "similarity_threshold": similarity_threshold,
+                "vector_similarity_weight": vector_similarity_weight,
+                "icon": icon,
+                "language": config_data.get("language", "Chinese"),
+                "do_refer": config_data.get("do_refer", "1"),
+                "prompt_type": config_data.get("prompt_type", "simple"),
+            }
+            if not DialogService.save(**dia):
+                return get_data_error_result(message="Fail to new a dialog!")
+            return get_json_result(data=dia)
+
+        else:
+            del req["dialog_id"]
+            if "kb_names" in req:
+                del req["kb_names"]
+
+            update_data = {
+                "name": name,
+                "kb_ids": req.get("kb_ids", []),  # 只使用前端传来的知识库ID
+                "description": description,
+                "llm_id": llm_id, 
+                "llm_setting": llm_setting,  # 从配置文件
+                "prompt_config": prompt_config,  # 从配置文件
+                "meta_data_filter": meta_data_filter,  # 从配置文件
+                "top_n": top_n,  # 从配置文件
+                "top_k": top_k,  # 从配置文件
+                "rerank_id": rerank_id,  # 从配置文件
+                "similarity_threshold": similarity_threshold,  # 从配置文件
+                "vector_similarity_weight": vector_similarity_weight,  # 从配置文件
+                "icon": icon,  # 从配置文件
+                "language": config_data.get("language", "Chinese"),  # 从配置文件
+                "do_refer": config_data.get("do_refer", "1"),  # 从配置文件
+                "prompt_type": config_data.get("prompt_type", "simple"),  # 从配置文件
+            }
+
+            if not DialogService.update_by_id(dialog_id, update_data):
+                return get_data_error_result(message="Dialog not found!")
+
+            e, dia = DialogService.get_by_id(dialog_id)
+            if not e:
+                return get_data_error_result(message="Fail to update a dialog!")
+
+            # 原始的配置
+            dia = dia.to_dict()
+            print("----------------------------------")
+            print(dia)
+            # 只更新kb_ids
+            kb_ids_req = req.get("kb_ids", [])
+
+            # 【关键修复】确保 kb_ids 是列表
+            if isinstance(kb_ids_req, str):
+                try:
+                    # 如果是字符串，尝试解析 JSON
+                    import json
+                    kb_ids_req = json.loads(kb_ids_req)
+                except:
+                    # 解析失败则设为空列表
+                    kb_ids_req = []
+
+            if isinstance(dia.get("llm_setting"), str):
+                try:
+                    dia["llm_setting"] = json.loads(dia["llm_setting"])
+                except json.JSONDecodeError:
+                    dia["llm_setting"] = {}
+
+            if isinstance(dia.get("meta_data_filter"), str):
+                try:
+                    dia["meta_data_filter"] = json.loads(dia["meta_data_filter"])
+                except:
+                    # 根据你的 defaultValues，默认应该是 { method: DatasetMetadata.Disabled, manual: [] }
+                    # 或者简单的空字典/空列表，视你的前端逻辑而定
+                    dia["meta_data_filter"] = {"method": "disabled", "manual": []}
+
+            dia["description"] = description
+            # 赋值
+            dia["kb_ids"] = kb_ids_req
+
+            dia["kb_ids"], dia["kb_names"] = get_kb_names(dia["kb_ids"])
+
+            print(f"返回结果：{dia}")
             return get_json_result(data=dia)
     except Exception as e:
         return server_error_response(e)

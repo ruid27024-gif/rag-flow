@@ -25,10 +25,25 @@ export function ChatSettings({
 
   return (
     <section className={cn('p-5  w-[440px] border-l flex flex-col', className)}>
-      <div className="flex justify-between items-center text-base pb-2">
+      {/* <div className="flex justify-between items-center text-base pb-2">
         {t('chat.chatSetting')}
         <X className="size-4 cursor-pointer" onClick={switchSettingVisible} />
+      </div> */}
+
+      <div className="flex justify-between items-center text-base pb-2">
+        {/* 左侧标题区域 */}
+        <div className="flex items-center gap-2">
+          <h2 className="font-medium text-gray-900">{t('chat.chatSetting')}</h2>
+          {/* 新增的副标题，使用稍小的字体和浅色 */}
+          <span className="text-sm font-normal text-blue-500">
+            （填写第一项即可）
+          </span>
+        </div>
+
+        {/* 右侧关闭按钮 */}
+        <X className="size-4 cursor-pointer" onClick={switchSettingVisible} />
       </div>
+
       <div className="flex-1 flex flex-col min-h-0">
         <section className="space-y-6 overflow-auto flex-1 pr-4 min-h-0">
           <ChatBasicSetting></ChatBasicSetting>

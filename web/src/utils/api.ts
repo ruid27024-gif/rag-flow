@@ -139,7 +139,7 @@ export default {
   get_dataset_filter: `${api_host}/document/filter`,
 
   // chat
-  setDialog: `${api_host}/dialog/set`,
+  setDialog: `${api_host}/dialog/set_by_config`,
   getDialog: `${api_host}/dialog/get`,
   removeDialog: `${api_host}/dialog/rm`,
   listDialog: `${api_host}/dialog/list`,

@@ -283,7 +283,7 @@ const Login = () => {
                 className="size-8 mr-[12] cursor-pointer"
               />
             </div>
-            <div className="text-xl font-bold self-center">恒丰纸业</div>
+            <div className="text-xl font-bold self-center">{t('Company')}</div>
           </div>
           <h1 className="text-[36px] font-medium  text-center mb-2">
             {t('title')}
@@ -444,7 +444,7 @@ const Login = () => {
                   </form>
                 </Form>
 
-                {title === 'login' && registerEnabled && (
+                {/* {title === 'login' && registerEnabled && (
                   <div className="mt-10 text-right">
                     <p className="text-text-disabled text-sm">
                       {t('signInTip')}
@@ -457,7 +457,7 @@ const Login = () => {
                       </Button>
                     </p>
                   </div>
-                )}
+                )} */}
                 {title === 'register' && (
                   <div className="mt-10 text-right">
                     <p className="text-text-disabled text-sm">

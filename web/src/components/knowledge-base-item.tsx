@@ -137,7 +137,7 @@ export function KnowledgeBaseFormField({
       render={({ field }) => (
         <FormItem>
           {!hideLabel && (
-            <FormLabel tooltip={t('chat.knowledgeBasesTip')}>
+            <FormLabel tooltip={t('chat.knowledgeBasesTip')} required>
               {t('chat.knowledgeBases')}
             </FormLabel>
           )}

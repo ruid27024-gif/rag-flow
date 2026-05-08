@@ -1,7 +1,6 @@
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
 import { MetadataFilter } from '@/components/metadata-filter';
 import { SwitchFormField } from '@/components/switch-fom-field';
-import { TavilyFormField } from '@/components/tavily-form-field';
 import { TOCEnhanceFormField } from '@/components/toc-enhance-form-field';
 import { Button } from '@/components/ui/button';
 import {
@@ -70,9 +69,8 @@ function AdminChatBasicSetting() {
         name={'prompt_config.empty_response'}
         render={({ field }) => (
           <FormItem>
-            <FormLabel tooltip={t('chat.emptyResponseTip')}>
-              {t('chat.emptyResponse')}
-            </FormLabel>
+            {/* <FormLabel tooltip={t('chat.emptyResponseTip')}> */}
+            <FormLabel>{t('chat.emptyResponse')}</FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
@@ -85,7 +83,8 @@ function AdminChatBasicSetting() {
         name={'prompt_config.prologue'}
         render={({ field }) => (
           <FormItem>
-            <FormLabel tooltip={t('chat.setAnOpenerTip')}>
+            <FormLabel>
+              {/* <FormLabel tooltip={t('chat.setAnOpenerTip')}> */}
               {t('chat.setAnOpener')}
             </FormLabel>
             <FormControl>
@@ -98,20 +97,20 @@ function AdminChatBasicSetting() {
       <SwitchFormField
         name={'prompt_config.quote'}
         label={t('chat.quote')}
-        tooltip={t('chat.quoteTip')}
+        // tooltip={t('chat.quoteTip')}
       ></SwitchFormField>
       <SwitchFormField
         name={'prompt_config.keyword'}
         label={t('chat.keyword')}
-        tooltip={t('chat.keywordTip')}
+        // tooltip={t('chat.keywordTip')}
       ></SwitchFormField>
       <SwitchFormField
         name={'prompt_config.tts'}
         label={t('chat.tts')}
-        tooltip={t('chat.ttsTip')}
+        // tooltip={t('chat.ttsTip')}
       ></SwitchFormField>
       <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
-      <TavilyFormField></TavilyFormField>
+      {/* <TavilyFormField></TavilyFormField> */}
       <KnowledgeBaseFormField></KnowledgeBaseFormField>
       <MetadataFilter></MetadataFilter>
     </div>

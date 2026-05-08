@@ -183,124 +183,52 @@ export function SingleChatBox({
           ? MoonIcon
           : StarIcon;
 
-  if (!conversation?.id) {
-    // ✅ 情况 A：只有一条消息，显示带昵称的欢迎页
-    return (
-      <div
-        className="
-          flex flex-col items-center justify-center
-          min-h-[60vh] w-full px-4
-          animate-in fade-in slide-in-from-bottom-4 duration-700
-        "
-      >
-        {/* 标题 */}
-        <h1
-          className="
-              text-5xl sm:text-6xl font-extrabold
-              mb-4 tracking-tight
-              bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500
-              bg-clip-text text-transparent
-              dark:text-white
-              
-            "
-        >
-          您好, {userInfo?.nickname || '新朋友'}
-          <span
-            className="
-                inline-block
-                ml-2
-                align-middle
-                animate-[bounce_5s_ease-in-out_infinite]
-              "
-          >
-            <TimeIcon />
-          </span>
-          <span className="ml-3 text-2xl font-medium text-gray-400 dark:text-gray-500">
-            {greeting} · {hours}:{minutes}
-          </span>
-        </h1>
-
-        {/* 副标题 */}
-        <p
-          className="
-            text-2xl sm:text-3xl
-            font-medium
-            mb-2
-            leading-tight
-            bg-gradient-to-r from-green-800 to-teal-600
-            dark:from-green-500 dark:to-teal-400
-          "
-          style={{
-            backgroundClip: 'text',
-            WebkitBackgroundClip: 'text',
-            color: 'transparent',
-            WebkitTextFillColor: 'transparent',
-            /* 强制指定渐变色：深绿 -> 青绿 */
-            backgroundImage:
-              'linear-gradient(to right, #166534, #059669, #0d9488)',
-          }}
-        >
-          我是恒丰纸业智能小助手
-        </p>
-
-        <p
-          className="
-              text-[#14b8a6] dark:text-[#2dd4bf]
-              text-base sm:text-lg
-              mb-6
-              leading-snug
-            "
-        >
-          左上方选择您的知识库😊
-        </p>
-
-        {/* 快捷操作 */}
-        <div className="flex gap-3 flex-wrap justify-center">
-          <button
-            onClick={() => handleSuggestionClick('帮我写一份周报')}
-            className="
-                px-5 py-2.5
-                rounded-full
-                bg-white dark:bg-gray-800
-                text-gray-700 dark:text-gray-200
-                text-sm font-medium
-                border border-gray-200 dark:border-gray-700
-                shadow-sm
-                hover:shadow-md hover:-translate-y-0.5
-                transition-all duration-200
-              "
-          >
-            📄 帮我写一份周报
-          </button>
-
-          <button
-            onClick={() => handleSuggestionClick('帮我制定计划')}
-            className="
-                px-5 py-2.5
-                rounded-full
-                bg-white dark:bg-gray-800
-                text-gray-700 dark:text-gray-200
-                text-sm font-medium
-                border border-gray-200 dark:border-gray-700
-                shadow-sm
-                hover:shadow-md hover:-translate-y-0.5
-                transition-all duration-200
-              "
-          >
-            📅 帮我制定计划
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <section className="flex flex-col p-5 h-full">
       {/* 消息滚动区域 */}
       <div ref={messageContainerRef} className="flex-1 overflow-auto min-h-0">
         <div className="w-full pr-5">
-          {/* {derivedMessages?.map((message, i) => {
-            return (
+          {/* 🎯 核心判断：没有对话ID 或 有对话ID但消息为空时显示欢迎页 */}
+          {!conversationId || derivedMessages.length === 1 ? (
+            // ✅ 情况 A：显示带昵称的欢迎页
+            /* 外层容器 */
+
+            <div
+              className="
+  relative overflow-hidden
+  p-8                    /* 基础内边距 */
+  py-16                  /* 覆盖：上下内边距增加到 4rem（64px），高度变高 */
+  rounded-3xl
+  bg-gradient-to-b from-green-50/50 to-white dark:from-green-900/20 dark:to-gray-900
+  border border-green-100 dark:border-green-900/30
+  text-center space-y-4
+  mt-12
+"
+            >
+              {/* 装饰性背景光晕 */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-green-400/20 blur-3xl rounded-full pointer-events-none" />
+
+              <h1 className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight">
+                恒丰纸业智能小助手
+                <span className="ml-2 inline-block animate-bounce text-green-600">
+                  <TimeIcon />
+                </span>
+              </h1>
+
+              <p className="relative text-lg text-gray-600 dark:text-gray-400">
+                欢迎回来，
+                <span className="font-bold text-pink-700 dark:text-green-400">
+                  {userInfo?.nickname}
+                </span>
+                <span className="mx-2 opacity-40">|</span>
+                <span className="font-mono text-sm text-green-700 bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded">
+                  {hours}:{minutes}
+                </span>
+              </p>
+            </div>
+          ) : (
+            // ✅ 情况 B：有对话ID且消息不为空，正常渲染对话气泡
+            derivedMessages?.map((message, i) => (
               <MessageItem
                 loading={
                   message.role === MessageType.Assistant &&
@@ -326,161 +254,14 @@ export function SingleChatBox({
                 sendLoading={sendLoading}
                 visibleAvatar={false}
                 onSuggestionClick={handleSuggestionClick}
-
-              ></MessageItem>
-            );
-          })} */}
-
-          {derivedMessages?.map((message, i) => {
-            // 🎯 核心逻辑：判断是否只有一条消息（即初始状态）
-            const isOnlyWelcomeMessage =
-              derivedMessages.length === 1 && i === 0;
-
-            if (isOnlyWelcomeMessage) {
-              // ✅ 情况 A：只有一条消息，显示带昵称的欢迎页
-              return (
-                <div
-                  className="
-          flex flex-col items-center justify-center
-          min-h-[60vh] w-full px-4
-          animate-in fade-in slide-in-from-bottom-4 duration-700
-        "
-                >
-                  {/* 标题 */}
-                  <h1
-                    className="
-              text-5xl sm:text-6xl font-extrabold
-              mb-4 tracking-tight
-              bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500
-              bg-clip-text text-transparent
-              dark:text-white
-              
-            "
-                  >
-                    您好, {userInfo?.nickname || '新朋友'}
-                    <span
-                      className="
-                inline-block
-                ml-2
-                align-middle
-                animate-[bounce_5s_ease-in-out_infinite]
-              "
-                    >
-                      <TimeIcon />
-                    </span>
-                    <span className="ml-3 text-2xl font-medium text-gray-400 dark:text-gray-500">
-                      {greeting} · {hours}:{minutes}
-                    </span>
-                  </h1>
-
-                  {/* 副标题 */}
-                  <p
-                    className="
-            text-2xl sm:text-3xl
-            font-medium
-            mb-2
-            leading-tight
-            bg-gradient-to-r from-green-800 to-teal-600
-            dark:from-green-500 dark:to-teal-400
-          "
-                    style={{
-                      backgroundClip: 'text',
-                      WebkitBackgroundClip: 'text',
-                      color: 'transparent',
-                      WebkitTextFillColor: 'transparent',
-                      /* 强制指定渐变色：深绿 -> 青绿 */
-                      backgroundImage:
-                        'linear-gradient(to right, #166534, #059669, #0d9488)',
-                    }}
-                  >
-                    我是恒丰纸业智能小助手
-                  </p>
-
-                  <p
-                    className="
-              text-[#14b8a6] dark:text-[#2dd4bf]
-              text-base sm:text-lg
-              mb-6
-              leading-snug
-            "
-                  >
-                    左上方选择您的知识库😊
-                  </p>
-
-                  {/* 快捷操作 */}
-                  <div className="flex gap-3 flex-wrap justify-center">
-                    <button
-                      onClick={() => handleSuggestionClick('帮我写一份周报')}
-                      className="
-                px-5 py-2.5
-                rounded-full
-                bg-white dark:bg-gray-800
-                text-gray-700 dark:text-gray-200
-                text-sm font-medium
-                border border-gray-200 dark:border-gray-700
-                shadow-sm
-                hover:shadow-md hover:-translate-y-0.5
-                transition-all duration-200
-              "
-                    >
-                      📄 帮我写一份周报
-                    </button>
-
-                    <button
-                      onClick={() => handleSuggestionClick('帮我制定计划')}
-                      className="
-                px-5 py-2.5
-                rounded-full
-                bg-white dark:bg-gray-800
-                text-gray-700 dark:text-gray-200
-                text-sm font-medium
-                border border-gray-200 dark:border-gray-700
-                shadow-sm
-                hover:shadow-md hover:-translate-y-0.5
-                transition-all duration-200
-              "
-                    >
-                      📅 帮我制定计划
-                    </button>
-                  </div>
-                </div>
-              );
-            }
-
-            // ✅ 情况 B：有多条消息，正常渲染对话气泡
-            return (
-              <MessageItem
-                loading={
-                  message.role === MessageType.Assistant &&
-                  sendLoading &&
-                  derivedMessages.length - 1 === i
-                }
-                key={buildMessageUuidWithRole(message)}
-                item={message}
-                nickname={userInfo.nickname}
-                avatar={userInfo.avatar}
-                avatarDialog={currentDialog.icon}
-                reference={buildMessageItemReference(
-                  {
-                    message: derivedMessages,
-                    reference: conversation.reference,
-                  },
-                  message,
-                )}
-                clickDocumentButton={clickDocumentButton}
-                index={i}
-                removeMessageById={removeMessageById}
-                regenerateMessage={regenerateMessage}
-                sendLoading={sendLoading}
-                visibleAvatar={false}
-                onSuggestionClick={handleSuggestionClick}
-              ></MessageItem>
-            );
-          })}
+              />
+            ))
+          )}
         </div>
         {/* 用于滚动到底部的锚点 */}
         <div ref={scrollRef} />
       </div>
+
       {/* 底部输入框 */}
       <NextMessageInput
         disabled={disabled}
@@ -498,6 +279,7 @@ export function SingleChatBox({
         isUploading={isUploading}
         removeFile={removeFile}
       />
+
       {/* PDF 预览弹窗 */}
       {visible && (
         <PdfSheet
@@ -505,7 +287,7 @@ export function SingleChatBox({
           hideModal={hideModal}
           documentId={documentId}
           chunk={selectedChunk}
-        ></PdfSheet>
+        />
       )}
     </section>
   );

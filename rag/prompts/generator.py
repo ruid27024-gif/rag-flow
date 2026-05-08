@@ -111,7 +111,8 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
             knowledges = knowledges[:i]
             logging.warning(f"Not all the retrieval into prompt: {len(knowledges)}/{kwlg_len}")
             break
-
+    
+    # 根据doc_id获取信息  ID就是第几个chunk 
     docs = DocumentService.get_by_ids([get_value(ck, "doc_id", "document_id") for ck in kbinfos["chunks"][:chunks_num]])
     docs = {d.id: d.meta_fields for d in docs}
 

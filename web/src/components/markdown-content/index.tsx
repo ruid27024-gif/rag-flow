@@ -28,7 +28,6 @@ import {
 import classNames from 'classnames';
 import { omit } from 'lodash';
 import { pipe } from 'lodash/fp';
-import { CircleAlert } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
   HoverCard,
@@ -36,6 +35,23 @@ import {
   HoverCardTrigger,
 } from '../ui/hover-card';
 import styles from './index.less';
+
+// 在组件外部或顶部定义颜色映射
+const getNumberColor = (num: number) => {
+  const colors = [
+    'bg-blue-500', // 1: 蓝色
+    'bg-green-500', // 2: 绿色
+    'bg-yellow-500', // 3: 黄色
+    'bg-purple-500', // 4: 紫色
+    'bg-pink-500', // 5: 粉色
+    'bg-orange-500', // 6: 橙色
+    'bg-teal-500', // 7: 青色
+    'bg-red-500', // 8: 红色
+    'bg-indigo-500', // 9: 靛蓝
+    'bg-cyan-500', // 10: 青色
+  ];
+  return colors[(num - 1) % colors.length];
+};
 
 const getChunkIndex = (match: string) => Number(match);
 // TODO: The display of the table is inconsistent with the display previously placed in the MessageItem.
@@ -49,6 +65,9 @@ const MarkdownContent = ({
   reference: IReference;
   clickDocumentButton?: (documentId: string, chunk: IReferenceChunk) => void;
 }) => {
+  // console.log("------------------MarkdownContent-----------------------")
+  // console.log(content)
+  // console.log(reference)
   const { t } = useTranslation();
   const { setDocumentIds, data: fileThumbnails } =
     useFetchDocumentThumbnailsByIds();
@@ -108,13 +127,18 @@ const MarkdownContent = ({
     };
   };
 
+  // 直接对应原始 chunks 列表的索引
   const getReferenceInfo = useCallback(
     (chunkIndex: number) => {
       const chunks = reference?.chunks ?? [];
       const chunkItem = chunks[chunkIndex];
-      const document = reference?.doc_aggs?.find(
+      // const document = reference?.doc_aggs?.find(
+      //   (x) => x?.doc_id === chunkItem?.document_id,
+      // );
+      const docIndex = reference?.doc_aggs?.findIndex(
         (x) => x?.doc_id === chunkItem?.document_id,
       );
+      const document = reference?.doc_aggs?.[docIndex];
       const documentId = document?.doc_id;
       const documentUrl = document?.url;
       const fileThumbnail = documentId ? fileThumbnails[documentId] : '';
@@ -129,6 +153,7 @@ const MarkdownContent = ({
         chunkItem,
         documentId,
         document,
+        docIndex, // 返回索引
       };
     },
     [fileThumbnails, reference],
@@ -209,9 +234,18 @@ const MarkdownContent = ({
   const renderReference = useCallback(
     (text: string) => {
       let replacedText = reactStringReplace(text, currentReg, (match, i) => {
+        // 从匹配字符串中提取数字
         const chunkIndex = getChunkIndex(match);
 
-        const { documentUrl, fileExtension, imageId, chunkItem, documentId } =
+        const {
+          documentUrl,
+          fileExtension,
+          imageId,
+          chunkItem,
+          documentId,
+          docIndex,
+        } =
+          // 调用 getReferenceInfo 函数，根据 chunkIndex 获取：
           getReferenceInfo(chunkIndex);
 
         const docType = chunkItem?.doc_type;
@@ -232,12 +266,21 @@ const MarkdownContent = ({
                   : () => {}
               }
             ></Image>
-            <span className="text-accent-primary"> {imageId}</span>
+            {/* <span className="text-accent-primary"> {imageId}</span> */}
           </section>
         ) : (
           <HoverCard key={i}>
             <HoverCardTrigger>
-              <CircleAlert className="size-4 inline-block" />
+              {/* <CircleAlert className="size-4 inline-block" /> */}
+              {/* <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white bg-accent-primary rounded-full">
+                {docIndex + 1} 
+              </span> */}
+
+              <span
+                className={`inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white rounded-full ${getNumberColor(docIndex + 1)}`}
+              >
+                {docIndex + 1}
+              </span>
             </HoverCardTrigger>
             <HoverCardContent className="max-w-3xl">
               {getPopoverContent(chunkIndex)}

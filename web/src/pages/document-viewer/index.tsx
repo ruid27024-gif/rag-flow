@@ -45,11 +45,9 @@ const DocumentViewer = () => {
       {ext === 'md' && <Md url={api} className="!h-dvh p-5"></Md>}
       {ext === 'txt' && <TxtPreviewer url={api}></TxtPreviewer>}
 
-      {ext === 'pdf' ||
-        ext === 'docx' ||
-        (ext === 'doc' && (
-          <PdfPreview url={api} className="!h-dvh p-5"></PdfPreview>
-        ))}
+      {(ext === 'pdf' || ext === 'docx' || ext === 'doc') && (
+        <PdfPreview url={api} className="!h-dvh p-5"></PdfPreview>
+      )}
       {(ext === 'xlsx' || ext === 'xls') && (
         <ExcelCsvPreviewer url={api}></ExcelCsvPreviewer>
       )}

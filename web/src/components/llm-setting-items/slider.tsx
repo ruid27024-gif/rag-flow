@@ -48,7 +48,8 @@ export function SliderInputSwitchFormField({
       defaultValue={defaultValue}
       render={({ field }) => (
         <FormItem>
-          <FormLabel tooltip={t(`${label}Tip`)}>{t(label)}</FormLabel>
+          {/* <FormLabel tooltip={t(`${label}Tip`)}>{t(label)}</FormLabel> */}
+          <FormLabel>{t(label)}</FormLabel>
           <div
             className={cn('flex items-center gap-4 justify-between', className)}
           >

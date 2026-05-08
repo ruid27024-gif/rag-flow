@@ -69,12 +69,12 @@ export function Header() {
       { path: Routes.Root, name: t('header.Root'), icon: House },
       { path: Routes.Datasets, name: t('header.dataset'), icon: Library },
       { path: Routes.Chats, name: t('header.chat'), icon: MessageSquareText },
-      {
-        path: 'create-dialog-api',
-        name: '恒丰纸业小助手',
-        icon: MessageSquareText,
-        isApi: true,
-      },
+      // {
+      //   path: 'create-dialog-api',
+      //   name: t('header.chat'),
+      //   icon: MessageSquareText,
+      //   isApi: true,
+      // },
       { path: Routes.Searches, name: t('header.search'), icon: Search },
       // { path: Routes.Agents, name: t('header.flow'), icon: Cpu },
       // { path: Routes.Memories, name: t('header.Memories'), icon: Cpu },
@@ -84,7 +84,7 @@ export function Header() {
     if (is_admin_user || role_level === 2) {
       list.push({
         path: Routes.AdminFiles,
-        name: '管理员',
+        name: t('header.admin'),
         icon: Shield,
       });
     }

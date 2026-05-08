@@ -42,7 +42,10 @@ import { useSwitchDebugMode } from './use-switch-debug-mode';
 export default function Chat() {
   const { id } = useParams();
   const { navigateToChatList } = useNavigatePage();
-  const { data } = useFetchDialog();
+  // const { data } = useFetchDialog();
+  const { data, refetch } = useFetchDialog();
+
+  console.log(data);
   const { t } = useTranslation();
   const [currentConversation, setCurrentConversation] =
     useState<IClientConversation>({} as IClientConversation);
@@ -121,38 +124,82 @@ export default function Chat() {
     },
   });
 
+  const USER_OVERRIDABLE_FIELDS = [
+    'llm_id',
+    'name',
+    'description',
+    'prologue',
+    'empty_response',
+    'icon',
+    'rerank_id',
+  ];
+
   // 表单values的提交逻辑
   async function onSubmit(values: FormSchemaType) {
+    // console.log("请求开始")
+    // console.log("1. 用户提交的值:", values.llm_id);
     // 移除llm_setting
     const nextValues: Record<string, any> = removeUselessFieldsFromValues(
       values,
       'llm_setting.',
     );
 
+    // console.log("2. 处理后要发送的值:", nextValues.llm_id);
     // 调用 Hook 中的 setDialog 保存数据
     setDialog({
       ...omit(data, 'operator_permission'), // 保留原数据但剔除权限字段
       ...nextValues, // 合并新修改的值
       dialog_id: id, // 确保带上 ID
     });
+
+    // 2. ✅ 保存成功后，重新拉取数据
+    const { data: newData } = await refetch();
+    // 智能合并
+    const mergedData = {
+      ...newData,
+      // 只覆盖允许的字段，且用户确实提交了值
+      ...Object.fromEntries(
+        Object.entries(nextValues).filter(
+          ([key, value]) =>
+            USER_OVERRIDABLE_FIELDS.includes(key) && // 在允许列表里
+            value !== undefined &&
+            value !== null &&
+            value !== '',
+        ),
+      ),
+    };
+
+    // 3. ✅ 处理 llm_setting 并重置表单
+    const llmSettingEnabledValues = setLLMSettingEnabledValues(
+      mergedData.llm_setting,
+    );
+    const nextData = {
+      ...mergedData,
+      ...llmSettingEnabledValues,
+    };
+    // console.log("5. 最终重置表单的 llm_id:", nextData.llm_id);
+
+    form.reset(nextData as FormSchemaType);
   }
 
   function onInvalid(errors: any) {
     console.log('Form validation failed:', errors);
   }
 
-  // 表单回显
+  // 表单回显（只用于初始化）
   useEffect(() => {
-    const llmSettingEnabledValues = setLLMSettingEnabledValues(
-      data.llm_setting,
-    );
-
-    const nextData = {
-      ...data,
-      ...llmSettingEnabledValues,
-    };
-    // 将合并后的数据填入表单
-    form.reset(nextData as FormSchemaType);
+    // console.log("表单回显")
+    if (data && Object.keys(data).length > 0 && !initialized) {
+      const llmSettingEnabledValues = setLLMSettingEnabledValues(
+        data.llm_setting,
+      );
+      const nextData = {
+        ...data,
+        ...llmSettingEnabledValues,
+      };
+      form.reset(nextData as FormSchemaType);
+      setInitialized(true);
+    }
   }, [data, form]);
 
   // 封装了获取对话详情的逻辑
@@ -179,6 +226,7 @@ export default function Chat() {
     [fetchConversation, handleConversationCardClick],
   );
 
+  const [initialized, setInitialized] = useState(false);
   useMount(() => {
     // 第一次加载立即获取对话数据
     fetchConversation(conversationId, isNew === 'true');

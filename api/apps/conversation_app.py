@@ -170,6 +170,8 @@ async def list_conversation():
 @validate_request("conversation_id", "messages")
 async def completion():
     req = await get_request_json()
+    print("收到的信息为-------------------------------------------------------")
+    print(req)
     msg = []
     for m in req["messages"]:
         if m["role"] == "system":

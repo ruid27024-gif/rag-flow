@@ -35,7 +35,8 @@ function RerankFormField() {
       name={RerankId}
       render={({ field }) => (
         <FormItem>
-          <FormLabel tooltip={t('rerankTip')}>{t('rerankModel')}</FormLabel>
+          {/* <FormLabel tooltip={t('rerankTip')}>{t('rerankModel')}</FormLabel> */}
+          <FormLabel>{t('rerankModel')}</FormLabel>
           <FormControl>
             <SelectWithSearch
               allowClear
@@ -69,7 +70,7 @@ export function RerankFormFields() {
           label={t('topK')}
           max={2048}
           min={1}
-          tooltip={t('topKTip')}
+          // tooltip={t('topKTip')}
         ></SliderInputFormField>
       )}
     </>

@@ -110,17 +110,6 @@ const NewDocumentLink = ({
       {isSupportedPreviewDocumentType(extension) && (
         <button
           onClick={handleDownload}
-          // 按钮样式保持不变，或者加一个 flex-shrink-0 防止被压缩
-          // style={{
-          //     cursor: 'pointer',
-          //     padding: '2px 6px',
-          //     fontSize: '12px',
-          //     border: '1px solid #ccc',
-          //     borderRadius: '4px',
-          //     backgroundColor: '#f0f0f0',
-          //     flexShrink: 0 // 防止按钮被压缩
-          // }}
-
           className="
                     cursor-pointer
                     px-2 py-1 text-xs border rounded-md

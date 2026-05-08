@@ -21,7 +21,10 @@ export function useChatSettingSchema() {
     tts: z.boolean(),
     empty_response: z.string().optional(),
     prologue: z.string().optional(),
-    system: z.string().min(1, { message: t('systemMessage') }),
+    system: z
+      .string()
+      .min(1, { message: t('systemMessage') })
+      .optional(),
     refine_multiturn: z.boolean(),
     use_kg: z.boolean(),
     parameters: z.array(
@@ -37,7 +40,10 @@ export function useChatSettingSchema() {
   });
 
   const formSchema = z.object({
-    name: z.string().min(1, { message: t('assistantNameMessage') }),
+    name: z
+      .string()
+      .min(1, { message: t('assistantNameMessage') })
+      .optional(),
     icon: z.string(),
     description: z.string().optional(),
     kb_ids: z.array(z.string()).min(0, {

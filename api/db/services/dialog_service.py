@@ -338,6 +338,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
     # Prompt 参数处理
     prompt_config = dialog.prompt_config
+
+    print(prompt_config)
     # 选择了哪些知识库
     field_map = KnowledgebaseService.get_field_map(dialog.kb_ids)
     # 尝试 SQL 检索（优先）
@@ -433,6 +435,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     rerank_mdl=rerank_mdl,
                     rank_feature=label_question(" ".join(questions), kbs),
                 )
+
                 if prompt_config.get("toc_enhance"):
                     cks = retriever.retrieval_by_toc(" ".join(questions), kbinfos["chunks"], tenant_ids, chat_mdl, dialog.top_n)
                     if cks:
@@ -450,7 +453,6 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     kbinfos["chunks"].insert(0, ck)
             # 组装 Prompt
             knowledges = kb_prompt(kbinfos, max_tokens)
-            # print(kbinfos)
 
     logging.debug("{}->{}".format(" ".join(questions), "\n->".join(knowledges)))
 
@@ -527,6 +529,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
         # 处理引用与知识库
         if knowledges and (prompt_config.get("quote", True) and kwargs.get("quote", True)):
+
+
             # 用于存储被引用的知识块的索引···
             idx = set([])
             # 判断是否需要自动插入引用 <--存在嵌入模型 (embd_mdl)，并且回答中还没有包含 [ID:x] 格式的引用标记。
@@ -549,7 +553,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             # 用于修复可能存在的错误引用格式
             answer, idx = repair_bad_citation_formats(answer, kbinfos, idx)
 
-            # 将索引集合 idx 从知识块的索引转换为它们所属的文档ID (doc_id)。 引用的
+            # chunk序号 --> doc_id
             idx = set([kbinfos["chunks"][int(i)]["doc_id"] for i in idx])
 
             # 从召回中过滤 引用的文档
@@ -563,7 +567,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 if c.get("vector"):
                     del c["vector"]
 
-            # print(refs)
+            print("final_refs---------------------------------------------------------------")
+            print(refs)
         if answer.lower().find("invalid key") >= 0 or answer.lower().find("invalid api") >= 0:
             answer += " Please set LLM API-Key in 'User Setting -> Model providers -> API-Key'"
         finish_chat_ts = timer()
@@ -601,7 +606,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             langfuse_generation.end()
 
 
-
+        print("final_answer------------------------------------------------------")
+        print(answer)
         return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time(), "suggestions":suggestions}
 
     # Langfuse Generation 开始

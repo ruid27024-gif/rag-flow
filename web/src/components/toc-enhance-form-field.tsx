@@ -10,7 +10,7 @@ export function TOCEnhanceFormField({ name }: Props) {
     <SwitchFormField
       name={name}
       label={t('chat.tocEnhance')}
-      tooltip={t('chat.tocEnhanceTip')}
+      // tooltip={t('chat.tocEnhanceTip')}
     ></SwitchFormField>
   );
 }

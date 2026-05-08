@@ -34,9 +34,8 @@ export function DynamicVariableForm() {
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <FormLabel tooltip={t('chat.variableTip')}>
-          {t('chat.variable')}
-        </FormLabel>
+        {/* <FormLabel tooltip={t('chat.variableTip')}> */}
+        <FormLabel>{t('chat.variable')}</FormLabel>
         <Button variant={'ghost'} type="button" onClick={add}>
           <Plus />
         </Button>

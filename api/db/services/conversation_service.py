@@ -87,6 +87,8 @@ def structure_answer(conv, ans, message_id, session_id):
         conv.message[-1] = {"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id}
     if conv.reference:
         conv.reference[-1] = reference
+
+    print(ans)
     return ans
 
 async def async_completion(tenant_id, chat_id, question, name="New session", session_id=None, stream=True, **kwargs):

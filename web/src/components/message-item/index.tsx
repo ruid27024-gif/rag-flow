@@ -178,7 +178,6 @@ const MessageItem = ({
               />
             )}
 
-            {/* Show message content if there's any text besides the download */}
             {messageContent && (
               <div
                 className={cn(
@@ -190,12 +189,11 @@ const MessageItem = ({
                   { '!bg-bg-card': !isAssistant },
                 )}
                 style={{
-                  // 👇 核心优化：引入 PingFang SC (Mac/iOS) 和 Microsoft YaHei (Windows)
                   fontFamily: `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"`,
-                  fontSize: 16, // 16px 是阅读舒适区的标准大小
-                  lineHeight: 1.75, // 1.75 的行高能带来极佳的呼吸感
-                  fontWeight: 400, // 常规字重，清晰易读
-                  letterSpacing: '0.01em', // 微调字间距，比 0.2px 更适应不同字号
+                  fontSize: 16,
+                  lineHeight: 1.75,
+                  fontWeight: 400,
+                  letterSpacing: '0.01em',
                 }}
               >
                 <MarkdownContent
@@ -218,29 +216,11 @@ const MessageItem = ({
                     key={index}
                     // 1. 绑定点击事件：调用父组件传来的函数
                     onClick={() => onSuggestionClick?.(suggestion)}
-                    // // 👇 样式全部改为 Tailwind 类名，并加入 dark 模式支持
-                    // className="
-                    //   px-3 py-1.5
-                    //   text-sm text-gray-700
-                    //   bg-gray-100 border border-gray-200
-                    //   rounded-lg cursor-pointer select-none
-                    //   transition-colors duration-200 ease-in-out
-
-                    //   /* 白天模式悬停效果 */
-                    //   hover:bg-blue-50 hover:border-blue-200
-
-                    //   /* 🌙 黑夜模式样式 */
-                    //   dark:bg-slate-800 dark:border-slate-700 dark:text-gray-200
-
-                    //   /* 🌙 黑夜模式悬停效果 */
-                    //   dark:hover:bg-slate-700 dark:hover:border-slate-600
-                    // "
-
                     className="
-                    text-sm cursor-pointer select-none
-                    text-gray-600 hover:text-blue-600
-                    dark:text-gray-400 dark:hover:text-blue-400
-                  "
+                      text-sm cursor-pointer select-none
+                      text-blue-600 hover:text-blue-800
+                      dark:text-blue-400 dark:hover:text-blue-300
+                    "
                   >
                     {suggestion}
                   </span>

@@ -2,17 +2,35 @@
   "description": "",
   "do_refer": "1",
   "icon": "",
-  "kb_ids": "[\"3a71e65c395d11f195d4345a60aae1f7\"]",
+  "kb_ids": [],
   "language": "Chinese",
   "llm_id": "qwen3-14b",
-  "llm_setting": "{\"temperature\":0.1,\"top_p\":0.3}",
+  "llm_setting": {
+    "temperature": 0.1,
+    "top_p": 0.3
+  },
   "name": "小助手",
-  "prompt_config": "{\"quote\":true,\"keyword\":false,\"tts\":false,\"prologue\":\"你好？\",\"system\":\"你是一个专业的助手。\",\"refine_multiturn\":true,\"use_kg\":false,\"parameters\":[],\"reasoning\":false,\"cross_languages\":[],\"toc_enhance\":false}",
+  "prompt_config": {
+        "quote": true,
+        "keyword": false,
+        "tts": false,
+        "prologue": "您好！ 有什么可以帮到你的吗？",
+        "system": "你是一个智能助手，请总结知识库的内容来回答问题，请列举知识库中的数据详细回答。当所有知识库内容都与问题无关时，你的回答必须包括“知识库中未找到您要的答案！”这句话。回答需要考虑聊天历史。以下是知识库：{knowledge}",
+        "refine_multiturn": true,
+        "use_kg": false,
+        "parameters": [{
+          "key": "knowledge",
+          "optional": false
+        }],
+        "reasoning": false,
+        "cross_languages": [],
+        "toc_enhance": false
+    },
   "prompt_type": "simple",
   "rerank_id": "",
   "similarity_threshold": 0.33,
   "top_k": 1024,
   "top_n": 6,
   "vector_similarity_weight": 0.3,
-  "meta_data_filter": "{\"method\":\"disabled\"}"
+  "meta_data_filter": {"method": "disabled"}
 }

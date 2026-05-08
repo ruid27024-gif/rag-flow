@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
-import { LLMFormField } from './llm-form-field';
 import { SliderInputSwitchFormField } from './slider';
 import { useHandleFreedomChange } from './use-watch-change';
 
@@ -131,10 +130,10 @@ export function LlmSettingFieldItems({
 
   return (
     <div className="space-y-5">
-      <LLMFormField
+      {/* <LLMFormField
         options={options}
         name={llmId ?? getFieldWithPrefix('llm_id')}
-      ></LLMFormField>
+      ></LLMFormField> */}
       <FormField
         control={form.control}
         name={getFieldWithPrefix('parameter')}

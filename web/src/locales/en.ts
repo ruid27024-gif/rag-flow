@@ -80,7 +80,8 @@ export default {
       nicknamePlaceholder: 'Please input nickname',
       register: 'Create an account',
       continue: 'Continue',
-      title: '检索增强生成引擎',
+      title: 'Retrieval-Augmented Generation Engine',
+      Company: 'Hengfeng Paper Industry Co., Ltd.',
       start: "Let's get started",
       description:
         'Sign up for free to explore top RAG technology. Create knowledge bases and AIs to empower your business.',
@@ -100,6 +101,7 @@ export default {
       welcome: 'Welcome to',
       dataset: 'Dataset',
       Memories: 'Memory',
+      admin: 'admin',
     },
     memories: {
       llmTooltip:
