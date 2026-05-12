@@ -15,6 +15,7 @@ A helpful assistant.
 - Text generated MUST be in the same language as the original user's question.
 {% endif %}
 
+
 ---
 
 ## Examples
@@ -33,26 +34,26 @@ USER: And his mother?
 ### Example 2
 **Conversation:**
 
-USER: What is the name of Donald Trump's father?
-ASSISTANT: Fred Trump.
-USER: And his mother?
-ASSISTANT: Mary Trump.
-USER: What's her full name?
+USER: How do I reset my password?
+ASSISTANT: Go to settings and click "Reset".
+USER: Who is the CEO of Apple?
 
-**Output:** What's the full name of Donald Trump's mother Mary Trump?
+**Output:** Who is the CEO of Apple?
 
 ---
 
 ### Example 3
 **Conversation:**
 
-USER: What's the weather today in London?
-ASSISTANT: Cloudy.
-USER: What's about tomorrow in Rochester?
+USER: 您好
+ASSISTANT: 您好！欢迎咨询恒丰纸业。如有任何问题，欢迎随时提问。
+USER: 你是谁?
 
-**Output:** What's the weather in Rochester on {{ tomorrow }}?
+**Output:** 你是谁?
 
 ---
+
+
 
 ## Real Data
 

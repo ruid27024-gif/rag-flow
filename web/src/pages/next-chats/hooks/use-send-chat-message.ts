@@ -112,7 +112,6 @@ export const useSendMessage = (controller: AbortController) => {
       if (res && (res?.response.status !== 200 || res?.data?.code !== 0)) {
         // cancel loading
         setValue(message.content);
-        console.info('removeLatestMessage111');
         removeLatestMessage();
         antdMessage.error(res?.data?.message || 'Send message failed');
       }

@@ -23,7 +23,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMount } from 'ahooks';
 import { isEmpty, omit } from 'lodash';
-import { ArrowUpRight, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -235,8 +235,15 @@ export default function Chat() {
                 > */}
 
                 <CardHeader className={cn('py-2 px-5')}>
+                  {/* <CardTitle className="flex justify-between items-center text-base">
+                    <div className="flex items-center gap-4 flex-1 min-w-0 ml-[-8px]"> */}
                   <CardTitle className="flex justify-between items-center text-base">
                     <div className="flex items-center gap-4 flex-1 min-w-0 ml-[-8px]">
+                      {/* <div
+                        className={cn('flex items-center gap-2', {
+                          hidden: settingVisible,
+                        })}
+                      > */}
                       <div
                         className={cn('flex items-center gap-2', {
                           hidden: settingVisible,
@@ -253,13 +260,13 @@ export default function Chat() {
                       </div>
                     </div>
 
-                    <Button variant={'ghost'} onClick={switchDebugMode}>
+                    {/* <Button variant={'ghost'} onClick={switchDebugMode}>
                       <ArrowUpRight /> {t('chat.multipleModels')}
-                    </Button>
+                    </Button> */}
                   </CardTitle>
                 </CardHeader>
                 {/* 消息展示区 */}
-                <CardContent className="flex-1 p-0 min-h-[300px]">
+                <CardContent className="flex-1 p-0 min-h-[300px] pt-0">
                   <SingleChatBox
                     controller={controller}
                     stopOutputMessage={stopOutputMessage}

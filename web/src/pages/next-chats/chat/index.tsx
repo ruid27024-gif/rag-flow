@@ -23,7 +23,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMount } from 'ahooks';
 import { isEmpty, omit } from 'lodash';
-import { ArrowUpRight, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -49,6 +49,7 @@ export default function Chat() {
   const { t } = useTranslation();
   const [currentConversation, setCurrentConversation] =
     useState<IClientConversation>({} as IClientConversation);
+  console.log('currentConversation', currentConversation);
 
   const { fetchConversationManually } = useFetchConversationManually();
 
@@ -132,6 +133,7 @@ export default function Chat() {
     'empty_response',
     'icon',
     'rerank_id',
+    'kb_ids',
   ];
 
   // 表单values的提交逻辑
@@ -301,9 +303,9 @@ export default function Chat() {
                       </div>
                     </div>
 
-                    <Button variant={'ghost'} onClick={switchDebugMode}>
+                    {/* <Button variant={'ghost'} onClick={switchDebugMode}>
                       <ArrowUpRight /> {t('chat.multipleModels')}
-                    </Button>
+                    </Button> */}
                   </CardTitle>
                 </CardHeader>
                 {/* 消息展示区 */}

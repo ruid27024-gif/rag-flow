@@ -80,7 +80,8 @@ export default {
       nicknamePlaceholder: 'Please input nickname',
       register: 'Create an account',
       continue: 'Continue',
-      title: 'Retrieval-Augmented Generation Engine',
+      title: 'Woody · Cloud Pivot',
+      annotation: 'Knowledge Base and Intelligent Decision-Making System',
       Company: 'Hengfeng Paper Industry Co., Ltd.',
       start: "Let's get started",
       description:

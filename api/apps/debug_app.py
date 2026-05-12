@@ -6,12 +6,20 @@ from api.db.services.user_service import UserTenantService
 from api.db import UserTenantRole
 from api.apps import current_user, login_required
 from common.misc_utils import get_uuid
-
+from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.db_models import AdminUser
 # debug_app = Blueprint('debug_app', __name__, url_prefix='/debug')
 
 # CONFIG_FILE_PATH = '/home/hit802/RAG1/dialog_3ad8d622f11511f0ad4410ffe02ab235.json'
 # CONFIG_FILE_PATH = r'C:\Users\28023\Desktop\rag-flow\api\apps\dialog_3.json'
-CONFIG_FILE_PATH = 'conf/dialog_3ad8d622f11511f0ad4410ffe02ab235.json'
+import os
+
+# 获取当前文件 (dialog_app.py) 所在的目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# 拼接路径
+CONFIG_FILE_PATH = os.path.join(current_dir, 'dialog_3.json')
+
 
 @manager.route('/config', methods=['GET'])  # noqa: F821
 async def get_config():
@@ -80,6 +88,28 @@ async def create_dialog_from_config():
                 except Exception as e:
                     print(f"Error parsing {key}: {e}")
                     pass
+        
+        # --- 执行自动查询逻辑 ---
+        admin_bypass=False
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            admin_bypass=True
+        kb_list, total_count = KnowledgebaseService.get_by_tenant_ids(
+            joined_tenant_ids=[],
+            user_id=current_user.id,
+            page_number=1,
+            items_per_page=1000,
+            orderby="id",
+            desc=False,
+            keywords=None,
+            admin_bypass=admin_bypass
+        )
+        kb_ids = [kb["id"] for kb in kb_list]
+
+        print("用户的所有知识库id为:")
+        print(total_count)
+
+
+        print(kb_ids)
 
         new_dialog_data = {
             "tenant_id": tenant_id,
@@ -90,7 +120,7 @@ async def create_dialog_from_config():
             "llm_id": config_data.get("llm_id", ""),
             "llm_setting": config_data.get("llm_setting", {}),
             "prompt_config": config_data.get("prompt_config", {}),
-            "kb_ids": config_data.get("kb_ids", []),
+            "kb_ids": kb_ids,
             "meta_data_filter": config_data.get("meta_data_filter", {}),
             "top_n": config_data.get("top_n", 6),
             "top_k": config_data.get("top_k", 1024),

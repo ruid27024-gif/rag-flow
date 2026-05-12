@@ -22,6 +22,7 @@ import { ThemeProvider, useTheme } from './components/theme-provider';
 import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
+import { BgSvg } from './pages/login-next/bg';
 import storage from './utils/authorization-util';
 
 dayjs.extend(customParseFormat);
@@ -66,8 +67,37 @@ function Root({ children }: React.PropsWithChildren) {
     setLocal(getLocale(lng));
   });
 
+  const [isUserInteracting, setIsUserInteracting] = useState(true);
+
   return (
     <>
+      <div className="fixed inset-0 -z-10 pointer-events-none">
+        {/* 用 -z-10 确保特效在内容层下面 */}
+        {/* <Spotlight opacity={0.4} coverage={60} color={'rgb(128, 255, 248)'} />
+        <Spotlight
+          opacity={0.3}
+          coverage={12}
+          X={'10%'}
+          Y={'-10%'}
+          color={'rgb(128, 255, 248)'}
+        />
+        <Spotlight
+          opacity={0.3}
+          coverage={12}
+          X={'90%'}
+          Y={'-10%'}
+          color={'rgb(128, 255, 248)'}
+        // /> */}
+        {/* // <div className="h-full relative overflow-hidden">
+        //   <BgSvg isPaused={isUserInteracting} />
+        // </div> */}
+
+        <div className="h-full relative overflow-hidden">
+          <BgSvg isPaused={isUserInteracting} />
+        </div>
+        {/* <HengfengLogo /> */}
+      </div>
+
       <ConfigProvider
         theme={{
           token: {
@@ -80,7 +110,7 @@ function Root({ children }: React.PropsWithChildren) {
         }}
         locale={locale}
       >
-        <SidebarProvider className="h-full">
+        <SidebarProvider className="h-full HandlebackgroundUrl">
           <App>{children}</App>
         </SidebarProvider>
         <Sonner position={'top-right'} expand richColors closeButton></Sonner>
@@ -104,7 +134,8 @@ const RootProvider = ({ children }: React.PropsWithChildren) => {
     <TooltipProvider>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider
-          defaultTheme={ThemeEnum.Dark}
+          // defaultTheme={ThemeEnum.Dark}
+          defaultTheme={ThemeEnum.Light}
           storageKey="ragflow-ui-theme"
         >
           <Root>{children}</Root>

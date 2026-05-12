@@ -56,7 +56,7 @@ export function SingleChatBox({
   const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
     useClickDrawer();
 
-  // console.log(derivedMessages);
+  // console.log('derivedMessages',derivedMessages);
   useEffect(() => {
     const messages = conversation?.message;
     if (Array.isArray(messages)) {

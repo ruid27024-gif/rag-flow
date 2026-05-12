@@ -362,6 +362,14 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     # 把多轮对话整合成一个完整的问题
     if len(questions) > 1 and prompt_config.get("refine_multiturn"):
         questions = [await full_question(dialog.tenant_id, dialog.llm_id, messages)]
+        
+        # 新增历史问题改写
+        # last_question = "当前的用户问题是:" + questions[-1] + "\n"
+        # pre_question = "前几轮的用户问题是:" + ",".join(questions[-10:-1])
+        # questions = []
+        # questions.append(last_question)
+        # questions.append(pre_question)
+
     else:
         questions = questions[-1:]
     # 跨语言处理
@@ -419,6 +427,11 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         # 普通 RAG 检索
         else:
             # 向量检索 重排序 TOC 增强 KG 检索 Tavily 搜索
+            print("===============================检索的知识库id为===================================")
+            print(dialog.kb_ids)
+            
+            #Todo 对知识库进行分类 动态提示词语
+            # print(dialog.kb_ids)
             if embd_mdl:
                 kbinfos = retriever.retrieval(
                     " ".join(questions),
@@ -435,7 +448,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     rerank_mdl=rerank_mdl,
                     rank_feature=label_question(" ".join(questions), kbs),
                 )
-
+                print("改写后的问题为：")
+                print(questions)
                 if prompt_config.get("toc_enhance"):
                     cks = retriever.retrieval_by_toc(" ".join(questions), kbinfos["chunks"], tenant_ids, chat_mdl, dialog.top_n)
                     if cks:
@@ -451,6 +465,12 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                                                        LLMBundle(dialog.tenant_id, LLMType.CHAT))
                 if ck["content_with_weight"]:
                     kbinfos["chunks"].insert(0, ck)
+            
+            print("最终的召回结果为：============================================================\n")
+            print("最终的召回结果为：============================================================\n")
+            print("最终的召回结果为：============================================================\n")
+            print("最终的召回结果为：============================================================\n")
+            print(kbinfos)
             # 组装 Prompt
             knowledges = kb_prompt(kbinfos, max_tokens)
 
@@ -459,6 +479,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     retrieval_ts = timer()
     # 没检索到 → 返回兜底答案
     if not knowledges and prompt_config.get("empty_response"):
+        # 如果没召回就返回固定话术
         empty_res = prompt_config["empty_response"]
         yield {"answer": empty_res, "reference": kbinfos, "prompt": "\n\n### Query:\n%s" % " ".join(questions),
                "audio_binary": tts(tts_mdl, empty_res)}
@@ -466,9 +487,14 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         return
 
     kwargs["knowledge"] = "\n------\n" + "\n\n------\n\n".join(knowledges)
+
+    print("相关的召回信息为----------------------------------------------------------------------")
+    print(kwargs)
     gen_conf = dialog.llm_setting
 
+    # 系统提示词语 + 文件内容
     msg = [{"role": "system", "content": prompt_config["system"].format(**kwargs)+attachments_}]
+
     prompt4citation = ""
     if knowledges and (prompt_config.get("quote", True) and kwargs.get("quote", True)):
         prompt4citation = citation_prompt()
@@ -608,6 +634,13 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
         print("final_answer------------------------------------------------------")
         print(answer)
+        if "知识库中未找到您要的答案" in answer:
+            # 在赋值前增加一个类型检查
+            if isinstance(refs, dict):
+                refs["doc_aggs"] = []
+            else:
+                refs=[]
+
         return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time(), "suggestions":suggestions}
 
     # Langfuse Generation 开始

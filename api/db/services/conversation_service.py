@@ -75,6 +75,7 @@ def structure_answer(conv, ans, message_id, session_id):
     reference["chunks"] = chunk_list
     ans["id"] = message_id
     ans["session_id"] = session_id
+    
 
     if not conv:
         return ans
@@ -82,9 +83,9 @@ def structure_answer(conv, ans, message_id, session_id):
     if not conv.message:
         conv.message = []
     if not conv.message or conv.message[-1].get("role", "") != "assistant":
-        conv.message.append({"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id})
+        conv.message.append({"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id, "suggestions":ans.get("suggestions", [])})
     else:
-        conv.message[-1] = {"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id}
+        conv.message[-1] = {"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id, "suggestions":ans.get("suggestions", [])}
     if conv.reference:
         conv.reference[-1] = reference
 

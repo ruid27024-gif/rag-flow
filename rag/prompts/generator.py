@@ -97,11 +97,17 @@ def message_fit_in(msg, max_length=4000):
 
 def kb_prompt(kbinfos, max_tokens, hash_id=False):
     from api.db.services.document_service import DocumentService
+    from api.db.services.knowledgebase_service import KnowledgebaseService
 
     knowledges = [get_value(ck, "content", "content_with_weight") for ck in kbinfos["chunks"]]
+
+    print("--------------------knowledges------------------------------------")
+    print(knowledges)
+    # chunk数量
     kwlg_len = len(knowledges)
     used_token_count = 0
     chunks_num = 0
+    # 截断防止超出限制
     for i, c in enumerate(knowledges):
         if not c:
             continue
@@ -112,9 +118,12 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
             logging.warning(f"Not all the retrieval into prompt: {len(knowledges)}/{kwlg_len}")
             break
     
-    # 根据doc_id获取信息  ID就是第几个chunk 
+    # 根据doc_id获取信息  ID就是第几个chunk doc_id document_id
     docs = DocumentService.get_by_ids([get_value(ck, "doc_id", "document_id") for ck in kbinfos["chunks"][:chunks_num]])
     docs = {d.id: d.meta_fields for d in docs}
+
+    print("docs==============================================================")
+    print(docs)
 
     def draw_node(k, line):
         if line is not None and not isinstance(line, str):
@@ -124,7 +133,37 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
         return f"\n├── {k}: " + re.sub(r"\n+", " ", line, flags=re.DOTALL)
 
     knowledges = []
+
+    # kb_groups = {}
+    # for chunk in kbinfos["chunks"][:chunks_num]:
+    #     kb_id = chunk['kb_id']
+    #     if kb_id not in kb_groups:
+    #         kb_groups[kb_id] = []
+    #     kb_groups[kb_id].append(chunk)
+
+    # for k, v in kb_groups.items():
+    #     # 通过id获取库名称
+    #     knowledge = KnowledgebaseService.get_detail(k)
+    #     kb_name = "以下召回片段来源于" + knowledge["name"] + "📚:"
+    #     knowledges.append(kb_name)
+    #     print("知识库的名称为-----------------------------------------------------------------------")
+    #     print(kb_name)
+    #     for i, ck in enumerate(v):
+
+    #         cnt = "\nID: {}".format(i if not hash_id else hash_str2int(get_value(ck, "id", "chunk_id"), 500))
+    #         cnt += draw_node("Title", get_value(ck, "docnm_kwd", "document_name"))
+    #         cnt += draw_node("URL", ck['url'])  if "url" in ck else ""
+    #         for k, v in docs.get(get_value(ck, "doc_id", "document_id"), {}).items():
+    #             cnt += draw_node(k, v)
+    #         cnt += "\n└── Content:\n"
+    #         cnt += get_value(ck, "content", "content_with_weight")
+    #         knowledges.append(cnt)
+
+
+
     for i, ck in enumerate(kbinfos["chunks"][:chunks_num]):
+
+
         cnt = "\nID: {}".format(i if not hash_id else hash_str2int(get_value(ck, "id", "chunk_id"), 500))
         cnt += draw_node("Title", get_value(ck, "docnm_kwd", "document_name"))
         cnt += draw_node("URL", ck['url'])  if "url" in ck else ""

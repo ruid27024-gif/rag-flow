@@ -108,6 +108,34 @@ export function Header() {
     });
   }, [tagsData]);
 
+  // 2. 封装点击处理函数
+  const handleSmartClick = async () => {
+    // 这里直接复用了你的逻辑，相当于触发了 'create-dialog-api' 选项
+    const targetPath = 'create-dialog-api';
+
+    try {
+      const response = await fetch('/v1/debug/create_dialog_from_config', {
+        method: 'POST',
+        headers: {
+          Authorization: getAuthorization() || '',
+        },
+      });
+
+      const res = await response.json();
+
+      if (res.retcode === 0 && res.data?.id) {
+        // 假设 Routes.ChatDefault 是 '/chat' 之类的路径
+        // 如果这里报错，请确保你有定义 Routes 或者直接用字符串路径
+        navigate(`/next-chat-default/${res.data.id}`);
+      } else {
+        message.error(res.msg || '新建对话失败！');
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('请求失败！');
+    }
+  };
+
   // const currentPath = useMemo(() => {
   //   return (
   //     tagsData.find((x) => pathname.startsWith(x.path))?.path || Routes.Root
@@ -146,9 +174,10 @@ export function Header() {
     <section className="py-5 px-10 flex justify-between items-center ">
       <div className="flex items-center gap-4">
         <img
-          src={'/hf.jpeg'}
+          src={'/hf.svg'}
           alt="logo"
-          className="size-10 mr-[12] cursor-pointer"
+          // className="size-10 mr-[12] cursor-pointer"
+          className="size-16 mr-[12px] cursor-pointer"
           onClick={handleLogoClick}
         />
       </div>
@@ -162,6 +191,19 @@ export function Header() {
         onChange={handleChange}
         activeClassName="text-bg-base bg-metallic-gradient border-b-[#00BEB4] border-b-2"
       ></Segmented>
+      {/* 
+    <div className="relative w-[200px] h-full flex items-center justify-end">
+      <HengfengLogo>
+        
+        <button
+          onClick={handleSmartClick}
+          className="w-full h-full rounded-full bg-white/10 backdrop-blur-sm border border-cyan-300/50 hover:bg-white/20 transition-colors flex items-center justify-center"
+        >
+          
+          <span className="text-white text-xs font-bold">恒</span>
+        </button>
+      </HengfengLogo>
+    </div> */}
       <div className="flex items-center gap-5 text-text-badge">
         {/* <a
           target="_blank"

@@ -278,9 +278,10 @@ const Login = () => {
           <div className="flex items-center mb-4 w-full pl-10 pt-10 ">
             <div className="w-12 h-12 p-2 rounded-lg flex items-center justify-center mr-3">
               <img
-                src={'/hf.jpeg'}
+                src={'/hf.svg'}
                 alt="logo"
-                className="size-8 mr-[12] cursor-pointer"
+                // className="size-8 mr-[12] cursor-pointer"
+                className="size-16 mr-[12px] cursor-pointer"
               />
             </div>
             <div className="text-xl font-bold self-center">{t('Company')}</div>
@@ -288,6 +289,9 @@ const Login = () => {
           <h1 className="text-[36px] font-medium  text-center mb-2">
             {t('title')}
           </h1>
+          <p className="text-sm text-gray-400 text-center mt-6 mb-10">
+            {t('annotation')}
+          </p>
           {/* border border-accent-primary rounded-full */}
           {/* <div className="mt-4 px-6 py-1 text-sm font-medium text-cyan-600  hover:bg-cyan-50 transition-colors duration-200 border-glow relative overflow-hidden">
             {t('start')}

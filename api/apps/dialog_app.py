@@ -29,6 +29,13 @@ from api.apps import login_required, current_user
 import os
 import json
 from common.file_utils import get_project_base_directory
+import os
+
+# 获取当前文件 (dialog_app.py) 所在的目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# 拼接路径
+CONFIG_FILE_PATH = os.path.join(current_dir, 'dialog_3.json')
 
 def check_admin(user):
     admin_user = AdminUser.query(user_id=user.id, role_level=1)
@@ -193,9 +200,19 @@ async def set_dialog_by_config():
     print("hello")
     print("🚀 前端发来的请求数据 (req):", req)
     print("======================================")
+    # 忽略req直接从配置文件加载相关参数
+    from quart import request, jsonify
+    import json
+    import os
+    if not os.path.exists(CONFIG_FILE_PATH):
+        return jsonify({"msg": "Config file not found", "retcode": 404}), 404
+
+    with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
+        config_data = json.load(f)
+
     dialog_id = req.get("dialog_id", "")
     is_create = not dialog_id
-    name = req.get("name", "New Dialog")
+    name = req.get("name", config_data.get("name", "New Dialog"))
 
     if not isinstance(name, str):
         return get_data_error_result(message="Dialog name must be string.")
@@ -214,18 +231,9 @@ async def set_dialog_by_config():
             tenant_id=current_user.id,
             status=StatusEnum.VALID.value)
 
-    CONFIG_FILE_PATH = '/home/zyb/rag-flow/api/apps/dialog_3.json'
-    # 忽略req直接从配置文件加载相关参数
-    from quart import request, jsonify
-    import json
-    import os
-    if not os.path.exists(CONFIG_FILE_PATH):
-        return jsonify({"msg": "Config file not found", "retcode": 404}), 404
 
-    with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
-        config_data = json.load(f)
-
-    description = req.get("description", "")
+    
+    description = req.get("description", config_data.get("description", ""))
     icon = req.get("icon", config_data.get("icon", ""))
 
     top_n = config_data.get("top_n", 6)
@@ -237,10 +245,42 @@ async def set_dialog_by_config():
 
     similarity_threshold = config_data.get("similarity_threshold", 0.1)
     vector_similarity_weight = config_data.get("vector_similarity_weight", 0.3)
-    llm_setting = config_data.get("llm_setting", {})
+    import json
 
-    meta_data_filter = config_data.get("meta_data_filter", {})
-    prompt_config = config_data.get("prompt_config", {})
+    def ensure_dict(val):
+        """如果 val 是 JSON 字符串，则解析为字典；如果是字典则直接返回；否则返回空字典"""
+        if isinstance(val, str):
+            try:
+                return json.loads(val)
+            except json.JSONDecodeError:
+                return {}
+        if isinstance(val, dict):
+            return val
+        return {}
+
+    # --- 在你的代码中这样使用 ---
+
+    # 1. 获取原始数据
+    raw_llm = config_data.get("llm_setting", {})
+    raw_meta = config_data.get("meta_data_filter", {})
+    raw_prompt = config_data.get("prompt_config", {}) # 假设这也是从 config_data 来的
+
+    # 2. 强制清洗为字典
+    llm_setting = ensure_dict(raw_llm)
+    meta_data_filter = ensure_dict(raw_meta)
+    prompt_config = ensure_dict(raw_prompt)
+    # 1. 检查是否为字符串，如果是则解析
+    if isinstance(prompt_config, str):
+        try:
+            prompt_config = json.loads(prompt_config)
+        except json.JSONDecodeError:
+            # 解析失败则设为空字典，防止崩溃
+            prompt_config = {}
+
+    # 2. 确保它是字典（防止解析后还是其他类型）
+    if not isinstance(prompt_config, dict):
+        prompt_config = {}
+
 
     prompt_config["prologue"] = req.get("prompt_config", {}).get("prologue", prompt_config.get("prologue", ""))
     prompt_config["empty_response"] = req.get("prompt_config", {}).get("empty_response", prompt_config.get("empty_response", ""))
@@ -264,9 +304,42 @@ async def set_dialog_by_config():
         e, tenant = TenantService.get_by_id(current_user.id)
         if not e:
             return get_data_error_result(message="Tenant not found!")
+        
+        
+        
+        # 1. 获取 ID
+        kb_ids = req.get("kb_ids")
+
+        # 2. 判断：如果 kb_ids 不存在，或者 存在但为空列表 []
+        if not kb_ids:
+            # 尝试从 prompt_config 获取默认值
+            kb_ids = prompt_config.get("kb_ids")
+
+        # 3. 再次判断：如果还是空（既没传，默认配置也没写），才去自动查询
+        if not kb_ids:
+            # --- 执行自动查询逻辑 ---
+            admin_bypass=False
+            if AdminUser.query(user_id=current_user.id, role_level=1):
+                admin_bypass=True
+            kb_list, total_count = KnowledgebaseService.get_by_tenant_ids(
+                joined_tenant_ids=[],
+                user_id=current_user.id,
+                page_number=1,
+                items_per_page=1000,
+                orderby="id",
+                desc=False,
+                keywords=None,
+                admin_bypass=admin_bypass
+            )
+            kb_ids = [kb["id"] for kb in kb_list]
+
+            print("用户的所有知识库id为:")
+            print(total_count)
 
 
-        kbs = KnowledgebaseService.get_by_ids(req.get("kb_ids", []))
+        print(kb_ids)
+        # 3. 最终的 kb_ids 即为所需结果
+        kbs = KnowledgebaseService.get_by_ids(kb_ids)
 
         # // 判断embedding模型
         embd_ids = [TenantLLMService.split_model_name_and_factory(kb.embd_id)[0] for kb in kbs]  # remove vendor suffix for comparison
@@ -282,7 +355,7 @@ async def set_dialog_by_config():
                 "id": get_uuid(),
                 "tenant_id": current_user.id,
                 "name": name,
-                "kb_ids": req.get("kb_ids", []), # 允许用户选择知识库
+                "kb_ids": kb_ids, # 允许用户选择知识库
                 "description": description,
                 "llm_id": llm_id,
                 "llm_setting": llm_setting,
@@ -309,7 +382,7 @@ async def set_dialog_by_config():
 
             update_data = {
                 "name": name,
-                "kb_ids": req.get("kb_ids", []),  # 只使用前端传来的知识库ID
+                "kb_ids": kb_ids,  # 只使用前端传来的知识库ID
                 "description": description,
                 "llm_id": llm_id, 
                 "llm_setting": llm_setting,  # 从配置文件

@@ -60,6 +60,7 @@ const MessageItem = ({
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
 
+  console.log('🔍 item:', item);
   // 上传的文件
   const uploadedFiles = useMemo(() => {
     return item?.files ?? [];
@@ -67,9 +68,10 @@ const MessageItem = ({
 
   // 获取建议列表
   const suggestionsList = useMemo(() => {
-    if (loading) {
-      return [];
-    }
+    // if (loading) {
+    //   return [];
+    // }
+
     return item?.suggestions ?? [];
   }, [item?.suggestions, loading]);
 

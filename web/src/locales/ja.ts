@@ -54,7 +54,8 @@ export default {
       nicknamePlaceholder: 'ニックネームを入力してください',
       register: 'アカウント作成',
       continue: '続行',
-      title: '知識ベース検索拡張生成エンジン',
+      title: 'もくほん・うんすう',
+      annotation: '知識ベース及びインテリジェント意思決定システム',
       Company: '恒豊紙業（こうほうしぎょう）',
       description:
         '無料でサインアップして、最先端のRAGテクノロジーを探索してください。ナレッジベースやAIを作成して、ビジネスを強化しましょう。',

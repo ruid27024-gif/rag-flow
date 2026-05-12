@@ -55,7 +55,8 @@ export default {
       nicknamePlaceholder: '請輸入名稱',
       register: '創建賬戶',
       continue: '繼續',
-      title: '知識庫檢索增強生成引擎',
+      title: '木本·雲樞',
+      annotation: '知識庫及智能決策系統',
       Company: '恆豐紙業',
       description:
         '免費註冊以探索頂級 RAG 技術。創建知識庫和人工智能來增強您的業務',

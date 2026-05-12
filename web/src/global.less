@@ -45,3 +45,47 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #888;
 }
+
+/* 当鼠标悬浮在组件上时 */
+.hover-expand-multiselect:hover {
+  max-height: 500px !important; /* 设置一个足够大的高度，足以容纳所有选项 */
+  overflow-y: auto !important; /* 如果内容真的很多，展开后显示滚动条 */
+  z-index: 50; /* 确保展开时层级较高，不被下方元素遮挡 */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); /* 可选：加个阴影让它看起来像浮层 */
+  border-radius: 4px; /* 可选：圆角 */
+}
+
+.ant-layout,
+.ant-layout-sider,
+.ant-layout-header,
+.ant-layout-content,
+.ant-layout-footer,
+.ant-menu,
+.ant-menu-item,
+.ant-menu-submenu {
+  background: transparent !important;
+}
+
+// /* 针对整个页面背景 */
+// body, html {
+//   margin: 0;
+//   padding: 0;
+//   height: 100%;
+// }
+
+// /* 针对 Ant Design 布局容器 */
+// .ant-layout {
+//   background-image: url('/bjt.jpg') !important;
+//   background-size: cover !important;
+//   background-position: center !important;
+//   background-repeat: no-repeat !important;
+//   background-attachment: fixed !important;
+// }
+
+// /* 针对根节点（如果上面的没生效） */
+// #root {
+//   background-image: url('/bjt.jpg') !important;
+//   background-size: cover !important;
+//   background-position: center !important;
+//   background-repeat: no-repeat !important;
+// }

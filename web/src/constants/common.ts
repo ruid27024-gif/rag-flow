@@ -182,7 +182,7 @@ export enum Platform {
 }
 
 export enum ThemeEnum {
-  Dark = 'dark',
   Light = 'light',
+  Dark = 'dark',
   System = 'system',
 }

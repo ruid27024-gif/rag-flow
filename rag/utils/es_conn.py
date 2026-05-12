@@ -253,6 +253,7 @@ class ESConnection(DocStoreConnection):
                                      body=q,
                                      timeout="600s",
                                      # search_type="dfs_query_then_fetch",
+                                     ignore_unavailable=True,
                                      track_total_hits=True,
                                      _source=True)
                 if str(res.get("timed_out", "")).lower() == "true":
