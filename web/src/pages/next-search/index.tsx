@@ -62,7 +62,18 @@ export default function SearchPage() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink onClick={navigateToSearchList}>
-                {t('header.search')}
+                <span
+                  className="
+                  text-lg font-bold
+                  bg-gradient-to-r from-blue-600 to-cyan-500
+                  bg-clip-text text-transparent
+                  group-hover:text-slate-900 dark:group-hover:text-white
+                  transition-all duration-300
+                  cursor-pointer
+                "
+                >
+                  {t('header.search')}
+                </span>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />

@@ -25,7 +25,18 @@ export default function DatasetWrapper() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink onClick={navigateToDatasetList}>
-                {t('knowledgeDetails.dataset')}
+                <span
+                  className="
+                  text-lg font-bold
+                  bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500
+                  bg-clip-text text-transparent
+                  group-hover:text-slate-900 dark:group-hover:text-white
+                  transition-all duration-300
+                  cursor-pointer
+                "
+                >
+                  {t('knowledgeDetails.dataset')}
+                </span>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />

@@ -209,7 +209,7 @@ export function SingleChatBox({
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-green-400/20 blur-3xl rounded-full pointer-events-none" />
 
               <h1 className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight">
-                恒丰纸业智能小助手
+                木本·云枢 智能小助手
                 <span className="ml-2 inline-block animate-bounce text-green-600">
                   <TimeIcon />
                 </span>

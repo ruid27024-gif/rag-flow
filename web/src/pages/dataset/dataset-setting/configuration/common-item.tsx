@@ -89,6 +89,11 @@ export const EmbeddingSelect = ({
     return embdStr || '';
   }, [form]);
   const [loading, setLoading] = useState(false);
+
+  // useEffect(() => {
+  //   console.log('初始化时的默认 ID:', field.value);
+  // }, [field.value]);
+
   return (
     <Spin
       spinning={loading}
@@ -138,8 +143,8 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
               })}
             >
               <FormLabel
-                required
-                tooltip={t('embeddingModelTip')}
+                // required
+                // tooltip={t('embeddingModelTip')}
                 className={cn('text-sm  whitespace-wrap ', {
                   'w-1/4': line === 1,
                 })}
@@ -205,7 +210,7 @@ export function ParseTypeItem({ line = 2 }: { line?: number }) {
                     )}
                   >
                     <Radio value={1}>{t('builtIn')}</Radio>
-                    <Radio value={2}>{t('manualSetup')}</Radio>
+                    {/* <Radio value={2}>{t('manualSetup')}</Radio> */}
                   </div>
                 </Radio.Group>
               </FormControl>

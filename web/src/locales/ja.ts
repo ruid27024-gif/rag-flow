@@ -63,7 +63,7 @@ export default {
     },
     header: {
       dataset: 'ナレッジベース',
-      chat: 'チャット',
+      chat: 'テーマ',
       register: '登録',
       signin: 'ログイン',
       home: 'ホーム',
@@ -349,8 +349,9 @@ export default {
       assistantSetting: 'アシスタント設定',
       promptEngine: 'プロンプトエンジン',
       modelSetting: 'モデル設定',
-      chat: 'チャット',
-      newChat: '新しいチャット',
+      chat: 'テーマ',
+      server: '木本・雲樞',
+      newChat: '新テーマ',
       send: '送信',
       sendPlaceholder: 'アシスタントにメッセージを送信...',
       chatConfiguration: 'チャット設定',
@@ -1179,6 +1180,10 @@ export default {
       file: 'ファイル',
       knowledge: 'ナレッジ',
       chat: 'チャット',
+    },
+    search: {
+      searchApps: '検索',
+      createSearch: '検索を作成',
     },
   },
 };

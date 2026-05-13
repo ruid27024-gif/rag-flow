@@ -82,15 +82,15 @@ export function Sessions({
               >
                 <span
                   className="
-                  text-2xl font-bold
-                  text-black dark:text-white
-                  bg-gradient-to-l from-cyan-400 to-emerald-400
-                  bg-clip-text
-                  transition-all duration-300
-                  group-hover:text-transparent
-                "
+    text-2xl font-bold
+    bg-gradient-to-l from-cyan-400 to-emerald-400
+    bg-clip-text
+    text-transparent
+    group-hover:text-black dark:group-hover:text-black
+    transition-all duration-300
+  "
                 >
-                  {t('chat.chat')}
+                  {t('chat.server')}
                 </span>
 
                 {/* Tooltip */}

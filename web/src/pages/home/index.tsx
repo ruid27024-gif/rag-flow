@@ -1,21 +1,83 @@
 import message from '@/components/ui/message';
 import { useNavigateWithFromState } from '@/hooks/route-hook';
 import { getAuthorization } from '@/utils/authorization-util';
-import { HengfengLogo } from '../../HengfengLogo';
+import { useEffect, useRef, useState } from 'react';
 import { Applications } from './applications';
 import { NextBanner } from './banner';
 import { Datasets } from './datasets';
 
 const Home = () => {
   const navigate = useNavigateWithFromState();
-  // 假设你有获取 Token 的方法
-  // const getAuthorization = () => localStorage.getItem('token');
 
-  // 2. 封装点击处理函数
+  // --- 拖拽相关状态 ---
+  const [isDragging, setIsDragging] = useState(false);
+  // 初始位置对应原来的 right:100, bottom:100 (假设屏幕右下角)
+  const [position, setPosition] = useState({
+    left: 'auto',
+    top: 'auto',
+    right: '100px',
+    bottom: '100px',
+  });
+  const dragRef = useRef(null);
+  const offsetRef = useRef({ x: 0, y: 0 });
+
+  // --- 拖拽逻辑 ---
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+
+      // 计算新位置：鼠标当前位置 - 鼠标点击时相对于元素左上角的偏移量
+      const newLeft = e.clientX - offsetRef.current.x;
+      const newTop = e.clientY - offsetRef.current.y;
+
+      // 切换为 left/top 定位模式，覆盖掉 right/bottom
+      setPosition({
+        left: `${newLeft}px`,
+        top: `${newTop}px`,
+        right: 'auto',
+        bottom: 'auto',
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      // 恢复鼠标样式，移除文本禁止选中样式（如果有）
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    if (isDragging) {
+      // 防止拖动时选中文字
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'move';
+
+      // 绑定全局事件，防止鼠标移动过快脱离元素导致拖动失效
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    // 计算鼠标点击点相对于按钮左上角的偏移
+    // 注意：这里使用 dragRef 获取外层的 div
+    const rect = dragRef.current.getBoundingClientRect();
+    offsetRef.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
+
+  // --- 原有业务逻辑 ---
   const handleSmartClick = async () => {
-    // 这里直接复用了你的逻辑，相当于触发了 'create-dialog-api' 选项
     const targetPath = 'create-dialog-api';
-
     try {
       const response = await fetch('/v1/debug/create_dialog_from_config', {
         method: 'POST',
@@ -23,12 +85,8 @@ const Home = () => {
           Authorization: getAuthorization() || '',
         },
       });
-
       const res = await response.json();
-
       if (res.retcode === 0 && res.data?.id) {
-        // 假设 Routes.ChatDefault 是 '/chat' 之类的路径
-        // 如果这里报错，请确保你有定义 Routes 或者直接用字符串路径
         navigate(`/next-chat-default/${res.data.id}`);
       } else {
         message.error(res.msg || '新建对话失败！');
@@ -45,33 +103,32 @@ const Home = () => {
       <section className="h-[calc(100dvh-260px)] overflow-auto px-10">
         <Datasets></Datasets>
         <Applications></Applications>
-        {/* 1. Logo 容器 */}
 
-        {/* 1. Logo 容器 - 修复版 */}
+        {/* 1. Logo 容器 - 可拖动版 */}
         <div
-          className="fixed pointer-events-auto scale-125 transition-transform duration-300 z-[50]"
+          ref={dragRef} // 绑定 ref 用于计算坐标
+          onMouseDown={handleMouseDown} // 绑定鼠标按下事件
+          className="fixed pointer-events-auto scale-125 transition-transform duration-300 z-[50] cursor-move"
           style={{
-            right: '100px',
-            bottom: '-500px', // 建议改为正值，或者确保负值不会导致布局计算错误
-            // 删除了 width: '100%' 和 height: '100%'
-            // 让 div 自动适应内部 HengfengLogo 的大小
+            // 动态应用位置状态
+            left: position.left,
+            top: position.top,
+            right: position.right,
+            bottom: position.bottom,
             width: '100px',
             height: '100px',
+            // 拖动时移除过渡效果，避免延迟感
+            transition: isDragging ? 'none' : 'transform 0.3s duration-300',
           }}
         >
-          <HengfengLogo />
-
           <button
             onClick={handleSmartClick}
             className="absolute z-[100] rounded-full flex items-center justify-center group cursor-pointer"
             style={{
-              // 这里的定位现在是相对于 HengfengLogo 或者父容器的大小
-              // 如果按钮位置跑偏了，请微调这里的 right/bottom 值
-              right: '82px',
-              bottom: '582px',
-
-              width: '30px',
-              height: '30px',
+              right: '18%',
+              bottom: '18%',
+              width: '40px',
+              height: '40px',
               background: 'transparent',
               backdropFilter: 'none',
               border: '1px solid #40E0D0',

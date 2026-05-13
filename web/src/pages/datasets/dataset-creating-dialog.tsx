@@ -97,9 +97,9 @@ export function InputForm({ onOk }: IModalProps<any>) {
     defaultValues: {
       name: '',
       parseType: 1,
-      parser_id: '',
-      embd_id: '',
-      language: 'English',
+      parser_id: 'paper',
+      embd_id: 'text-embedding-v2@Tongyi-Qianwen',
+      language: 'Chinese',
     },
   });
 

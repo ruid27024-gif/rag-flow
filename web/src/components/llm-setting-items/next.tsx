@@ -1,3 +1,4 @@
+import { LLMFormField } from '@/components/llm-setting-items/llm-form-field';
 import {
   ModelVariableType,
   settledModelVariableMap,
@@ -130,10 +131,10 @@ export function LlmSettingFieldItems({
 
   return (
     <div className="space-y-5">
-      {/* <LLMFormField
+      <LLMFormField
         options={options}
         name={llmId ?? getFieldWithPrefix('llm_id')}
-      ></LLMFormField> */}
+      ></LLMFormField>
       <FormField
         control={form.control}
         name={getFieldWithPrefix('parameter')}
