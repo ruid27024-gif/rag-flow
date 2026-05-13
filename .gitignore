@@ -204,3 +204,5 @@ people.json
 
 docker/*.tar.gz
 tei_data/
+
+temp_pdf/
