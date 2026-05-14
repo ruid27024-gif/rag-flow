@@ -206,3 +206,18 @@ docker/*.tar.gz
 tei_data/
 
 temp_pdf/
+
+# 忽略 Python 编译产物和虚拟环境
+build/
+dist/
+*.egg-info/
+__pycache__/
+venv/
+.env
+
+# 忽略大型模型文件和系统安装包
+*.onnx
+*.model
+*.deb
+*.zip
+get-docker.sh
