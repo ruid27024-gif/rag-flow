@@ -1,5 +1,6 @@
+import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { transformFile2Base64 } from '@/utils/file-util';
-import { Pencil, Plus, XIcon } from 'lucide-react';
+import { Pencil, XIcon } from 'lucide-react';
 import {
   ChangeEventHandler,
   forwardRef,
@@ -18,10 +19,11 @@ type AvatarUploadProps = {
   value?: string;
   onChange?: (value: string) => void;
   tips?: string;
+  name?: string; // 👈 新增：用于自动生成文字头像的名字
 };
 
 export const AvatarUpload = forwardRef<HTMLInputElement, AvatarUploadProps>(
-  function AvatarUpload({ value, onChange, tips }, ref) {
+  function AvatarUpload({ value, onChange, tips, name }, ref) {
     const { t } = useTranslation();
     const [avatarBase64Str, setAvatarBase64Str] = useState(''); // Avatar Image base64
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
@@ -255,11 +257,14 @@ export const AvatarUpload = forwardRef<HTMLInputElement, AvatarUploadProps>(
       <div className="flex justify-start items-end space-x-2">
         <div className="relative group">
           {!avatarBase64Str ? (
-            <div className="w-[64px] h-[64px] grid place-content-center border border-dashed bg-bg-input rounded-md">
-              <div className="flex flex-col items-center">
-                <Plus />
-                <p>{t('common.upload')}</p>
-              </div>
+            // <div className="w-[64px] h-[64px] grid place-content-center border border-dashed bg-bg-input rounded-md">
+            //   <div className="flex flex-col items-center">
+            //     <Plus />
+            //     <p>{t('common.upload')}</p>
+            //   </div>
+            // </div>
+            <div className="w-[64px] h-[64px] rounded-md overflow-hidden">
+              <RAGFlowAvatar name={name} className="w-full h-full" />
             </div>
           ) : (
             <div className="w-[64px] h-[64px] relative grid place-content-center">

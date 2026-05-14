@@ -47,7 +47,7 @@ if __name__ == "__main__":
     import os
 
     # 将项目根目录加入环境变量
-    sys.path.insert(0, '/home/zyb/rag-flow')
+    sys.path.insert(0, '/home/hengyue/rag-flow')
     from api.utils.crypt import decrypt,crypt2, crypt
         # 在这里修改你要注册的账号信息
     # user_data = {

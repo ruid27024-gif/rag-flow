@@ -7,7 +7,7 @@ url = "http://localhost:9222/v1/document/upload/report"
 
 # 2. 准备表单数据
 data = {
-    "dept_id": "100148",
+    "dept_id": "100051",
     "user_id": "105405",
     "file_name2": "12345.pdf"
 }
@@ -15,8 +15,8 @@ data = {
 # 3. 准备文件 (注意使用 'rb' 二进制读取模式)
 # 这里的 key 'file' 必须和后端代码里获取的一致
 files = [
-    ('file', ('我的文档.pdf', open('/home/zyb/temp_docs/我的文档.pdf', 'rb'), 'application/pdf')),
-    ('file', ('report2.pdf', open('/home/zyb/temp_docs/我的文档.pdf', 'rb'), 'application/pdf')),
+    ('file', ('我的文档.pdf', open('/home/hengyue/文档/xwechat_files/wxid_0n7eboddvh9u22_76fc/msg/file/2026-05/Untitled.pdf', 'rb'), 'application/pdf')),
+    ('file', ('report2.pdf', open('/home/hengyue/文档/xwechat_files/wxid_0n7eboddvh9u22_76fc/msg/file/2026-05/Untitled.pdf', 'rb'), 'application/pdf')),
 ]
 
 # 4. 发送请求

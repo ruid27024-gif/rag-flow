@@ -411,6 +411,21 @@ async def retrieval_test():
 
         for c in ranks["chunks"]:
             c.pop("vector", None)
+            print("召回的chunk")
+            print(c["kb_id"])
+            KnowledgebaseService.get_detail(c["kb_id"])
+            kb_detail = KnowledgebaseService.get_detail(c["kb_id"])
+
+            # 2. 先判断一下详情是否存在（防止 c.kb_id 无效导致返回 None）
+            if kb_detail:
+                # 3. 通过键 'name' 获取知识库名称
+                kb_name = kb_detail.get('name')
+                c['kb_name'] = kb_name
+
+            else:
+                c['kb_name'] = "未知知识库"
+
+
         ranks["labels"] = labels
 
         return get_json_result(data=ranks)

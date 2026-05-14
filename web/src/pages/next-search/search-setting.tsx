@@ -1,12 +1,10 @@
 // src/pages/next-search/search-setting.tsx
 
-import { AvatarUpload } from '@/components/avatar-upload';
 import {
   LlmSettingFieldItems,
   LlmSettingSchema,
 } from '@/components/llm-setting-items/next';
 import { MetadataFilterSchema } from '@/components/metadata-filter';
-import { SimilaritySliderFormField } from '@/components/similarity-slider';
 import { Button } from '@/components/ui/button';
 import { SingleFormSlider } from '@/components/ui/dual-range-slider';
 import {
@@ -25,7 +23,6 @@ import {
 import { RAGFlowSelect } from '@/components/ui/select';
 import { Spin } from '@/components/ui/spin';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { useFetchKnowledgeList } from '@/hooks/use-knowledge-request';
 import {
   useComposeLlmOptionsByModelTypes,
@@ -325,7 +322,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
               )}
             />
             {/* Avatar */}
-            <FormField
+            {/* <FormField
               control={formMethods.control}
               name="avatar"
               render={({ field }) => (
@@ -337,9 +334,9 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                   <FormMessage />
                 </FormItem>
               )}
-            />
+            /> */}
             {/* Description */}
-            <FormField
+            {/* <FormField
               control={formMethods.control}
               name="description"
               render={({ field }) => (
@@ -364,7 +361,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                   <FormMessage />
                 </FormItem>
               )}
-            />
+            /> */}
             {/* Datasets */}
             <FormField
               control={formMethods.control}
@@ -394,12 +391,12 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
               )}
             />
             {/* <MetadataFilter prefix="search_config."></MetadataFilter> */}
-            <SimilaritySliderFormField
+            {/* <SimilaritySliderFormField
               // isTooltipShown
               similarityName="search_config.similarity_threshold"
               vectorSimilarityWeightName="search_config.vector_similarity_weight"
               numberInputClassName="rounded-sm"
-            ></SimilaritySliderFormField>
+            ></SimilaritySliderFormField> */}
             {/* Rerank Model */}
             <FormField
               control={formMethods.control}
@@ -527,7 +524,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
               )}
             /> */}
 
-            <FormField
+            {/* <FormField
               control={formMethods.control}
               name="search_config.related_search"
               render={({ field }) => (
@@ -541,8 +538,8 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                   <FormLabel>{t('search.enableRelatedSearch')}</FormLabel>
                 </FormItem>
               )}
-            />
-            <FormField
+            /> */}
+            {/* <FormField
               control={formMethods.control}
               name="search_config.query_mindmap"
               render={({ field }) => (
@@ -556,7 +553,7 @@ const SearchSetting: React.FC<SearchSettingProps> = ({
                   <FormLabel>{t('search.showQueryMindmap')}</FormLabel>
                 </FormItem>
               )}
-            />
+            /> */}
             {/* Submit Button */}
             <div className="flex justify-end"></div>
             <div className="flex justify-end gap-2 absolute bottom-1 right-3 bg-bg-base w-[calc(100%-1em)] py-2">

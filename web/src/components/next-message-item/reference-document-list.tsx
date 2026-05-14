@@ -69,7 +69,7 @@ export function ReferenceDocumentList({ list }: { list: Docagg[] }) {
 
     <section className="flex flex-col gap-3 w-full max-w-full">
       {list.map((item, i) => (
-        <Card key={item.doc_id} className="w-[500px]">
+        <Card key={item.doc_id} className="w-[600px]">
           <CardContent className="p-1.5">
             <div className="flex items-center gap-2">
               <span

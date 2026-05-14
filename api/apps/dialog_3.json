@@ -4,7 +4,7 @@
   "icon": "",
   "kb_ids": "[]",
   "language": "Chinese",
-  "llm_id": "qwen3-14b",
+  "llm_id": "qwen3-32b",
   "llm_setting": "{\"temperature\":0.1,\"top_p\":0.3}",
   "meta_data_filter": "{\"method\":\"disabled\"}",
   "name": "恒丰纸业统一问答智能体",

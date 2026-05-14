@@ -162,7 +162,7 @@ export default function SearchingView({
                   <SkeletonCard className=" mt-2" />
                 ) : (
                   answer.answer && (
-                    <div className="border rounded-lg p-4 mt-3 max-h-52 overflow-auto scrollbar-none">
+                    <div className="border rounded-lg p-4 mt-3 max-h-100 overflow-auto scrollbar-none">
                       <MarkdownContent
                         loading={sendingLoading}
                         content={answer.answer}
@@ -228,7 +228,7 @@ export default function SearchingView({
                               </PopoverContent>
                             </Popover>
                           </div>
-                          <div
+                          {/* <div
                             className="flex gap-2 items-center text-xs text-text-secondary border p-1 rounded-lg w-fit mt-3"
                             onClick={() =>
                               clickDocumentButton(chunk.doc_id, chunk as any)
@@ -236,6 +236,23 @@ export default function SearchingView({
                           >
                             <FileIcon name={chunk.docnm_kwd}></FileIcon>
                             {chunk.docnm_kwd}
+                          </div> */}
+                          <div className="flex gap-2 items-center text-xs text-text-secondary border p-1 rounded-lg w-fit mt-3">
+                            {/* 原有的可点击文档按钮 */}
+                            <div
+                              className="flex gap-2 items-center cursor-pointer"
+                              onClick={() =>
+                                clickDocumentButton(chunk.doc_id, chunk as any)
+                              }
+                            >
+                              <FileIcon name={chunk.docnm_kwd}></FileIcon>
+                              {chunk.docnm_kwd}
+                            </div>
+
+                            {/* 新增的橙色 kb_name 展示区域 */}
+                            <div className="text-pink-300 font-medium pointer-events-none">
+                              {chunk.kb_name || '未知知识库'}
+                            </div>
                           </div>
                         </div>
                         {index < chunks.length - 1 && (

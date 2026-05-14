@@ -21,6 +21,9 @@ from common.constants import StatusEnum
 from api.db.db_models import DB, Search, User
 from api.db.services.common_service import CommonService
 from common.time_utils import current_timestamp, datetime_format
+from api.db.db_models import AdminUser
+from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.apps import login_required, current_user
 
 
 class SearchService(CommonService):
@@ -73,6 +76,34 @@ class SearchService(CommonService):
         )
         if not search:
             return {}
+        
+        # --- 新增的判断与修改逻辑开始 ---
+        # 1. 获取 search_config，如果数据库里是空的，就初始化为一个空字典
+        search_config = search.get('search_config') or {}
+        
+        # 2. 判断 kb_ids 是否为空列表，或者根本不存在 复给默认知识库
+        if not search_config.get('kb_ids'): 
+            # --- 执行自动查询逻辑 ---
+            admin_bypass=False
+            if AdminUser.query(user_id=current_user.id, role_level=1):
+                admin_bypass=True
+            kb_list, total_count = KnowledgebaseService.get_by_tenant_ids(
+                joined_tenant_ids=[],
+                user_id=current_user.id,
+                page_number=1,
+                items_per_page=1000,
+                orderby="id",
+                desc=False,
+                keywords=None,
+                admin_bypass=admin_bypass
+            )
+            kb_ids = [kb["id"] for kb in kb_list]
+            search_config['kb_ids'] = kb_ids
+        
+        # 4. 将修改后的配置重新赋值给 search 字典
+        search['search_config'] = search_config
+        # --- 新增的判断与修改逻辑结束 ---
+
         return search
 
     @classmethod

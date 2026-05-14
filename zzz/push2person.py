@@ -33,7 +33,7 @@ def setup_and_insert(data_list):
         print(f"✅ 已插入 {count} 条数据")
 
 try:
-    with open('/home/zyb/rag-flow/zzz/people.json', 'r', encoding='utf-8') as file:
+    with open('/home/hengyue/rag-flow/zzz/people.json', 'r', encoding='utf-8') as file:
         # 写入数据库
         data = json.load(file)
         print(data['rtnData']['result'][0])

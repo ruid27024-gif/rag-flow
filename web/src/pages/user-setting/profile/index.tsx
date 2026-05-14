@@ -159,6 +159,7 @@ const ProfilePage: FC = () => {
           <div className="flex items-center gap-4">
             <AvatarUpload
               value={profile.avatar}
+              name={profile.userName}
               onChange={handleAvatarUpload}
               tips={t('avatarTip')}
             />

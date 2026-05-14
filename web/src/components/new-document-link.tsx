@@ -84,28 +84,37 @@ const NewDocumentLink = ({
     // 修改点：
     // 1. 移除 style 中的 wordBreak: 'break-all' (这会强制换行，与截断冲突)
     // 2. 确保 className 被正确应用
-    <span
+    <div
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         gap: '8px',
         width: '100%',
+        justifyContent: 'space-between',
       }}
     >
-      <a
-        target="_blank"
-        onClick={
-          !preventDefault || isSupportedPreviewDocumentType(extension)
-            ? undefined
-            : (e) => e.preventDefault()
-        }
-        href={nextLink}
-        rel="noreferrer"
-        style={{ color: className ? '' : color }} // 移除了 wordBreak
-        className={className} // 确保这里的 className 接收到了父组件传来的 'flex-1 truncate'
+      <div
+        style={{
+          width: '90%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
       >
-        {children}
-      </a>
+        <a
+          target="_blank"
+          onClick={
+            !preventDefault || isSupportedPreviewDocumentType(extension)
+              ? undefined
+              : (e) => e.preventDefault()
+          }
+          href={nextLink}
+          rel="noreferrer"
+          style={{ color: className ? '' : color }} // 移除了 wordBreak
+          className={className} // 确保这里的 className 接收到了父组件传来的 'flex-1 truncate'
+        >
+          {children}
+        </a>
+      </div>
 
       {isSupportedPreviewDocumentType(extension) && (
         <button
@@ -122,7 +131,7 @@ const NewDocumentLink = ({
           下载
         </button>
       )}
-    </span>
+    </div>
   );
 };
 

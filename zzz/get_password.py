@@ -3,7 +3,7 @@ import sys
 import os
 
 # 将项目根目录加入环境变量
-sys.path.insert(0, '/home/zyb/rag-flow')
+sys.path.insert(0, '/home/hengyue/rag-flow')
 from api.db.services.user_service import UserService
 lis = UserService.query_user_by_email("test_a@qq.com")
 user =lis[0]

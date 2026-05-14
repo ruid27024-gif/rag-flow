@@ -31,11 +31,15 @@ import SearchingPage from './searching';
 
 export default function SearchPage() {
   const { navigateToSearchList } = useNavigatePage();
+  // 是否正在搜索
   const [isSearching, setIsSearching] = useState(false);
+  // 获取搜索应用的详情
   const { data: SearchData } = useFetchSearchDetail();
   const { beta, handleOperate } = useFetchTokenListBeforeOtherStep();
 
+  // 是否在右侧渲染侧边栏
   const [openSetting, setOpenSetting] = useState(false);
+
   const [openEmbed, setOpenEmbed] = useState(false);
   const [searchText, setSearchText] = useState('');
   const { data: tenantInfo } = useFetchTenantInfo();
@@ -49,6 +53,7 @@ export default function SearchPage() {
     setOpenSetting(checkOpenSetting);
   }, [checkOpenSetting]);
 
+  // 搜索情况自动关闭右侧设置栏目
   useEffect(() => {
     if (isSearching) {
       setOpenSetting(false);

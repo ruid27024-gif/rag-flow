@@ -29,7 +29,7 @@ def setup_and_insert(data_list):
         print(f"✅ 已插入 {count} 条数据")
 
 try:
-    with open('/home/zyb/rag-flow/zzz/dept.json', 'r', encoding='utf-8') as file:
+    with open('/home/hengyue/rag-flow/zzz/dept.json', 'r', encoding='utf-8') as file:
         data = json.load(file)
         # print(data['rtnData']['result'][0])
         setup_and_insert(data['rtnData']['result'])

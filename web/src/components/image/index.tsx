@@ -27,7 +27,13 @@ export const ImageWithPopover = ({ id }: { id: string }) => {
       <PopoverTrigger>
         <Image id={id} className="max-h-[100px] inline-block"></Image>
       </PopoverTrigger>
-      <PopoverContent>
+      {/* <PopoverContent> */}
+      <PopoverContent
+        side="right"
+        align="start"
+        sideOffset={750}
+        className="p-0"
+      >
         <Image id={id} className="max-w-[100px] object-contain"></Image>
       </PopoverContent>
     </Popover>

@@ -58,7 +58,7 @@ dependencies = [
     "mcp>=1.19.0",
     "mini-racer>=0.12.4,<0.13.0",
     "minio==7.2.4",
-    "mistralai==0.4.2",
+    # "mistralai==0.4.2",
     "moodlepy>=0.23.0",
     "mypy-boto3-s3==1.40.26",
     "Office365-REST-Python-Client==2.6.2",

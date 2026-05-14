@@ -86,7 +86,7 @@ export default {
     },
     header: {
       knowledgeBase: '知识库',
-      chat: '主题',
+      chat: '云枢',
       register: '注册',
       signin: '登录',
       home: '首页',
@@ -785,7 +785,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       availableModels: '可选模型',
       profile: '用户概要',
       avatar: '头像',
-      avatarTip: '这会在你的个人主页展示',
+      avatarTip: '主页头像（点击更换）',
       profileDescription: '在此更新您的照片和个人详细信息。',
       maxTokens: '最大token数',
       maxTokensMessage: '最大token数是必填项',

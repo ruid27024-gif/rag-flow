@@ -70,7 +70,7 @@ for user in query:
 
         # 拿到成员的根 --> 挂到组长的根上
         file = File.select().where((File.id == File.parent_id )& (File.tenant_id == user_group_id) & (File.tenant_id != user.user_id)).first()
-        print(file.to_dict())
+        # print(file.to_dict())
 
         if file:
             print(".......................................................")
@@ -166,7 +166,7 @@ file4 = File.select().where((File.parent_id == File.id)
 
 # 组
 file4_ = File.select().where((File.parent_id == File.id)
-                            & (File.tenant_id == "6679ef0a445811f1b3b7345a60aae1f7")).first()
+                            & (File.tenant_id == "cbd67f624e7111f1960ee8473ae7fab0")).first()
 
 
 file4.parent_id = file4_.id
