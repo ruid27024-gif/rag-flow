@@ -1,10 +1,7 @@
 'use client';
 
-import { AvatarUpload } from '@/components/avatar-upload';
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
-import { LLMFormField } from '@/components/llm-setting-items/llm-form-field';
 import { MetadataFilter } from '@/components/metadata-filter';
-import { RerankFormFields } from '@/components/rerank';
 import { SwitchFormField } from '@/components/switch-fom-field';
 import { TOCEnhanceFormField } from '@/components/toc-enhance-form-field';
 import {
@@ -48,13 +45,13 @@ export default function ChatBasicSetting() {
         <span className="text-sm font-bold text-gray-900">选填项-7</span>
       </div>
 
-      <LLMFormField
+      {/* <LLMFormField
         // options={options}
         name={llmId ?? getFieldWithPrefix('llm_id')}
       ></LLMFormField>
 
-      <RerankFormFields></RerankFormFields>
-      <FormField
+      <RerankFormFields></RerankFormFields> */}
+      {/* <FormField
         control={form.control}
         name={'icon'}
         render={({ field }) => (
@@ -68,7 +65,7 @@ export default function ChatBasicSetting() {
             </FormItem>
           </div>
         )}
-      />
+      /> */}
       <FormField
         control={form.control}
         name="name"
@@ -127,6 +124,23 @@ export default function ChatBasicSetting() {
         )}
       />
 
+      <SwitchFormField
+        name={'prompt_config.quote'}
+        label={t('quote')}
+        // tooltip={t('quoteTip')}
+      ></SwitchFormField>
+      <SwitchFormField
+        name={'prompt_config.keyword'}
+        label={t('keyword')}
+        // tooltip={t('keywordTip')}
+      ></SwitchFormField>
+      {/* <SwitchFormField
+        name={'prompt_config.tts'}
+        label={t('tts')}
+        tooltip={t('ttsTip')}
+      ></SwitchFormField> */}
+      <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
+
       <div className="flex items-center gap-2 mb-4">
         {/* 短横线 */}
         <div className="h-4 w-1 bg-blue-500 rounded-full"></div>
@@ -153,22 +167,6 @@ export default function ChatBasicSetting() {
         )}
       />
 
-      <SwitchFormField
-        name={'prompt_config.quote'}
-        label={t('quote')}
-        // tooltip={t('quoteTip')}
-      ></SwitchFormField>
-      <SwitchFormField
-        name={'prompt_config.keyword'}
-        label={t('keyword')}
-        // tooltip={t('keywordTip')}
-      ></SwitchFormField>
-      <SwitchFormField
-        name={'prompt_config.tts'}
-        label={t('tts')}
-        // tooltip={t('ttsTip')}
-      ></SwitchFormField>
-      <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
       {/* <TavilyFormField></TavilyFormField> */}
 
       <MetadataFilter></MetadataFilter>
