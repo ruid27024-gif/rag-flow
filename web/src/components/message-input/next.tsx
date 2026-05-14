@@ -20,7 +20,6 @@ import { CircleStop, Paperclip, Send, Upload, X } from 'lucide-react';
 import * as React from 'react';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
-import { AudioButton } from '../ui/audio-button';
 
 interface IProps {
   disabled: boolean;
@@ -185,11 +184,11 @@ export function NextMessageInput({
           ) : (
             <div className="flex items-center gap-3">
               {/* <div className="bg-bg-input rounded-md hover:bg-bg-card p-1"> */}
-              <AudioButton
+              {/* <AudioButton
                 onOk={(value) => {
                   setAudioInputValue(value);
                 }}
-              />
+              /> */}
               {/* </div> */}
               <Button
                 type="button"

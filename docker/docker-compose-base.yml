@@ -167,7 +167,7 @@ services:
       - ${MYSQL_PORT}:3306
     volumes:
       # - mysql_data:/var/lib/mysql
-      - /home/hengyue/mysql_data_20260511:/var/lib/mysql
+      - /home/zyb/5.14/mysql_data_20260514/mysql_data_20260511:/var/lib/mysql
       - ./init.sql:/data/application/init.sql
     networks:
       - ragflow
