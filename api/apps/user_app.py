@@ -28,7 +28,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from api.apps.auth import get_auth_client
 from api.db import FileType, UserTenantRole
-from api.db.db_models import TenantLLM, AdminUser, User
+from api.db.db_models import TenantLLM, AdminUser, User, UserGroup, SyncPerson, SyncDept
+from peewee import JOIN
 from api.db.services.file_service import FileService
 from api.db.services.llm_service import get_init_tenant_llm
 from api.db.services.tenant_llm_service import TenantLLMService
@@ -681,18 +682,76 @@ async def group_admin_candidates():
     """
     try:
         # Find users who are NOT in AdminUser table
+
+                # 1. 构建多表联查的 Query（参考 list_candidate_users 的联表逻辑）
+        query = (
+            User
+            .select(
+                User.id,
+                User.nickname,
+                SyncPerson.phone,
+                SyncPerson.gender,
+                SyncDept.mdmCode,         
+                SyncDept.nameOfAdminOrg, 
+                SyncDept.corporateName 
+            )
+            # 关联 SyncPerson 表
+            .join(
+                SyncPerson, 
+                on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                join_type=JOIN.LEFT_OUTER
+            )
+            .switch(User)
+            # 关联 SyncDept 表
+            .join(
+                SyncDept, 
+                on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                join_type=JOIN.LEFT_OUTER
+            )
+        )
+
         subquery = AdminUser.select(AdminUser.user_id)
+        excluded_ids = {row.user_id for row in subquery}  # 将查询结果转为集合
+
+        # 2. 获取配置中的集合
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        group_ref_ids = set(cfg_map.values())
+
+        # 3. 合并两个集合（方式一：使用 update 方法）
+        excluded_ids.update(group_ref_ids)
+        
         if settings.REFERENCE_TENANT_ID:
-            users = User.select(User.id, User.nickname).where(
+            # 同时排除 AdminUser 中的用户 和 参考租户ID
+            users_query = query.where(
                 User.id.not_in(subquery),
-                User.id != settings.REFERENCE_TENANT_ID,
+                User.id != settings.REFERENCE_TENANT_ID
             )
         else:
-            users = User.select(User.id, User.nickname).where(User.id.not_in(subquery))
-        res = [{"user_id": u.id, "nickname": u.nickname} for u in users]
+            # 仅排除 AdminUser 中的用户
+            users_query = query.where(User.id.not_in(subquery))
+
+        # 3. 执行查询并组装数据（增加空值保护）
+        res = []
+        for u in users_query:
+            # 获取关联的 SyncPerson 和 SyncDept 对象，如果没有关联到则为 None
+            sync_p = getattr(u, 'syncperson', None)
+            sync_d = getattr(u, 'syncdept', None)
+            
+            res.append({
+                "user_id": u.id, 
+                "nickname": u.nickname, 
+                "phone": sync_p.phone if sync_p else None,
+                "gender": sync_p.gender if sync_p else None,
+                "mdmCode": sync_d.mdmCode if sync_d else None, 
+                "nameOfAdminOrg": sync_d.nameOfAdminOrg if sync_d else None, 
+                "corporateName": sync_d.corporateName if sync_d else None
+            })
+
         return get_json_result(data=res)
     except Exception as e:
         return server_error_response(e)
+    
+
 
 
 @manager.route("/group_admin/new", methods=["POST"])  # noqa: F821

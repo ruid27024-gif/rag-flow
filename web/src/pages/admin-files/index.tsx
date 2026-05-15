@@ -26,6 +26,7 @@ import {
   listGroupAdmins,
   removeGroupAdmin,
 } from '@/services/user-service';
+import { Spin } from 'antd';
 import { Plus, Settings, Trash2, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DialogConfigModal } from './DialogConfigModal';
@@ -125,6 +126,8 @@ const AdminFiles = () => {
   const memberPageSize = 10;
 
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchPhone, setSearchPhone] = useState('');
+  const [selectedDept, setSelectedDept] = useState('');
 
   // 获取组
   const fetchGroups = async () => {
@@ -224,7 +227,7 @@ const AdminFiles = () => {
       setGroupAdminLoading(false);
     }
   };
-
+  // 获取未在管理员列表中的数据
   const fetchAdminCandidates = async () => {
     setAdminCandidateLoading(true);
     try {
@@ -242,16 +245,58 @@ const AdminFiles = () => {
     }
   };
 
-  // 2. 新增：根据搜索词过滤候选人列表
-  // 使用 useMemo 优化性能，只有当 candidates 或 searchKeyword 变化时才重新计算
+  const DEPARTMENT_OPTIONS = [
+    { label: '工艺研究一室', value: '工艺研究一室' },
+    { label: '工艺研究二室', value: '工艺研究二室' },
+    { label: '工艺研究三室', value: '工艺研究三室' },
+    { label: '新品事业部研发部', value: '新品事业部研发部' },
+  ];
+
   const filteredCandidates = useMemo(() => {
-    if (!searchKeyword) return candidates; // 没输入时显示所有
-    return candidates.filter(
-      (user) =>
-        user.nickname.includes(searchKeyword) ||
-        (user.user_id && user.user_id.toString().includes(searchKeyword)),
-    );
-  }, [candidates, searchKeyword]);
+    // 如果所有筛选条件都为空，直接返回所有候选人
+    if (!searchKeyword && !searchPhone && !selectedDept) return candidates;
+
+    return candidates.filter((user) => {
+      // 1. 匹配昵称或用户ID
+      const keyword = searchKeyword.toLowerCase();
+      const matchKeyword =
+        !searchKeyword ||
+        user.nickname?.toLowerCase().includes(keyword) ||
+        user.user_id?.toString().includes(keyword);
+
+      // 2. 匹配手机号
+      const matchPhone = !searchPhone || user.phone?.includes(searchPhone);
+
+      // 3. 新增：匹配部门（如果没选部门则默认通过，否则必须等于用户的部门）
+      const matchDept = !selectedDept || user.nameOfAdminOrg === selectedDept;
+
+      // 三个条件必须同时满足
+      return matchKeyword && matchPhone && matchDept;
+    });
+  }, [candidates, searchKeyword, searchPhone, selectedDept]); // 记得把 selectedDept 加入依赖数组
+
+  const filteredadminCandidates = useMemo(() => {
+    // 如果所有筛选条件都为空，直接返回所有候选人
+    if (!searchKeyword && !searchPhone && !selectedDept) return adminCandidates;
+
+    return adminCandidates.filter((user) => {
+      // 1. 匹配昵称或用户ID
+      const keyword = searchKeyword.toLowerCase();
+      const matchKeyword =
+        !searchKeyword ||
+        user.nickname?.toLowerCase().includes(keyword) ||
+        user.user_id?.toString().includes(keyword);
+
+      // 2. 匹配手机号
+      const matchPhone = !searchPhone || user.phone?.includes(searchPhone);
+
+      // 3. 新增：匹配部门（如果没选部门则默认通过，否则必须等于用户的部门）
+      const matchDept = !selectedDept || user.nameOfAdminOrg === selectedDept;
+
+      // 三个条件必须同时满足
+      return matchKeyword && matchPhone && matchDept;
+    });
+  }, [adminCandidates, searchKeyword, searchPhone, selectedDept]);
 
   // 添加组员的
   const handleAddGroupAdmin = async () => {
@@ -571,19 +616,25 @@ const AdminFiles = () => {
                       currentItems.map((group) => (
                         <TableRow
                           key={group.id}
-                          onDoubleClick={() => {
+                          onClick={() => {
                             setSelectedGroup(group);
                             setIsMemberModalOpen(true);
                           }}
                           className="cursor-pointer"
                         >
-                          <TableCell className="whitespace-nowrap">
+                          <TableCell
+                            className="whitespace-nowrap"
+                            title="单击查看"
+                          >
                             {group.group_name}
                           </TableCell>
                           <TableCell className="whitespace-nowrap">
                             {group.member_count ?? 0}
                           </TableCell>
-                          <TableCell className="whitespace-nowrap">
+                          <TableCell
+                            className="whitespace-nowrap"
+                            title="单击查看"
+                          >
                             {group.created_by_nickname || group.created_by}
                           </TableCell>
                           <TableCell>
@@ -907,27 +958,98 @@ const AdminFiles = () => {
         <div className="p-4">
           {candidateLoading ? (
             <div className="text-center py-2 text-sm text-gray-500">
-              加载候选用户...
+              {/* 加载候选用户... */}
+              <Spin tip="加载候选用户中..." />
             </div>
           ) : (
+            // <div className="space-y-4">
+            //   <div className="relative">
+            //     <Input
+            //       type="text"
+            //       placeholder="搜索昵称或用户ID..."
+            //       value={searchKeyword}
+            //       onChange={(e) => setSearchKeyword(e.target.value)}
+            //       className="w-full"
+            //     />
+            //     <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
+            //       🔍
+            //     </span>
+            //   </div>
+
             <div className="space-y-4">
-              {' '}
-              {/* 使用 space-y-4 增加搜索框和下拉框的间距 */}
-              {/* 3. 新增：搜索输入框 */}
-              <div className="relative">
-                <Input
-                  type="text"
-                  placeholder="搜索昵称或用户ID..."
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
-                  className="w-full"
-                  // 如果使用的是原生 input，可以用:
-                  // className="border rounded px-3 py-2 w-full"
-                />
-                {/* 可选：加一个搜索图标 */}
-                <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
-                  🔍
+              {/* 1. 姓名搜索框 */}
+              <div className="flex items-center gap-3">
+                {/* 固定宽度的文字标签，保证上下两个输入框左对齐 */}
+                <span className="text-sm font-medium text-gray-700 w-16 shrink-0">
+                  姓名：
                 </span>
+                <div className="relative flex-1">
+                  <Input
+                    type="text"
+                    placeholder="搜索昵称或用户ID..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    className="w-full"
+                  />
+                  <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
+                    🔍
+                  </span>
+                </div>
+              </div>
+              {/* 2. 手机号搜索框 */}
+              <div className="flex items-center gap-3">
+                {/* 固定宽度的文字标签，与上面的“姓名：”对齐 */}
+                <span className="text-sm font-medium text-gray-700 w-16 shrink-0">
+                  手机号：
+                </span>
+                <div className="relative flex-1">
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="输入手机号后几位过滤..."
+                    value={searchPhone}
+                    onChange={(e) => setSearchPhone(e.target.value)}
+                    maxLength={11}
+                    className="w-full"
+                  />
+                  {/* 可选：当有输入内容时，显示一个清除按钮 */}
+                  {searchPhone && (
+                    <span
+                      className="absolute right-3 top-2.5 text-gray-400 text-sm cursor-pointer hover:text-gray-600"
+                      onClick={() => setSearchPhone('')}
+                    >
+                      ✕
+                    </span>
+                  )}
+                </div>
+              </div>{' '}
+              {/* ⬅️ 这里补上了手机号输入框的闭合标签 */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700 w-16 shrink-0">
+                  部门：
+                </span>
+                <div className="relative flex-1">
+                  <Select value={selectedDept} onValueChange={setSelectedDept}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="请选择部门" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENT_OPTIONS.map((dept) => (
+                        <SelectItem key={dept.value} value={dept.value}>
+                          {dept.label}
+                        </SelectItem>
+                      ))}
+
+                      {/* 下拉框底部的自定义清空按钮 */}
+                      <div
+                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground text-red-500 hover:bg-red-50"
+                        onClick={() => setSelectedDept('')}
+                      >
+                        清空选择
+                      </div>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               {/* 4. 修改：下拉选择框，数据源改为 filteredCandidates */}
               <Select
@@ -1035,7 +1157,6 @@ const AdminFiles = () => {
         </div>
       </Modal>
 
-      {/* 添加组群管理员弹窗 */}
       <Modal
         title="添加组群管理员"
         open={isAddGroupAdminModalOpen}
@@ -1046,27 +1167,117 @@ const AdminFiles = () => {
         <div className="p-4">
           {adminCandidateLoading ? (
             <div className="text-center py-2 text-sm text-gray-500">
-              加载候选用户...
+              <Spin tip="加载候选用户中..." />
             </div>
           ) : (
-            <Select value={newGroupAdminId} onValueChange={setNewGroupAdminId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="请选择用户" />
-              </SelectTrigger>
-              <SelectContent>
-                {adminCandidates.length > 0 ? (
-                  adminCandidates.map((user) => (
-                    <SelectItem key={user.user_id} value={user.user_id}>
-                      {user.nickname}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <div className="p-2 text-sm text-center text-gray-500">
-                    无可选用户
-                  </div>
-                )}
-              </SelectContent>
-            </Select>
+            <div className="space-y-4">
+              {/* 1. 姓名搜索框 */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700 w-16 shrink-0">
+                  姓名：
+                </span>
+                <div className="relative flex-1">
+                  <Input
+                    type="text"
+                    placeholder="搜索昵称或用户ID..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                    className="w-full"
+                  />
+                  <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
+                    🔍
+                  </span>
+                </div>
+              </div>
+              {/* 2. 手机号搜索框 */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700 w-16 shrink-0">
+                  手机号：
+                </span>
+                <div className="relative flex-1">
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="输入手机号后几位过滤..."
+                    value={searchPhone}
+                    onChange={(e) => setSearchPhone(e.target.value)}
+                    maxLength={11}
+                    className="w-full"
+                  />
+                  {searchPhone && (
+                    <span
+                      className="absolute right-3 top-2.5 text-gray-400 text-sm cursor-pointer hover:text-gray-600"
+                      onClick={() => setSearchPhone('')}
+                    >
+                      ✕
+                    </span>
+                  )}
+                </div>
+              </div>{' '}
+              {/* ⬅️ 这里修正了手机号区域的闭合 */}
+              {/* 3. 部门搜索框 */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700 w-16 shrink-0">
+                  部门：
+                </span>
+                <div className="relative flex-1">
+                  <Select value={selectedDept} onValueChange={setSelectedDept}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="请选择部门" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEPARTMENT_OPTIONS.map((dept) => (
+                        <SelectItem key={dept.value} value={dept.value}>
+                          {dept.label}
+                        </SelectItem>
+                      ))}
+
+                      {/* 下拉框底部的自定义清空按钮 */}
+                      <div
+                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground text-red-500 hover:bg-red-50"
+                        onClick={() => setSelectedDept('')}
+                      >
+                        清空选择
+                      </div>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {/* 4. 用户选择器（被修正并移出部门框） */}
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-gray-700">
+                  选择管理员：
+                </span>
+                <Select
+                  value={newGroupAdminId}
+                  onValueChange={setNewGroupAdminId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="请选择用户" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredadminCandidates.length > 0 ? (
+                      filteredadminCandidates.map((user) => (
+                        <SelectItem key={user.user_id} value={user.user_id}>
+                          <div className="flex flex-col">
+                            <span>{user.nickname}</span>
+                            <div className="flex gap-2 text-xs text-gray-400 mt-1">
+                              <span>手机号: {user.phone}</span>
+                              <span>部门: {user.nameOfAdminOrg}</span>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-2 text-sm text-center text-gray-500">
+                        没有找到匹配的用户
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>{' '}
+              {/* ⬅️ 这里补上了 Select 的闭合标签 */}
+            </div>
           )}
         </div>
       </Modal>
