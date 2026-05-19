@@ -95,7 +95,7 @@ def message_fit_in(msg, max_length=4000):
     return max_length, msg
 
 
-def kb_prompt(kbinfos, max_tokens, hash_id=False):
+def kb_prompt(kbinfos, max_tokens, hash_id=False, source_kbs=None):
     from api.db.services.document_service import DocumentService
     from api.db.services.knowledgebase_service import KnowledgebaseService
 
@@ -132,46 +132,73 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False):
             return ""
         return f"\n├── {k}: " + re.sub(r"\n+", " ", line, flags=re.DOTALL)
 
-    knowledges = []
+    def normalize_kb_id(kb_id):
+        if isinstance(kb_id, list):
+            kb_id = kb_id[0] if kb_id else ""
+        if kb_id is None:
+            return ""
+        return str(kb_id)
 
-    # kb_groups = {}
-    # for chunk in kbinfos["chunks"][:chunks_num]:
-    #     kb_id = chunk['kb_id']
-    #     if kb_id not in kb_groups:
-    #         kb_groups[kb_id] = []
-    #     kb_groups[kb_id].append(chunk)
+    def kb_name(kb_id):
+        if not kb_id:
+            return "未分类来源"
+        knowledge = KnowledgebaseService.get_detail(kb_id)
+        return knowledge["name"] if knowledge else kb_id
 
-    # for k, v in kb_groups.items():
-    #     # 通过id获取库名称
-    #     knowledge = KnowledgebaseService.get_detail(k)
-    #     kb_name = "以下召回片段来源于" + knowledge["name"] + "📚:"
-    #     knowledges.append(kb_name)
-    #     print("知识库的名称为-----------------------------------------------------------------------")
-    #     print(kb_name)
-    #     for i, ck in enumerate(v):
-
-    #         cnt = "\nID: {}".format(i if not hash_id else hash_str2int(get_value(ck, "id", "chunk_id"), 500))
-    #         cnt += draw_node("Title", get_value(ck, "docnm_kwd", "document_name"))
-    #         cnt += draw_node("URL", ck['url'])  if "url" in ck else ""
-    #         for k, v in docs.get(get_value(ck, "doc_id", "document_id"), {}).items():
-    #             cnt += draw_node(k, v)
-    #         cnt += "\n└── Content:\n"
-    #         cnt += get_value(ck, "content", "content_with_weight")
-    #         knowledges.append(cnt)
-
-
-
-    for i, ck in enumerate(kbinfos["chunks"][:chunks_num]):
-
-
-        cnt = "\nID: {}".format(i if not hash_id else hash_str2int(get_value(ck, "id", "chunk_id"), 500))
+    def format_chunk(global_idx, ck):
+        cnt = "\nID: {}".format(global_idx if not hash_id else hash_str2int(get_value(ck, "id", "chunk_id"), 500))
         cnt += draw_node("Title", get_value(ck, "docnm_kwd", "document_name"))
         cnt += draw_node("URL", ck['url'])  if "url" in ck else ""
         for k, v in docs.get(get_value(ck, "doc_id", "document_id"), {}).items():
             cnt += draw_node(k, v)
         cnt += "\n└── Content:\n"
         cnt += get_value(ck, "content", "content_with_weight")
-        knowledges.append(cnt)
+        return cnt
+
+    knowledges = []
+    if chunks_num == 0:
+        return knowledges
+
+    if not source_kbs:
+        # 没有显式传入来源列表时，保持旧版平铺上下文，避免影响 async_ask 等其它调用点。
+        for i, ck in enumerate(kbinfos["chunks"][:chunks_num]):
+            knowledges.append(format_chunk(i, ck))
+        return knowledges
+
+    kb_groups = {}
+    group_order = []
+    for i, ck in enumerate(kbinfos["chunks"][:chunks_num]):
+        kb_id = normalize_kb_id(get_value(ck, "kb_id", "dataset_id"))
+        group_key = kb_id or "__unclassified__"
+        if group_key not in kb_groups:
+            kb_groups[group_key] = []
+            group_order.append(group_key)
+        # Keep the original global chunk index so existing [ID:x] citations still map to reference.chunks[x].
+        kb_groups[group_key].append((i, ck))
+
+    if isinstance(source_kbs, str):
+        source_kbs = [source_kbs]
+    if source_kbs:
+        selected_order = []
+        for kb_id in source_kbs:
+            group_key = normalize_kb_id(kb_id) or "__unclassified__"
+            if group_key not in selected_order:
+                selected_order.append(group_key)
+        group_order = selected_order + [key for key in group_order if key not in selected_order]
+
+    for group_key in group_order:
+        display_kb_id = "" if group_key == "__unclassified__" else group_key
+        source_name = kb_name(display_kb_id)
+        # Only the LLM context is grouped by source; the returned reference object keeps the original shape.
+        source_block = [f"【来源：{source_name}】"]
+        grouped_chunks = kb_groups.get(group_key, [])
+        if not grouped_chunks:
+            source_block.append("该来源未检索到相关内容。")
+            knowledges.append("\n".join(source_block))
+            continue
+        for global_idx, ck in grouped_chunks:
+            source_block.append(format_chunk(global_idx, ck))
+        knowledges.append("\n".join(source_block))
 
     return knowledges
 

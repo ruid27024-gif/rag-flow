@@ -433,28 +433,56 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             #Todo 对知识库进行分类 动态提示词语
             # print(dialog.kb_ids)
             if embd_mdl:
-                kbinfos = retriever.retrieval(
-                    " ".join(questions),
-                    embd_mdl,
-                    tenant_ids,
-                    dialog.kb_ids,
-                    1,
-                    dialog.top_n,
-                    dialog.similarity_threshold,
-                    dialog.vector_similarity_weight,
-                    doc_ids=attachments,
-                    top=dialog.top_k,
-                    aggs=False,
-                    rerank_mdl=rerank_mdl,
-                    rank_feature=label_question(" ".join(questions), kbs),
-                )
+                query = " ".join(questions)
+                selected_kbs = list(kbs)
+                total_top_n = max(1, int(dialog.top_n or 1))
+                # 每个知识库都按 top_n 取召回片段；例如 top_n=8 时，每个选中的知识库最多取 8 条。
+                per_kb_top_n = total_top_n
+                doc_aggs_by_id = {}
+
+                # 逐库检索：让前端选中的每个知识库都有机会进入回答来源。
+                # 这里只改变普通 RAG 的召回组织方式，不改变 answer/reference 的返回结构。
+                kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
+                for kb in selected_kbs:
+                    kb_tenant_ids = [kb.tenant_id]
+                    kb_result = retriever.retrieval(
+                        query,
+                        embd_mdl,
+                        kb_tenant_ids,
+                        [kb.id],
+                        1,
+                        per_kb_top_n,
+                        dialog.similarity_threshold,
+                        dialog.vector_similarity_weight,
+                        doc_ids=attachments,
+                        top=dialog.top_k,
+                        aggs=False,
+                        rerank_mdl=rerank_mdl,
+                        rank_feature=label_question(query, [kb]),
+                    )
+                    kb_chunks = kb_result.get("chunks", [])
+                    if prompt_config.get("toc_enhance"):
+                        cks = retriever.retrieval_by_toc(query, kb_chunks, kb_tenant_ids, chat_mdl, per_kb_top_n)
+                        if cks:
+                            kb_chunks = cks
+                    kb_chunks = retriever.retrieval_by_children(kb_chunks, kb_tenant_ids)
+                    for chunk in kb_chunks:
+                        if not chunk.get("kb_id"):
+                            chunk["kb_id"] = kb.id
+                        kbinfos["chunks"].append(chunk)
+                    kbinfos["total"] += kb_result.get("total", len(kb_chunks))
+                    for doc_agg in kb_result.get("doc_aggs", []):
+                        doc_id = doc_agg.get("doc_id")
+                        if not doc_id:
+                            continue
+                        if doc_id not in doc_aggs_by_id:
+                            doc_aggs_by_id[doc_id] = dict(doc_agg)
+                        else:
+                            doc_aggs_by_id[doc_id]["count"] = doc_aggs_by_id[doc_id].get("count", 0) + doc_agg.get("count", 0)
+
+                kbinfos["doc_aggs"] = list(doc_aggs_by_id.values())
                 print("改写后的问题为：")
                 print(questions)
-                if prompt_config.get("toc_enhance"):
-                    cks = retriever.retrieval_by_toc(" ".join(questions), kbinfos["chunks"], tenant_ids, chat_mdl, dialog.top_n)
-                    if cks:
-                        kbinfos["chunks"] = cks
-                kbinfos["chunks"] = retriever.retrieval_by_children(kbinfos["chunks"], tenant_ids)
             if prompt_config.get("tavily_api_key"):
                 tav = Tavily(prompt_config["tavily_api_key"])
                 tav_res = tav.retrieve_chunks(" ".join(questions))
@@ -472,7 +500,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             print("最终的召回结果为：============================================================\n")
             print(kbinfos)
             # 组装 Prompt
-            knowledges = kb_prompt(kbinfos, max_tokens)
+            knowledges = kb_prompt(kbinfos, max_tokens, source_kbs=dialog.kb_ids)
 
     logging.debug("{}->{}".format(" ".join(questions), "\n->".join(knowledges)))
 
@@ -487,13 +515,37 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         return
 
     kwargs["knowledge"] = "\n------\n" + "\n\n------\n\n".join(knowledges)
+    source_group_answer_prompt = ""
+    if knowledges and len(dialog.kb_ids or []) > 1 and not prompt_config.get("reasoning", False):
+        # 多知识库回答格式要求：只追加运行时指令，不改前端 prompt_config。
+        selected_kb_ids = dialog.kb_ids if isinstance(dialog.kb_ids, list) else [dialog.kb_ids]
+        selected_kb_names = []
+        kbs_by_id = {kb.id: kb.name for kb in kbs}
+        for kb_id in selected_kb_ids:
+            kb_id = str(kb_id)
+            kb_detail = KnowledgebaseService.get_detail(kb_id)
+            kb_name = kb_detail["name"] if kb_detail else kbs_by_id.get(kb_id, f"未知知识库({kb_id})")
+            selected_kb_names.append(kb_name)
+        source_headings = "\n".join([f"【从{name}来说】" for name in selected_kb_names])
+        source_group_answer_prompt = f"""
+
+# 来源分组回答要求
+你必须严格按下面的标签结构输出，不要先写总述，不要合并不同来源，也不要使用 Markdown 标题符号 #：
+{source_headings}
+【综合总结】
+
+规则：
+1. 每个“【从...来说】”标签都必须出现，标签下换行后用要点回答。
+2. 每个来源只能使用对应“【来源：...】”上下文里的内容；如果该来源未检索到相关内容，直接写“未检索到相关内容”，不要编造。
+3. “【综合总结】”必须放在最后，总结各来源的共同结论、差异点和总体判断。
+"""
 
     print("相关的召回信息为----------------------------------------------------------------------")
     print(kwargs)
     gen_conf = dialog.llm_setting
 
     # 系统提示词语 + 文件内容
-    msg = [{"role": "system", "content": prompt_config["system"].format(**kwargs)+attachments_}]
+    msg = [{"role": "system", "content": prompt_config["system"].format(**kwargs) + source_group_answer_prompt + attachments_}]
 
     prompt4citation = ""
     if knowledges and (prompt_config.get("quote", True) and kwargs.get("quote", True)):
