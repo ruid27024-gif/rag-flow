@@ -23,7 +23,7 @@ from api.db.services.common_service import CommonService
 from common.time_utils import current_timestamp, datetime_format
 from api.db.db_models import AdminUser
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.apps import login_required, current_user
+
 
 
 class SearchService(CommonService):
@@ -85,6 +85,7 @@ class SearchService(CommonService):
         if not search_config.get('kb_ids'): 
             # --- 执行自动查询逻辑 ---
             admin_bypass=False
+            from api.apps import login_required, current_user
             if AdminUser.query(user_id=current_user.id, role_level=1):
                 admin_bypass=True
             kb_list, total_count = KnowledgebaseService.get_by_tenant_ids(

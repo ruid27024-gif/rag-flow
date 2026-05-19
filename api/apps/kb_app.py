@@ -101,6 +101,7 @@ async def update():
 
     if "color" in req:
         del req["color"]
+
     if not isinstance(req["name"], str):
         return get_data_error_result(message="Dataset name must be string.")
     if req["name"].strip() == "":
@@ -111,6 +112,7 @@ async def update():
     req["name"] = req["name"].strip()
 
     try:
+        # 检查是否有写入权限
         if not KnowledgebaseService.writable(req["kb_id"], current_user.id):
             return get_json_result(
                 data=False,
@@ -978,3 +980,4 @@ async def check_embedding():
     if summary["avg_cos_sim"] > 0.9:
         return get_json_result(data={"summary": summary, "results": results})
     return get_json_result(code=RetCode.NOT_EFFECTIVE, message="Embedding model switch failed: the average similarity between old and new vectors is below 0.9, indicating incompatible vector spaces.", data={"summary": summary, "results": results})
+

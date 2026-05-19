@@ -5,7 +5,7 @@ from api.utils.api_utils import get_json_result, server_error_response, validate
 from api.apps import login_required, current_user
 from common.constants import RetCode
 from peewee import fn
-
+from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.user_group_service import UserGroupService
 from api.db.services.file_service import FileService
 from api.db.services.file_admin_service import FileAdminService
@@ -14,6 +14,8 @@ from api.db import FileType
 from api.db.services import UserService
 from peewee import IntegrityError
 from api.db.db_models import DB
+from common import settings
+from peewee import JOIN
 
 def check_admin(user):
     admin_user = AdminUser.query(user_id=user.id, role_level=1)
@@ -219,6 +221,91 @@ async def list_groups():
         ]
         return get_json_result(data=group_list)
         
+    except Exception as e:
+        return server_error_response(e)
+    
+@manager.route('/list_ref_kbs', methods=['POST'])
+@login_required
+async def list_ref_kbs():
+    try:
+        req = await get_request_json()
+        # 如果是超级管理员
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+
+            tenant_ids = list(cfg_map.values()) 
+            tenant_ids.append(settings.REFERENCE_TENANT_ID)
+
+            kbs = (KnowledgebaseService.model
+                    .select(
+                        KnowledgebaseService.model,  # 1. 先声明要查主表的所有字段
+                        User.nickname,               # 2. 再带上关联表的字段
+                        User.email
+                    )
+                    .join(
+                        User, 
+                        JOIN.LEFT_OUTER,             # 建议用左连接，防止找不到对应用户时数据丢失
+                        on=(KnowledgebaseService.model.tenant_id == User.id)
+                    )
+                    .switch(KnowledgebaseService.model) 
+                    .where(KnowledgebaseService.model.tenant_id.in_(tenant_ids))
+                    .order_by(KnowledgebaseService.model.created_by)
+                    .dicts()
+                )
+            
+            kb_list = list(kbs)
+            return get_json_result(data=kb_list)
+
+
+        # 获取当前二级用户id
+        admin_id = req.get("user_id")
+        
+        # 1. 获取当前用户所在的组（假设 get_ids_by_created_by 返回的是列表）
+        group_ids = GroupService.get_ids_by_created_by(admin_id)
+
+        # 如果通过创建者没找到组，则降级查询该用户所属的组
+        if not group_ids:
+            user_groups = UserGroup.select(UserGroup.group_id).where(
+                UserGroup.user_id == admin_id
+            ).dicts()
+            # 提取 group_id 组成列表
+            group_ids = [ug['group_id'] for ug in user_groups]
+
+
+
+        if not group_ids:
+            return get_json_result(data=[]) # 没找到组直接返回空
+
+        # 2. 获取组对应的公共租户ID配置
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        group_id = group_ids[0]
+        
+        # 校验组ID是否在配置中，并获取对应的公共租户ID
+        if group_id not in cfg_map or not cfg_map[group_id]:
+            return get_json_result(data=[])# 没配置公共租户，返回空
+            
+        group_public_tenant_id = cfg_map[group_id]
+
+        kbs = (KnowledgebaseService.model
+                .select(
+                    KnowledgebaseService.model,  # 1. 先声明要查主表的所有字段
+                    User.nickname,               # 2. 再带上关联表的字段
+                    User.email
+                )
+                .join(
+                    User, 
+                    JOIN.LEFT_OUTER,             
+                    on=(KnowledgebaseService.model.tenant_id == User.id)
+                )
+                .switch(KnowledgebaseService.model)  
+                .where(KnowledgebaseService.model.tenant_id == group_public_tenant_id)
+                .dicts()
+            )
+
+        kb_list = list(kbs)
+        print(kb_list[0])
+        return get_json_result(data=kb_list)
+
     except Exception as e:
         return server_error_response(e)
 

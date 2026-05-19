@@ -25,13 +25,13 @@ class UserGroupService(CommonService):
     @classmethod
     @DB.connection_context()
     def get_team_tenant_ids(cls, user_id: str):
-        # 1. Get groups of the current user
+        # 1. 找出当前用户所在的群组
         my_group_ids = cls.model.select(cls.model.group_id).where(cls.model.user_id == user_id)
         
-        # 2. Get users in these groups (teammates)
+        # 2. 找出群组里的“队友”
         teammate_ids = cls.model.select(cls.model.user_id).where(cls.model.group_id.in_(my_group_ids))
         
-        # 3. Get tenants owned by these teammates
+        # 3. 找出“队友”拥有的租户
         team_tenant_ids = UserTenant.select(UserTenant.tenant_id).where(
             UserTenant.user_id.in_(teammate_ids), 
             UserTenant.role == 'owner'

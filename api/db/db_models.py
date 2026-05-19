@@ -40,6 +40,7 @@ from common.time_utils import current_timestamp, timestamp_to_date, date_string_
 from common.decorator import singleton
 from common.constants import ParserType
 from common import settings
+from peewee import BigAutoField
 
 
 CONTINUOUS_FIELD_TYPE = {IntegerField, FloatField, DateTimeField}
@@ -782,6 +783,23 @@ class Knowledgebase(DataBaseModel):
 
     class Meta:
         db_table = "knowledgebase"
+
+class KnowledgebaseAccess(DataBaseModel):
+    # 自增主键
+    id = BigAutoField(primary_key=True)
+    
+    # 关联的知识库ID
+    kb_id = CharField(max_length=32, null=False, index=True, help_text="关联的知识库ID")
+    
+    # 被授权的用户ID
+    user_id = CharField(max_length=32, null=False, index=True, help_text="被授权的用户ID")
+    
+    # 权限类型：read(可见/只读) | write(可写/编辑)
+    permission = CharField(max_length=10, null=False, index=True, help_text="权限类型：read|write")
+
+    class Meta:
+        db_table = "knowledgebaseaccess"  # 绑定你的数据库实例
+       
 
 
 class Document(DataBaseModel):

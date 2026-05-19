@@ -10,6 +10,14 @@ class GroupService {
     return request.get(api.list_group_members(groupId));
   }
 
+  listAllKbMembers(kbId: string) {
+    return request.get(api.list_all_kb_Members(kbId));
+  }
+
+  listwritableMembers(kbId: string) {
+    return request.get(api.list_writable_kb_members(kbId));
+  }
+
   deleteGroup(groupId: string) {
     console.log('准备删除:', groupId);
     return request.post(api.delete_group, { data: { group_id: groupId } });
@@ -59,6 +67,10 @@ class GroupService {
     return request.post(api.remove_member_from_my_group, {
       data: { user_id: userId },
     });
+  }
+
+  listRefKb(userId: string) {
+    return request.post(api.list_kbs, { data: { user_id: userId } });
   }
 }
 

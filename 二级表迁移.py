@@ -9,6 +9,7 @@ query = AdminUser.select().where(AdminUser.role_level == 2)
 
 # 获取到超级管理员
 admin_user1 = AdminUser.select().where(AdminUser.role_level == 1).first()
+
 File_Group.create_table(safe=True)
 # 遍历2级别管理员
 for user in query:
@@ -77,10 +78,9 @@ for user in query:
             print(file.to_dict())
             file.parent_id = pf_id
             file.name = user_nickname
-            try:
-                File_Group.create(**file.to_dict())
-            except Exception as e:
-                pass
+
+            File_Group.create(**file.to_dict())
+
 
         
 

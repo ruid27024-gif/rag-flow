@@ -6,6 +6,8 @@ from api.db.services.user_group_service import UserGroupService
 from api.utils.api_utils import get_json_result, get_request_json, server_error_response, validate_request
 from common.constants import RetCode
 from common import settings
+from api.db.services.kb_access_service import KnowledgebaseAccessService
+from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.file_admin_service import FileAdminService
 from api.db.services.file_group_service import FileGroupService
 from api.db.services.file_service import FileService
@@ -650,6 +652,257 @@ async def list_group_members():
             }
             for r in rows
         ]
+
+        print(data)
+        return get_json_result(data=data)
+    except Exception as e:
+        return server_error_response(e)
+    
+
+@manager.route("/allkbmembers", methods=["GET"])  # noqa: F821
+@validate_request("kb_id")
+async def list_all_kb_members():
+    kb_id = request.args.get("kb_id")
+    # print(kb_id)
+    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    reverse_cfg_map = {tid: gid for gid, tid in cfg_map.items()}
+    # 通过kb_id获取tenant_id
+    kb = KnowledgebaseService.get_detail(kb_id)
+    tenant_id = kb["created_by"]
+    if tenant_id == settings.REFERENCE_TENANT_ID:
+    # 👇 优化点：用 list() 显式转换一下，防止后续出现类型问题
+        group_ids = list(cfg_map.keys())
+        try:
+            rows = list(
+                UserGroup.select(
+                UserGroup.user_id, 
+                UserGroup.created_by, 
+                UserGroup.created_time
+            ).where(
+                # 👇 核心修改：把 in 改成 .in_()
+                (UserGroup.group_id.in_(group_ids)) &  
+                (UserGroup.user_id != current_user.id) & 
+                (UserGroup.created_by != current_user.id)
+            )
+            )
+            
+            # 后面的去重、联表查询、组装 data 的逻辑完全不用动
+            user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
+            
+            if user_ids:
+                # ... 下面保持你原有的联表查询和 data 组装逻辑不变 ...
+                query = (
+                    User
+                    .select(
+                        User.id,
+                        User.nickname,
+                        SyncPerson.phone,
+                        SyncPerson.gender,
+                        SyncDept.mdmCode,         
+                        SyncDept.nameOfAdminOrg, 
+                        SyncDept.corporateName 
+                    )
+                    .join(
+                        SyncPerson, 
+                        on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                        join_type=JOIN.LEFT_OUTER
+                    )
+                    .switch(User)
+                    .join(
+                        SyncDept, 
+                        on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                        join_type=JOIN.LEFT_OUTER
+                    )
+                )
+
+                results = (
+                    query
+                    .where(User.id.in_(user_ids))
+                    .dicts() 
+                )
+
+                user_info_map = {item['id']: item for item in results}
+
+            data = [
+                {
+                    "user_id": r.user_id,
+                    "nickname": user_info_map.get(r.user_id, {}).get("nickname"),
+                    "created_by": r.created_by,
+                    "created_by_nickname": user_info_map.get(r.created_by, {}).get("nickname"),
+                    "created_time": r.created_time,
+                    "phone": user_info_map.get(r.user_id, {}).get("phone"),
+                    "gender": user_info_map.get(r.user_id, {}).get("gender"),
+                    "mdmCode": user_info_map.get(r.user_id, {}).get("mdmCode"),
+                    "nameOfAdminOrg": user_info_map.get(r.user_id, {}).get("nameOfAdminOrg"),
+                    "corporateName": user_info_map.get(r.user_id, {}).get("corporateName"),
+                }
+                for r in rows
+            ]
+
+            print(data)
+            return get_json_result(data=data)
+        except Exception as e:
+            return server_error_response(e)
+
+    # 通过kb_id获取group_id
+    
+    group_id = reverse_cfg_map.get(tenant_id)
+    print("属于的组id为")
+    print(group_id)
+
+    # 查询所有用户信息
+    try:
+        rows = list(
+            UserGroup.select(
+            UserGroup.user_id, 
+            UserGroup.created_by, 
+            UserGroup.created_time
+        ).where(
+            (UserGroup.group_id == group_id) &  # 必须用 & 且带上括号
+            (UserGroup.user_id != current_user.id) 
+            # & 
+            # (UserGroup.created_by != current_user.id)
+        )
+        )
+        user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
+        
+        if user_ids:
+           
+            query = (
+                User
+                .select(
+                    User.id,
+                    User.nickname,
+                    SyncPerson.phone,
+                    SyncPerson.gender,
+                    SyncDept.mdmCode,         
+                    SyncDept.nameOfAdminOrg, 
+                    SyncDept.corporateName 
+                )
+                # 1. User 关联 SyncPerson
+                # 保持原样，假设 User.email 和 SyncPerson.phone 都是 unicode_ci
+                .join(
+                    SyncPerson, 
+                    on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                    join_type=JOIN.LEFT_OUTER
+                )
+                .switch(User)
+                # 2. SyncPerson 关联 SyncDept (关键修改点)
+                # 将 collate 改为 'utf8mb4_0900_ai_ci' 以匹配 SyncDept 表的默认规则
+                .join(
+                    SyncDept, 
+                    on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                    join_type=JOIN.LEFT_OUTER
+                )
+            )
+
+            results = (
+                query
+                .where(User.id.in_(user_ids))
+                .dicts() 
+            )
+
+            # 2. 处理结果：把列表转成以 id 为 key 的字典
+            # 结构示例: { 101: { "id": 101, "nickname": "...", "phone": "...", ... }, ... }
+            user_info_map = {item['id']: item for item in results}
+
+
+        data = [
+            {
+                "user_id": r.user_id,
+                "nickname": user_info_map.get(r.user_id, {}).get("nickname"),
+                "created_by": r.created_by,
+                "created_by_nickname": user_info_map.get(r.created_by, {}).get("nickname"),
+                "created_time": r.created_time,
+
+                "phone": user_info_map.get(r.user_id, {}).get("phone"),
+                "gender": user_info_map.get(r.user_id, {}).get("gender"),
+        
+                "mdmCode": user_info_map.get(r.user_id, {}).get("mdmCode"),
+                "nameOfAdminOrg": user_info_map.get(r.user_id, {}).get("nameOfAdminOrg"),
+                "corporateName": user_info_map.get(r.user_id, {}).get("corporateName"),
+            }
+            for r in rows
+        ]
+
+        print(data)
+        return get_json_result(data=data)
+    except Exception as e:
+        return server_error_response(e)
+    
+
+@manager.route("/writeablekbmembers", methods=["GET"])  # noqa: F821
+@validate_request("kb_id")
+async def list_writeable_kb_members():
+    kb_id = request.args.get("kb_id")
+    print(kb_id)
+    # 通过kb_id获取tenant_id
+    kb = KnowledgebaseService.get_detail(kb_id)
+    tenant_id = kb["created_by"]
+    # 通过kb_id获取group_id
+    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    reverse_cfg_map = {tid: gid for gid, tid in cfg_map.items()}
+    group_id = reverse_cfg_map.get(tenant_id)
+
+    # 直接获取可以写入的用户
+    user_ids = KnowledgebaseAccessService.get_write_users(kb_id)
+    print(user_ids)
+    print(len(user_ids))
+
+    # 查询所有用户信息
+        # 查询所有用户信息（从 User, SyncPerson, SyncDept 联表获取详细信息）
+    try:
+        # 1. 先查出这些 user_ids 对应的详细用户信息
+        query = (
+            User
+            .select(
+                User.id,
+                User.nickname,
+                SyncPerson.phone,
+                SyncPerson.gender,
+                SyncDept.mdmCode,         
+                SyncDept.nameOfAdminOrg, 
+                SyncDept.corporateName 
+            )
+            .join(
+                SyncPerson, 
+                on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                join_type=JOIN.LEFT_OUTER
+            )
+            .switch(User)
+            .join(
+                SyncDept, 
+                on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                join_type=JOIN.LEFT_OUTER
+            )
+        )
+
+        # 关键：直接在这里过滤 user_ids，不需要再查一遍 UserGroup 了！
+        results = (
+            query
+            .where(User.id.in_(user_ids))
+            .dicts() 
+        )
+
+        # 2. 处理结果：把列表转成以 id 为 key 的字典，方便下面快速取值
+        user_info_map = {item['id']: item for item in results}
+
+        # 3. 最终组装数据：直接遍历最原始的 user_ids 列表
+        # 这样能保证返回的数据和 get_write_users 拿到的权限用户完全一致
+        data = []
+        for uid in user_ids:
+            info = user_info_map.get(uid, {})
+            data.append({
+                "user_id": uid,
+                "nickname": info.get("nickname"),
+                "phone": info.get("phone"),
+                "gender": info.get("gender"),
+                "mdmCode": info.get("mdmCode"),
+                "nameOfAdminOrg": info.get("nameOfAdminOrg"),
+                "corporateName": info.get("corporateName"),
+                # 注意：created_by 和 created_time 在 User 表里如果没有的话，这里可能需要从 KnowledgebaseAccess 表里另外查
+                # 如果必须要这两个字段，你可能需要修改 get_write_users 让它返回更完整的信息，或者在这里做更复杂的联表
+            })
 
         print(data)
         return get_json_result(data=data)

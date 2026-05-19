@@ -4,8 +4,11 @@ const ExternalApi = `/api`;
 export { api_host };
 
 export default {
+  del_mems: `${api_host}/refkb/del`,
+  add_mems: `${api_host}/refkb/add`,
   // group
   list_group: `${api_host}/group/list`,
+  list_kbs: `${api_host}/group/list_ref_kbs`,
   delete_group: `${api_host}/group/delete`,
   new_group: `${api_host}/group/new`,
   my_group: `${api_host}/group/my_group`,
@@ -13,6 +16,13 @@ export default {
   // user_group
   list_group_members: (groupId: string) =>
     `${api_host}/user_group/members?group_id=${groupId}`,
+
+  list_all_kb_Members: (kbId: string) =>
+    `${api_host}/user_group/allkbmembers?kb_id=${kbId}`,
+
+  list_writable_kb_members: (kbId: string) =>
+    `${api_host}/user_group/writeablekbmembers?kb_id=${kbId}`,
+
   my_group_members: `${api_host}/user_group/my_group/members`,
   add_member_to_my_group: `${api_host}/user_group/my_group/members/add`,
   remove_member_from_my_group: `${api_host}/user_group/my_group/members/remove`,

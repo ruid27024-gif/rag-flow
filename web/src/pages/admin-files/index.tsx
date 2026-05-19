@@ -20,15 +20,16 @@ import {
 } from '@/components/ui/table';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import groupService from '@/services/group-service';
+import RefKbService from '@/services/refkb-service';
 import {
   addGroupAdmin,
   listGroupAdminCandidates,
   listGroupAdmins,
   removeGroupAdmin,
 } from '@/services/user-service';
-import { Spin } from 'antd';
+import { Spin, Transfer } from 'antd';
 import { Plus, Settings, Trash2, Users } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DialogConfigModal } from './DialogConfigModal';
 
 interface Group {
@@ -38,6 +39,40 @@ interface Group {
   created_by_nickname?: string;
   create_time: number;
   member_count?: number;
+}
+
+interface Knowledgebase {
+  id: string;
+  create_date: string;
+  avatar?: string; // null=True，设为可选
+  tenant_id: string;
+  name: string;
+  language?: string; // 有默认值且可为空，设为可选
+  description?: string; // null=True，设为可选
+  embd_id: string;
+  permission: string; // 对应 me|team|everyone
+  created_by: string;
+  doc_num: number; // 有默认值，但通常前端展示需要，保留为必选
+  token_num: number;
+  chunk_num: number;
+  similarity_threshold: number;
+  vector_similarity_weight: number;
+  parser_id: string;
+  pipeline_id?: string; // null=True，设为可选
+  parser_config: {
+    pages: number[][];
+    table_context_size: number;
+    image_context_size: number;
+  };
+  pagerank: number;
+  graphrag_task_id?: string; // null=True，设为可选
+  graphrag_task_finish_at?: number; // DateTimeField 通常转为时间戳
+  raptor_task_id?: string; // null=True，设为可选
+  raptor_task_finish_at?: number;
+  mindmap_task_id?: string; // null=True，设为可选
+  mindmap_task_finish_at?: number;
+  nickname: string;
+  email: string;
 }
 
 // interface GroupMember {
@@ -85,7 +120,17 @@ const AdminFiles = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  const [isGroupAdminKbOpen, setIsGroupAdminKbOpen] = useState(false);
+
   const [groups, setGroups] = useState<Group[]>([]);
+  const [kbs, setKbs] = useState<Knowledgebase[]>([]);
+
+  const [allMembers, setallMembers] = useState<GroupMember[]>([]);
+  const [kbwriteableMembers, setkbwriteableMembers] = useState<GroupMember[]>(
+    [],
+  );
+
   const [loading, setLoading] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -94,7 +139,9 @@ const AdminFiles = () => {
     useState(false);
 
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+  const [isKbMemberModalOpen, setIsKbMemberModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [selectedkb, setSelectedkb] = useState<Knowledgebase | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
 
@@ -123,6 +170,7 @@ const AdminFiles = () => {
   const pageSize = 10;
 
   const [memberCurrentPage, setMemberCurrentPage] = useState(1);
+
   const memberPageSize = 10;
 
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -144,6 +192,65 @@ const AdminFiles = () => {
       setGroups([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 获取组 --> 更新kbs
+  const fetchRefKb = async (userId: string) => {
+    setLoading(true);
+    try {
+      // 获取到参考库数据
+      const { data } = await groupService.listRefKb(userId);
+      console.log(data);
+      if (Array.isArray(data?.data)) {
+        setKbs(data.data);
+      } else {
+        setKbs([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch groups:', error);
+      setKbs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 通过user_id 获取 组内所有成员
+  const fetchKbMembersall = async (kbId: string) => {
+    setMemberLoading(true);
+    try {
+      const { data } = await groupService.listAllKbMembers(kbId);
+      if (Array.isArray(data?.data)) {
+        setallMembers(data.data);
+      } else {
+        setallMembers([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch group members:', error);
+      setallMembers([]);
+    } finally {
+      setMemberLoading(false);
+    }
+  };
+
+  const [writeableIds, setWriteableIds] = useState<Set<string>>(new Set());
+  // 通过kb_id 获取所有的可写组员
+  const fetchKbMemberswrite = async (kbId: string) => {
+    setMemberLoading(true);
+    try {
+      const { data } = await groupService.listwritableMembers(kbId);
+      if (Array.isArray(data?.data)) {
+        setkbwriteableMembers(data.data);
+        const ids = new Set(data.data.map((m: GroupMember) => m.user_id));
+        setWriteableIds(ids);
+      } else {
+        setkbwriteableMembers([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch group members:', error);
+      setkbwriteableMembers([]);
+    } finally {
+      setMemberLoading(false);
     }
   };
 
@@ -172,6 +279,83 @@ const AdminFiles = () => {
     } catch (error) {
       console.error('Failed to delete group:', error);
       message.error('删除失败，请检查网络或联系管理员');
+    }
+  };
+
+  // 删除群组的
+  const addmems = async (selectedkb: string, mems: string[]) => {
+    try {
+      const res = await RefKbService.addmems(selectedkb, mems);
+
+      // 3. 检查响应结果
+      if (res.data?.code === 0) {
+        message.success('添加权限成功');
+      } else {
+        message.error(res.data?.message || '添加权限');
+      }
+    } catch (error) {
+      console.error('Failed to add pro:', error);
+      message.error('添加权限失败，请检查网络或联系管理员');
+    }
+  };
+
+  // 删除群组的
+  const delmems = async (selectedkb: string, mems: string[]) => {
+    try {
+      const res = await RefKbService.delmems(selectedkb, mems);
+
+      // 3. 检查响应结果
+      if (res.data?.code === 0) {
+        message.success('移除权限成功');
+      } else {
+        message.error(res.data?.message || '移除权限');
+      }
+    } catch (error) {
+      console.error('Failed to delete pro:', error);
+      message.error('删除权限失败，请检查网络或联系管理员');
+    }
+  };
+
+  const handleTransferChange = async (nextTargetKeys: string[]) => {
+    // 1. 提取出当前（移动前）右侧拥有权限的 keys
+    const currentTargetKeys = transferDataSource
+      .filter((item) => item.hasWritePermission)
+      .map((item) => item.key);
+
+    // 2. 对比差异，找出被“新增”和“移除”的 ID
+    const addedKeys = nextTargetKeys.filter(
+      (key) => !currentTargetKeys.includes(key),
+    );
+    const removedKeys = currentTargetKeys.filter(
+      (key) => !nextTargetKeys.includes(key),
+    );
+
+    try {
+      // 3. 调用后端接口
+      const requests: Promise<any>[] = []; // 加上泛型更规范
+      if (addedKeys.length > 0) {
+        // ✅ 把返回的 Promise 对象推进数组
+        console.log(selectedkb.id);
+        requests.push(addmems(selectedkb.id, addedKeys));
+      }
+      if (removedKeys.length > 0) {
+        // ✅ 把返回的 Promise 对象推进数组
+        requests.push(delmems(selectedkb.id, removedKeys));
+      }
+
+      // 等待所有接口请求完成
+      await Promise.all(requests);
+
+      // 4. 接口成功后，更新本地数据源，触发界面重新渲染
+      const newData = transferDataSource.map((item) => ({
+        ...item,
+        hasWritePermission: nextTargetKeys.includes(item.key),
+      }));
+      setTransferDataSource(newData);
+    } catch (error) {
+      console.error('权限更新失败:', error);
+      // 接口失败不更新本地数据，界面自动保持原样（回滚效果）
+      // 因为你的 addmems/delmems 里已经有 message.error 提示了，这里可以不再重复弹 alert
     }
   };
 
@@ -227,6 +411,7 @@ const AdminFiles = () => {
       setGroupAdminLoading(false);
     }
   };
+
   // 获取未在管理员列表中的数据
   const fetchAdminCandidates = async () => {
     setAdminCandidateLoading(true);
@@ -381,12 +566,68 @@ const AdminFiles = () => {
     }
   }, [isModalOpen]);
 
+  // 拉取参考库数据
+  useEffect(() => {
+    if (isGroupAdminKbOpen) {
+      // 获取当前组管理员 的组参考库
+
+      setCurrentPage(1);
+      fetchRefKb(userInfo?.id);
+    }
+  }, [isGroupAdminKbOpen]);
+
   useEffect(() => {
     if (isMemberModalOpen && selectedGroup?.id) {
       setMemberCurrentPage(1);
+      // 获取组内所有人员
       fetchMembers(selectedGroup.id);
     }
   }, [isMemberModalOpen, selectedGroup?.id]);
+
+  // 穿梭框专用的数据类型（必须包含 key 和 hasWritePermission）
+  interface TransferMember extends GroupMember {
+    key: string;
+    hasWritePermission: boolean;
+  }
+
+  const [transferDataSource, setTransferDataSource] = useState<
+    TransferMember[]
+  >([]);
+
+  // 1. 定义获取数据的函数
+  const loadData = useCallback(() => {
+    if (!selectedkb?.id) return;
+
+    setMemberCurrentPage(1);
+    // 注意：这里需要确保你的 fetch 函数能正确更新状态
+    fetchKbMembersall(selectedkb.id);
+    fetchKbMemberswrite(selectedkb.id);
+  }, [selectedkb?.id]); // 依赖项只包含 id，保证 id 变了函数就更新
+
+  // 2. 监听 id 变化（切换知识库时触发）
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // // 3. 监听 Modal 打开（每次打开都触发，确保数据最新）
+  // useEffect(() => {
+  //   if (isKbMemberModalOpen) {
+  //     loadData();
+  //   }
+  // }, [isKbMemberModalOpen, loadData]);
+
+  // 2. 负责“分离与合并数据”的 useEffect
+  // 当 allMembers 或 writeableIds 更新后，自动执行合并逻辑
+  useEffect(() => {
+    if (allMembers.length > 0) {
+      const formattedData = allMembers.map((member) => ({
+        ...member,
+        key: member.user_id, // Transfer 组件强制要求的 key
+        hasWritePermission: writeableIds.has(member.user_id), // 判断当前成员是否在“可写名单”里
+      }));
+      setTransferDataSource(formattedData);
+    }
+  }, [allMembers, writeableIds]);
 
   useEffect(() => {
     if (isAddMemberModalOpen) {
@@ -484,6 +725,11 @@ const AdminFiles = () => {
   const indexOfLastItem = currentPage * pageSize;
   const indexOfFirstItem = indexOfLastItem - pageSize;
   const currentItems = groups.slice(indexOfFirstItem, indexOfLastItem);
+
+  // 当前的kbs参考库
+  const currentItems2 = kbs.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages2 = Math.ceil(kbs.length / pageSize);
+
   const totalPages = Math.ceil(groups.length / pageSize);
 
   const handlePageChange = (page: number) => {
@@ -502,27 +748,58 @@ const AdminFiles = () => {
   );
   const memberTotalPages = Math.ceil(members.length / memberPageSize);
 
+  function convertTimeFormat(timeStr: string): string {
+    const date = new Date(timeStr);
+
+    // 使用 UTC 系列的方法，强制提取原字符串中的时间，不进行本地时区转换
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+
   return (
     <div className="p-8">
       <div className="flex gap-4 mb-8">
         {isGroupAdmin ? (
-          <Card
-            className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={handleMyGroupClick}
-          >
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-medium text-lg">成员管理</h3>
-                <p className="text-sm text-gray-500">管理我的组群成员</p>
-              </div>
-            </CardContent>
-          </Card>
+          <>
+            <Card
+              className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={handleMyGroupClick}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-lg">成员管理</h3>
+                  <p className="text-sm text-gray-500">管理我的组群成员</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => setIsGroupAdminKbOpen(true)}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-lg">参考库权限管理</h3>
+                  <p className="text-sm text-gray-500">查看组内参考库</p>
+                </div>
+              </CardContent>
+            </Card>
+          </>
         ) : (
           <>
-            {/* 按钮卡片 */}
+            {/* 按钮卡片 第一张 */}
             <Card
               className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
               onClick={() => setIsModalOpen(true)}
@@ -569,11 +846,317 @@ const AdminFiles = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* 组内参考库权限管理 */}
+            <Card
+              className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => setIsGroupAdminKbOpen(true)}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-lg">参考库权限管理</h3>
+                  <p className="text-sm text-gray-500">查看组内参考库</p>
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
 
-      {/* 弹窗 */}
+      {/* 点击第一张后触发 isGroupAdminKbOpen*/}
+      <Modal
+        title={
+          <div className="flex justify-between items-center pr-8">
+            <span>参考库列表</span>
+          </div>
+        }
+        open={isGroupAdminKbOpen}
+        onOk={() => setIsGroupAdminKbOpen(false)}
+        onCancel={() => setIsGroupAdminKbOpen(false)}
+        size="large"
+        className="w-[1100px] max-w-[calc(100vw-2rem)]"
+        footer={null} // 不需要底部按钮
+      >
+        <div className="p-4">
+          {loading ? (
+            <div className="text-center py-4">加载中...</div>
+          ) : (
+            <>
+              <div className="rounded-md border mb-4 overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[240px]">
+                        知识库名称
+                      </TableHead>
+                      {/* <TableHead className="min-w-[120px]">群组人数</TableHead> */}
+                      <TableHead className="min-w-[160px]">创建人</TableHead>
+                      <TableHead className="min-w-[200px]">创建时间</TableHead>
+                      {/* <TableHead className="w-[80px]">操作</TableHead> */}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {currentItems2.length > 0 ? (
+                      currentItems2.map((kb) => (
+                        <TableRow
+                          key={kb.id}
+                          onClick={() => {
+                            // 获取数据
+                            setSelectedkb(kb);
+                            // 进行展示
+                            setIsKbMemberModalOpen(true);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <TableCell
+                            className="whitespace-nowrap"
+                            title="单击查看"
+                          >
+                            {kb.name}
+                          </TableCell>
+
+                          <TableCell
+                            className="whitespace-nowrap"
+                            title="单击查看"
+                          >
+                            {kb.nickname}
+                          </TableCell>
+
+                          <TableCell
+                            className="whitespace-nowrap"
+                            title="单击查看"
+                          >
+                            {convertTimeFormat(kb.create_date)}
+                            {/* {kb.create_date} */}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center h-24">
+                          暂无数据
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {totalPages2 > 1 && (
+                <div className="flex justify-center gap-2 mt-4">
+                  <button
+                    className="px-3 py-1 border rounded disabled:opacity-50"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    type="button"
+                  >
+                    上一页
+                  </button>
+                  <span className="px-3 py-1 flex items-center">
+                    {currentPage} / {totalPages2}
+                  </span>
+                  <button
+                    className="px-3 py-1 border rounded disabled:opacity-50"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages2}
+                    type="button"
+                  >
+                    下一页
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+      <Modal
+        title="权限管理"
+        open={isKbMemberModalOpen}
+        onCancel={() => setIsKbMemberModalOpen(false)}
+        footer={null}
+        showfooter={false}
+        size="large"
+        style={{ width: '2000px' }}
+      >
+        <Transfer
+          // 1. 数据源：刚才处理好的包含所有成员的数组
+          dataSource={transferDataSource}
+          // 2. 控制右边显示谁：只有 hasWritePermission 为 true 的才在右边
+          // 这里我们过滤出所有有权限的人的 key (也就是 user_id)
+          targetKeys={transferDataSource
+            .filter((item) => item.hasWritePermission)
+            .map((item) => item.key)}
+          operations={['添加权限', '移除权限']}
+          // 3. 每一行展示的内容：显示你想要的 nickname, phone 等
+          render={(item) => (
+            <div className="flex justify-between w-full pr-4">
+              <span>{item.nickname}</span>
+              <span className="text-gray-400 text-sm">
+                {item.phone} | {item.gender === '男' ? '♂ 男' : '♀ 女'} |{' '}
+                {item.nameOfAdminOrg}
+              </span>
+            </div>
+          )}
+          // 4. 列表标题：左边是无权限，右边是有权限
+          titles={['无写权限', '有写权限']}
+          // 5. 关键：开关变化的逻辑
+          onChange={(nextTargetKeys, direction, moveKeys) => {
+            handleTransferChange(nextTargetKeys);
+          }}
+          // 6. 样式优化：让列表高一点，好看一点
+          listStyle={{
+            width: '48%', // 👈 改为百分比，让左右列表自动平分空间
+            height: 500,
+          }}
+        />
+      </Modal>
+
+      <Modal
+        title={
+          <div className="flex justify-between items-center pr-8">
+            <span>{selectedGroup?.group_name ?? ''} - 成员管理</span>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setIsAddMemberModalOpen(true)}
+              className="h-8 w-8"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        }
+        open={isMemberModalOpen}
+        onOk={() => setIsMemberModalOpen(false)}
+        onCancel={() => setIsMemberModalOpen(false)}
+        size="large"
+        className="w-[1100px] max-w-[calc(100vw-2rem)]"
+        footer={null}
+      >
+        <div className="p-4">
+          {memberLoading ? (
+            <div className="text-center py-4">加载中...</div>
+          ) : (
+            <>
+              <div className="rounded-md border mb-4 overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {/* 1. 表头：新增了一列展示详细用户信息 */}
+                      <TableHead className="min-w-[180px]">用户</TableHead>
+                      <TableHead className="min-w-[200px]">用户信息</TableHead>
+                      <TableHead className="min-w-[180px]">添加人</TableHead>
+                      <TableHead className="min-w-[200px]">添加时间</TableHead>
+                      <TableHead className="w-[80px]">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {memberCurrentItems.length > 0 ? (
+                      memberCurrentItems.map((m) => (
+                        <TableRow key={`${m.user_id}-${m.created_time}`}>
+                          {/* 2. 用户名列：展示昵称或ID */}
+                          <TableCell className="whitespace-nowrap font-medium">
+                            {m.nickname || m.user_id}
+                          </TableCell>
+
+                          {/* 3. 新增列：展示电话、性别、部门 */}
+                          <TableCell className="space-y-1 py-2">
+                            {/* 电话 */}
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              📞 {m.phone || '-'}
+                            </div>
+
+                            {/* 部门与公司 */}
+                            <div className="text-sm text-muted-foreground flex items-center gap-1 truncate max-w-[250px]">
+                              🏢
+                              <span className="truncate">
+                                {m.nameOfAdminOrg ||
+                                  m.corporateName ||
+                                  '未知部门'}
+                              </span>
+                            </div>
+
+                            {/* 性别 (可选，如果空间不够可以隐藏) */}
+                            {m.gender && (
+                              <div className="text-xs text-muted-foreground">
+                                {m.gender === '1' || m.gender === '男'
+                                  ? '♂ 男'
+                                  : '♀ 女'}
+                              </div>
+                            )}
+                          </TableCell>
+
+                          {/* 4. 添加人列 */}
+                          <TableCell className="whitespace-nowrap">
+                            {m.created_by_nickname || m.created_by}
+                          </TableCell>
+
+                          {/* 5. 时间列 */}
+                          <TableCell>
+                            {m.created_time
+                              ? new Date(m.created_time).toLocaleString()
+                              : '-'}
+                          </TableCell>
+
+                          {/* 6. 操作列 */}
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleRemoveMember(m.user_id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center h-24">
+                          暂无数据
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {memberTotalPages > 1 && (
+                <div className="flex justify-center gap-2 mt-4">
+                  <button
+                    className="px-3 py-1 border rounded disabled:opacity-50"
+                    onClick={() =>
+                      handleMemberPageChange(memberCurrentPage - 1)
+                    }
+                    disabled={memberCurrentPage === 1}
+                    type="button"
+                  >
+                    上一页
+                  </button>
+                  <span className="px-3 py-1 flex items-center">
+                    {memberCurrentPage} / {memberTotalPages}
+                  </span>
+                  <button
+                    className="px-3 py-1 border rounded disabled:opacity-50"
+                    onClick={() =>
+                      handleMemberPageChange(memberCurrentPage + 1)
+                    }
+                    disabled={memberCurrentPage === memberTotalPages}
+                    type="button"
+                  >
+                    下一页
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* 点击第一张后触发 isModalOpen*/}
       <Modal
         title={
           <div className="flex justify-between items-center pr-8">
@@ -728,51 +1311,6 @@ const AdminFiles = () => {
           ) : (
             <>
               <div className="rounded-md border mb-4 overflow-x-auto">
-                {/* <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[180px]">用户</TableHead>
-                      <TableHead className="min-w-[180px]">添加人</TableHead>
-                      <TableHead className="min-w-[200px]">添加时间</TableHead>
-                      <TableHead className="w-[80px]">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {memberCurrentItems.length > 0 ? (
-                      memberCurrentItems.map((m) => (
-                        <TableRow key={`${m.user_id}-${m.created_time}`}>
-                          <TableCell className="whitespace-nowrap">
-                            {m.nickname || m.user_id}
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap">
-                            {m.created_by_nickname || m.created_by}
-                          </TableCell>
-                          <TableCell>
-                            {m.created_time
-                              ? new Date(m.created_time).toLocaleString()
-                              : '-'}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleRemoveMember(m.user_id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center h-24">
-                          暂无数据
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table> */}
                 <Table>
                   <TableHeader>
                     <TableRow>
