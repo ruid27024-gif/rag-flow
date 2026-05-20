@@ -183,6 +183,7 @@ export default {
 
   // file manager
   listFile: `${api_host}/file/list`,
+  listFileUP: `${api_host}/file/listup`,
   uploadFile: `${api_host}/file/upload`,
   removeFile: `${api_host}/file/rm`,
   renameFile: `${api_host}/file/rename`,

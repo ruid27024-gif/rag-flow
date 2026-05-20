@@ -12,6 +12,7 @@ import {
 import { useRowSelection } from '@/hooks/logic-hooks/use-row-selection';
 import { useFetchFileList } from '@/hooks/use-file-request';
 import { Upload } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CreateFolderDialog } from './create-folder-dialog';
 import { FileBreadcrumb } from './file-breadcrumb';
@@ -24,6 +25,8 @@ import { useSelectBreadcrumbItems } from './use-navigate-to-folder';
 import { useHandleUploadFile } from './use-upload-file';
 
 export default function Files() {
+  const [currentMoveFile, setCurrentMoveFile] = useState<any | null>(null); // 1. 新增状态保存当
+
   const { t } = useTranslation();
   const {
     fileUploadVisible,
@@ -113,6 +116,8 @@ export default function Files() {
           </DropdownMenuContent>
         </DropdownMenu>
       </ListFilterBar>
+
+      {/* 批量操作栏目 只有勾选了，才能显示 */}
       {!rowSelectionIsEmpty && (
         <BulkOperateBar list={list} count={selectedCount}></BulkOperateBar>
       )}
@@ -125,6 +130,8 @@ export default function Files() {
         rowSelection={rowSelection}
         setRowSelection={setRowSelection}
         showMoveFileModal={showMoveFileModal}
+        // ✅ 2. 把保存文件的函数传给 FilesTable
+        onMoveClick={setCurrentMoveFile} // 2. 把设置状态的函数传下去
       ></FilesTable>
       {fileUploadVisible && (
         <FileUploadDialog
@@ -146,6 +153,9 @@ export default function Files() {
           hideModal={hideMoveFileModal}
           onOk={onMoveFileOk}
           loading={moveFileLoading}
+          // 3. 把 ID 传给 MoveDialog
+          // ✅ 3. 把当前文件传给弹窗
+          currentFile={currentMoveFile} // 3. 把拿到的当前文件传给弹窗
         ></MoveDialog>
       )}
     </section>

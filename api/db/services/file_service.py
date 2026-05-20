@@ -791,11 +791,9 @@ class FileService(CommonService):
         
         from api.apps import login_required, current_user
         try:
-            if AdminUser.query(user_id=current_user.id, role_level=1):
-                FileAdminService.save(**file)
-            else:
-                FileGroupService.save(**file)
-                FileAdminService.save(**file)
+
+            FileGroupService.save(**file)
+            FileAdminService.save(**file)
         except Exception as e:
             print("1、2级表文件名称未能挂载到知识库")
 
@@ -815,15 +813,13 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def delete(cls, file):
-        from api.apps import login_required, current_user
-        try:
-            if AdminUser.query(user_id=current_user.id, role_level=1):
-                FileAdminService.delete_by_id(**file)
-            else:
-                FileGroupService.delete_by_id(**file)
-                FileAdminService.delete_by_id(**file)
-        except Exception as e:
-            print("1、2级表删除文件失败")
+        # try:
+
+        FileGroupService.delete_by_id(file.id)
+        FileAdminService.delete_by_id(file.id)
+
+        # except Exception as e:
+        #     print("1、2级表删除文件失败")
         
         return cls.delete_by_id(file.id)
 

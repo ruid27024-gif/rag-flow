@@ -28,19 +28,29 @@ import {
   UseRenameCurrentFileReturnType,
 } from './hooks';
 import { useHandleDeleteFile } from './use-delete-file';
-import { UseMoveDocumentShowType } from './use-move-file';
 import { isFolderType } from './util';
 
-type IProps = Pick<CellContext<IFile, unknown>, 'row'> &
-  Pick<UseHandleConnectToKnowledgeReturnType, 'showConnectToKnowledgeModal'> &
-  Pick<UseRenameCurrentFileReturnType, 'showFileRenameModal'> &
-  UseMoveDocumentShowType;
+// type IProps = Pick<CellContext<IFile, unknown>, 'row'> &
+//   Pick<UseHandleConnectToKnowledgeReturnType, 'showConnectToKnowledgeModal'> &
+//   Pick<UseRenameCurrentFileReturnType, 'showFileRenameModal'> &
+//   UseMoveDocumentShowType;
+
+interface IProps {
+  row: CellContext<IFile, unknown>['row'];
+  showConnectToKnowledgeModal: UseHandleConnectToKnowledgeReturnType['showConnectToKnowledgeModal'];
+  showFileRenameModal: UseRenameCurrentFileReturnType['showFileRenameModal'];
+  showMoveFileModal: (ids: string[]) => void;
+
+  // ✅ 加上这个回调函数，用来把当前行的 record 传回父组件
+  onMoveClick?: (record: IFile) => void;
+}
 
 export function ActionCell({
   row,
   showConnectToKnowledgeModal,
   showFileRenameModal,
   showMoveFileModal,
+  onMoveClick, // 2. 解构出 onMoveClick
 }: IProps) {
   const record = row.original;
   const documentId = record.id;
@@ -69,6 +79,7 @@ export function ActionCell({
   }, [record, showFileRenameModal]);
 
   const handleShowMoveFileModal = useCallback(() => {
+    onMoveClick?.(record); // 3. 点击时，先把当前行的完整数据传出去
     showMoveFileModal([record.id]);
   }, [record, showMoveFileModal]);
 

@@ -49,6 +49,7 @@ export const useHandleMoveFile = ({
     moveFileVisible,
     hideMoveFileModal,
     showMoveFileModal: handleShowMoveFileModal,
+    sourceFileIds,
   };
 };
 

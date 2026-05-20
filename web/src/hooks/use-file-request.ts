@@ -317,3 +317,20 @@ export const useFetchPureFileList = () => {
 
   return { loading, fetchList: mutateAsync };
 };
+
+export const useFetchPureFileListUP = () => {
+  const { mutateAsync, isPending: loading } = useMutation({
+    mutationKey: [FileApiAction.FetchPureFileList],
+    gcTime: 0,
+
+    mutationFn: async (parentId: string) => {
+      const { data } = await fileManagerService.listFileUP({
+        parent_id: parentId,
+      });
+
+      return data;
+    },
+  });
+
+  return { loading, fetchListUP: mutateAsync };
+};

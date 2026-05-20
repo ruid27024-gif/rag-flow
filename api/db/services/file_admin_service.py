@@ -333,6 +333,17 @@ class FileAdminService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_parent_id(cls, file_id):
+        try:
+            # 直接获取当前文件对象
+            current_file = cls.model.get(cls.model.id == file_id)
+            # 直接返回它的 parent_id 属性
+            return current_file.parent_id
+        except cls.model.DoesNotExist:
+            return None
+
+    @classmethod
+    @DB.connection_context()
     def get_parent_folder(cls, file_id):
         # Get parent folder of a file
         # Args:

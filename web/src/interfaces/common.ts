@@ -18,4 +18,5 @@ export interface IModalProps<T> {
   loading?: boolean;
   onOk?(payload?: T): Promise<any> | void;
   initialValues?: T;
+  currentFile?: T;
 }

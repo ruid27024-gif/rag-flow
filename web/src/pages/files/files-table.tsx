@@ -48,16 +48,25 @@ import { KnowledgeCell } from './knowledge-cell';
 import { LinkToDatasetDialog } from './link-to-dataset-dialog';
 import { UseMoveDocumentShowType } from './use-move-file';
 import { useNavigateToOtherFolder } from './use-navigate-to-folder';
-import { isFolderType, isKnowledgeBaseType } from './util';
+import { isFolderType } from './util';
+
+// type FilesTableProps = Pick<
+//   ReturnType<typeof useFetchFileList>,
+//   'files' | 'loading' | 'pagination' | 'setPagination' | 'total'
+// > &
+//   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
+//   UseMoveDocumentShowType;
 
 type FilesTableProps = Pick<
   ReturnType<typeof useFetchFileList>,
   'files' | 'loading' | 'pagination' | 'setPagination' | 'total'
 > &
   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
-  UseMoveDocumentShowType;
+  UseMoveDocumentShowType & // ✅ 在这里加上 onMoveClick 的类型定义
+  { onMoveClick?: (record: IFile) => void };
 
 export function FilesTable({
+  onMoveClick,
   files,
   total,
   pagination,
@@ -222,6 +231,7 @@ export function FilesTable({
             showConnectToKnowledgeModal={showConnectToKnowledgeModal}
             showFileRenameModal={showFileRenameModal}
             showMoveFileModal={showMoveFileModal}
+            onMoveClick={onMoveClick} // 2. 把回调函数传给 ActionCell
           ></ActionCell>
         );
       },
@@ -248,9 +258,10 @@ export function FilesTable({
     onRowSelectionChange: setRowSelection,
 
     manualPagination: true, //we're doing manual "server-side" pagination
-    enableRowSelection(row) {
-      return !isKnowledgeBaseType(row.original.source_type);
-    },
+    // enableRowSelection(row) {
+    //   return !isKnowledgeBaseType(row.original.source_type);
+    // },
+    enableRowSelection: true, // 直接设为 true，允许所有行被选中
     state: {
       sorting,
       columnFilters,
@@ -293,6 +304,12 @@ export function FilesTable({
                   key={row.id}
                   data-state={row.getIsSelected() && 'selected'}
                   className="group"
+                  // 👇 使用动态 className，完美保留 hover 效果
+                  // className={cn(
+                  //   "group",
+                  //   isKnowledgeBaseType(row.original.source_type) && "bg-[#ffc0cb] hover:bg-[#ffb6c1]"
+                  // )}
+                  // onClick={() => row.toggleSelected(!row.getIsSelected())}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell

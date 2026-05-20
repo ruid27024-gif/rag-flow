@@ -13,12 +13,17 @@ const {
   get_document_file,
   getFile,
   moveFile,
+  listFileUP,
   get_document_file_download,
 } = api;
 
 const methods = {
   listFile: {
     url: listFile,
+    method: 'get',
+  },
+  listFileUP: {
+    url: listFileUP,
     method: 'get',
   },
   removeFile: {

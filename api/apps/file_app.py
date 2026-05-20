@@ -735,6 +735,209 @@ def list_files():
                 return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
     except Exception as e:
         return server_error_response(e)
+    
+
+@manager.route('/listup', methods=['GET'])  # noqa: F821
+@login_required
+def list_filesUP():
+    pf_id = request.args.get("parent_id")
+
+    keywords = request.args.get("keywords", "")
+
+    page_number = int(request.args.get("page", 1))
+    items_per_page = int(request.args.get("page_size", 15))
+    orderby = request.args.get("orderby", "create_time")
+    desc = request.args.get("desc", True)
+    # 如果没有传入pid 获取根目录的id(再通过这个id 子id) 来获取谁挂在上面
+    if not pf_id:
+        # 获取根的这条数据
+        # 如果是超级管理员 获取全部根id
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            print("当前用户是管理员，正在执行管理员逻辑...")
+            # 管理员：查根目录
+            root_folder = FileAdminService.get_root_folder(current_user.id)
+            # 根id的子id还是本身
+            pf_id = root_folder["id"]
+            print(f"parent_id为 {pf_id}")
+            FileService.init_knowledgebase_docs(pf_id, current_user.id)
+
+
+
+        elif AdminUser.query(user_id=current_user.id, role_level=2):
+            # 管理员：查询所有根目录
+            root_folder = FileGroupService.get_root_folder(current_user.id)
+            # 根id的子id还是本身
+            pf_id = root_folder["id"]
+            print(f"parent_id为 {pf_id}")
+            FileService.init_knowledgebase_docs(pf_id, current_user.id)
+
+        else:
+            lis = []
+            # 获取组id下的公共tenant_id
+            group_id = UserGroupService.get_group_id_by_id(current_user.id)
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            if group_id and group_id in cfg_map and cfg_map[group_id]:
+                group_public_tenant_id = cfg_map[group_id]
+                lis.append(group_public_tenant_id)
+
+            if settings.REFERENCE_TENANT_ID:
+                public_tenant_id = settings.REFERENCE_TENANT_ID
+                lis.append(public_tenant_id)
+
+            lis.append(current_user.id)
+            
+            lis = list(set(lis))  # 可以看到的租户id
+
+            # 获取二级管理员的根目录
+            root_id_current = FileService.get_team_root_id(lis)
+
+            # 处理每一个根id 获取下面的目录/文件
+            all_files = []
+            total = 0
+
+            for r_id in root_id_current:
+                try:
+
+                    # 2. 获取该目录下的文件
+                    files, count = FileService.get_by_pf_id_new(
+                        current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                    )
+
+                    # 3. 累加结果
+                    all_files.extend(files)
+                    total += count
+
+                except Exception as e:
+                    # 某个用户的目录查错了不要中断整体
+                    print(f"Error fetching folder {r_id}: {e}")
+                    continue
+
+            print(all_files)
+            # 4. 返回汇总结果
+            root_folder = FileService.get_root_folder(current_user.id)
+            pf_id = root_folder["id"]
+            parent_folder = FileService.get_parent_folder(pf_id)
+            return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
+
+    try:
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            print("当前用户是管理员，正在执行管理员逻辑2...")
+            
+            # 1. 获取传入文件的父ID（使用新变量名 parent_id，避免覆盖入参）
+            parent_id = FileAdminService.get_parent_id(pf_id)
+            
+            # 2. 优雅判空：如果拿不到父ID，直接返回友好提示，避免程序崩溃
+            if not parent_id:
+                return get_json_result(message="文件不存在或无父级目录！")
+            
+            # 3. 获取父ID下面的子文件（传入 parent_id，并补全缺失的分页参数）
+            files, total = FileAdminService.get_by_pf_id(
+                current_user.id, parent_id, page_number, items_per_page, orderby, desc, keywords)
+
+            # 4. 获取父文件夹的完整对象（传入 parent_id）
+            parent_folder = FileAdminService.get_parent_folder(parent_id)
+            if not parent_folder:
+                return get_json_result(message="父文件夹不存在！")
+
+            return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+
+
+        elif AdminUser.query(user_id=current_user.id, role_level=2):
+            print("当前用户组的管理员，正在执行管理员逻辑*******...")
+            print(f"id : {pf_id}")
+
+            # 1. 获取当前文件的父ID（使用新的变量名 parent_id，避免覆盖传入的 pf_id）
+            parent_id = FileGroupService.get_parent_id(pf_id)
+            
+            # 2. 如果拿不到父ID，说明文件不存在或已在根目录，直接返回友好的提示信息
+            if not parent_id:
+                return get_json_result(message="文件不存在或无父级目录！")
+
+            # 3. 获取父ID下面的子文件列表（注意：这里必须传入 parent_id）
+            # ⚠️ 提醒：你原代码这里传的是 pf_id，且漏传了 orderby, desc, keywords 等分页参数，记得补全
+            files, total = FileGroupService.get_by_pf_id(
+                current_user.id, parent_id, page_number, items_per_page, orderby, desc, keywords)
+
+            # 4. 获取父文件夹的完整对象（同样传入 parent_id）
+            parent_folder = FileGroupService.get_parent_folder(parent_id)
+            
+            # 5. 防御性判断：如果父文件夹对象不存在，返回提示
+            if not parent_folder:
+                return get_json_result(message="父文件夹不存在！")
+
+            return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+        
+        else:
+            # e, file = FileService.get_by_id(pf_id)
+            # if not e:
+            #     return get_data_error_result(message="Folder not found!")
+            # 判断是不是根pf_id
+            parent_id = FileAdminService.get_parent_id(pf_id)
+            if not parent_id:
+                return get_json_result(message="文件不存在或无父级目录！")
+            
+            pf_id = parent_id
+
+            is_root_folder = FileService.is_root_node(pf_id)
+            if is_root_folder:
+                lis = []
+                # 获取组id下的公共tenant_id
+                group_id = UserGroupService.get_group_id_by_id(current_user.id)
+                cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+                if group_id and group_id in cfg_map and cfg_map[group_id]:
+                    group_public_tenant_id = cfg_map[group_id]
+                    lis.append(group_public_tenant_id)
+
+                if settings.REFERENCE_TENANT_ID:
+                    public_tenant_id = settings.REFERENCE_TENANT_ID
+                    lis.append(public_tenant_id)
+
+                lis.append(current_user.id)
+                
+                lis = list(set(lis))  # 可以看到的租户id
+
+                # 获取二级管理员的根目录
+                root_id_current = FileService.get_team_root_id(lis)
+
+                # 处理每一个根id 获取下面的目录/文件
+                all_files = []
+                total = 0
+
+                for r_id in root_id_current:
+                    try:
+
+                        # 2. 获取该目录下的文件
+                        files, count = FileService.get_by_pf_id_new(
+                            current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                        )
+
+                        # 3. 累加结果
+                        all_files.extend(files)
+                        total += count
+
+                    except Exception as e:
+                        # 某个用户的目录查错了不要中断整体
+                        print(f"Error fetching folder {r_id}: {e}")
+                        continue
+
+                print(all_files)
+                # 4. 返回汇总结果
+                root_folder = FileService.get_root_folder(current_user.id)
+                pf_id = root_folder["id"]
+                parent_folder = FileService.get_parent_folder(pf_id)
+                return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
+
+            else:
+                files, total = FileService.get_by_pf_id_new(
+                    current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+
+                parent_folder = FileService.get_parent_folder(pf_id)
+                if not parent_folder:
+                    return get_json_result(message="File not found!")
+
+                return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route('/root_folder', methods=['GET'])  # noqa: F821
@@ -816,18 +1019,11 @@ async def rm():
                     if tenant_id:
                         DocumentService.remove_document(doc, tenant_id)
                 File2DocumentService.delete_by_file_id(file.id)
-
+            print("开始删除------------------------------------------------------------")
             FileService.delete(file)
-            try:
-                if AdminUser.query(user_id=tenant_id, role_level=1):
-                    FileAdminService.delete(file)
-                else:
-                    FileGroupService.delete(file)
-                    FileAdminService.delete(file)
-            except Exception as e:
-                print("1、2级表知识库删除根路径失败")
-
+            
         def _delete_folder_recursive(folder, tenant_id):
+            print("开始删除------------------------------------------------------------")
             sub_files = FileService.list_all_files_by_parent_id(folder.id)
             for sub_file in sub_files:
                 if sub_file.type == FileType.FOLDER.value:
@@ -836,12 +1032,13 @@ async def rm():
                     _delete_single_file(sub_file)
 
             FileService.delete(folder)
+            print(folder.id)
             try:
-                if AdminUser.query(user_id=tenant_id, role_level=1):
-                    FileAdminService.delete(folder)
-                else:
-                    FileGroupService.delete(folder)
-                    FileAdminService.delete(folder)
+                # if AdminUser.query(user_id=tenant_id, role_level=1):
+                #     FileAdminService.delete(folder)
+                # else:
+                FileGroupService.delete(folder)
+                FileAdminService.delete(folder)
             except Exception as e:
                 print("1、2级表知识库删除路径失败")
 
@@ -1009,6 +1206,7 @@ async def move():
         if not files:
             return get_data_error_result(message="Source files not found!")
 
+        # 将查询到的文件列表转换成字典 {文件ID: 文件对象}，方便后续通过 ID 快速查找
         files_dict = {f.id: f for f in files}
 
         for file_id in file_ids:
@@ -1025,15 +1223,18 @@ async def move():
                 )
 
         def _move_entry_recursive(source_file_entry, dest_folder):
+            # 如果当前要移动的是一个文件夹
             if source_file_entry.type == FileType.FOLDER.value:
+                # 在目标目录下，查找是否已经存在同名的文件夹
                 existing_folder = FileService.query(name=source_file_entry.name, parent_id=dest_folder.id)
                 if existing_folder:
                     new_folder = existing_folder[0]
                 else:
+                    # 不存在则在目标目录下新建一个同名文件夹（只插入数据库记录）
                     new_folder = FileService.insert(
                         {
                             "id": get_uuid(),
-                            "parent_id": dest_folder.id,
+                            "parent_id": dest_folder.id, # 挂载到了全局参考库的根目录下了？
                             "tenant_id": source_file_entry.tenant_id,
                             "created_by": current_user.id,
                             "name": source_file_entry.name,
@@ -1042,12 +1243,16 @@ async def move():
                             "type": FileType.FOLDER.value,
                         }
                     )
-
+                   
+                # 查出当前文件夹下的所有子文件/子文件夹
                 sub_files = FileService.list_all_files_by_parent_id(source_file_entry.id)
+
+                # 递归调用自身，把子文件一个个搬运到新建立的文件夹里
                 for sub_file in sub_files:
                     _move_entry_recursive(sub_file, new_folder)
 
                 FileService.delete_by_id(source_file_entry.id)
+
                 try:
                     if AdminUser.query(user_id=source_file_entry.tenant_id, role_level=1):
                         FileAdminService.delete_by_id(source_file_entry.id)
@@ -1058,19 +1263,24 @@ async def move():
                     print("1、2级表知识库move复制失败")
                 return
 
-            old_parent_id = source_file_entry.parent_id
-            old_location = source_file_entry.location
-            filename = source_file_entry.name
+            # 如果不是文件夹，就是普通文件，开始执行物理移动
+            old_parent_id = source_file_entry.parent_id # 记录文件原来的父目录ID
+            old_location = source_file_entry.location   # 记录文件原来的存储路径
+            filename = source_file_entry.name           # 获取文件名
 
+
+            # 防重名处理：如果目标目录下已经有同名文件，就在文件名后不断加 "_" 直到不重名
             new_location = filename
             while settings.STORAGE_IMPL.obj_exist(dest_folder.id, new_location):
                 new_location += "_"
 
+            # 调用底层的存储实现（如 MinIO, OSS, 本地磁盘等），真正地把文件从旧位置剪切到新位置
             try:
                 settings.STORAGE_IMPL.move(old_parent_id, old_location, dest_folder.id, new_location)
             except Exception as storage_err:
                 raise RuntimeError(f"Move file failed at storage layer: {str(storage_err)}")
 
+            # 物理移动成功后，更新主文件表（FileService）的数据库记录（更新父ID和新路径）
             FileService.update_by_id(
                 source_file_entry.id,
                 {
@@ -1079,15 +1289,19 @@ async def move():
                 },
             )
             try:
-                if AdminUser.query(user_id=current_user.id, role_level=1):
-                    FileAdminService.update_by_id(
-                source_file_entry.id,
-                {
-                    "parent_id": dest_folder.id,
-                    "location": new_location,
-                },
-            )
-                else:
+                # 如果是1级管理员私有的内部移动 source_file_entry.id dest_folder.id 
+                # 
+            #     if AdminUser.query(user_id=current_user.id, role_level=1) and source_file_entry.id==dest_folder.id :
+            #         FileAdminService.update_by_id(
+            #     source_file_entry.id,
+            #     {
+            #         "parent_id": dest_folder.id,
+            #         "location": new_location,
+            #     },
+            # )   
+            #     # 如果不是管理员内部移动且和二级有关
+            #     else:
+                    print('hello')
                     FileGroupService.update_by_id(
                 source_file_entry.id,
                 {
