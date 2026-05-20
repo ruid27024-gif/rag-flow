@@ -644,11 +644,6 @@ def list_files():
         if AdminUser.query(user_id=current_user.id, role_level=1):
             print("当前用户是管理员，正在执行管理员逻辑2...")
             
-            # e, file = FileService.get_by_id(pf_id)
-            # if not e:
-            #     return get_data_error_result(message="Folder not found!")
-            print(f"id : {pf_id}")
-            
             # 获取id下面的子文件
             files, total = FileAdminService.get_by_pf_id(
                 current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
@@ -678,15 +673,66 @@ def list_files():
             # e, file = FileService.get_by_id(pf_id)
             # if not e:
             #     return get_data_error_result(message="Folder not found!")
+            # 判断是不是根pf_id
 
-            files, total = FileService.get_by_pf_id_new(
-                current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+            is_root_folder = FileService.is_root_node(pf_id)
+            if is_root_folder:
+                lis = []
+                # 获取组id下的公共tenant_id
+                group_id = UserGroupService.get_group_id_by_id(current_user.id)
+                cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+                if group_id and group_id in cfg_map and cfg_map[group_id]:
+                    group_public_tenant_id = cfg_map[group_id]
+                    lis.append(group_public_tenant_id)
 
-            parent_folder = FileService.get_parent_folder(pf_id)
-            if not parent_folder:
-                return get_json_result(message="File not found!")
+                if settings.REFERENCE_TENANT_ID:
+                    public_tenant_id = settings.REFERENCE_TENANT_ID
+                    lis.append(public_tenant_id)
 
-            return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+                lis.append(current_user.id)
+                
+                lis = list(set(lis))  # 可以看到的租户id
+
+                # 获取二级管理员的根目录
+                root_id_current = FileService.get_team_root_id(lis)
+
+                # 处理每一个根id 获取下面的目录/文件
+                all_files = []
+                total = 0
+
+                for r_id in root_id_current:
+                    try:
+
+                        # 2. 获取该目录下的文件
+                        files, count = FileService.get_by_pf_id_new(
+                            current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                        )
+
+                        # 3. 累加结果
+                        all_files.extend(files)
+                        total += count
+
+                    except Exception as e:
+                        # 某个用户的目录查错了不要中断整体
+                        print(f"Error fetching folder {r_id}: {e}")
+                        continue
+
+                print(all_files)
+                # 4. 返回汇总结果
+                root_folder = FileService.get_root_folder(current_user.id)
+                pf_id = root_folder["id"]
+                parent_folder = FileService.get_parent_folder(pf_id)
+                return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
+
+            else:
+                files, total = FileService.get_by_pf_id_new(
+                    current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+
+                parent_folder = FileService.get_parent_folder(pf_id)
+                if not parent_folder:
+                    return get_json_result(message="File not found!")
+
+                return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
     except Exception as e:
         return server_error_response(e)
 
@@ -805,9 +851,9 @@ async def rm():
                 # e, file = FileService.get_by_id(file_id)
 
                 if AdminUser.query(user_id=current_user.id, role_level=1):
-                    e, file = FileAdminService.get_by_id(file_id)
+                    e, file = FileService.get_by_id(file_id)
                 elif AdminUser.query(user_id=current_user.id, role_level=2):
-                    e, file = FileGroupService.get_by_id(file_id)
+                    e, file = FileService.get_by_id(file_id)
                 else:
                     e, file = FileService.get_by_id(file_id)
                 if not e or not file:
@@ -817,8 +863,8 @@ async def rm():
                 if not check_file_team_write_permission(file, current_user.id):
                     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
-                if file.source_type == FileSource.KNOWLEDGEBASE:
-                    continue
+                # if file.source_type == FileSource.KNOWLEDGEBASE:
+                #     continue
 
                 if file.type == FileType.FOLDER.value:
                     _delete_folder_recursive(file, current_user.id)
@@ -848,9 +894,9 @@ async def rename():
         # e, file = FileService.get_by_id(req["file_id"])
 
         if AdminUser.query(user_id=current_user.id, role_level=1):
-            e, file = FileAdminService.get_by_id(req["file_id"])
+            e, file = FileService.get_by_id(req["file_id"])
         elif AdminUser.query(user_id=current_user.id, role_level=2):
-            e, file = FileGroupService.get_by_id(req["file_id"])
+            e, file = FileService.get_by_id(req["file_id"])
         else:
             e, file = FileService.get_by_id(req["file_id"])
         if not e:
@@ -876,25 +922,16 @@ async def rename():
         
         FileAdminService.update_by_id(
                 req["file_id"], {"name": req["name"]})
+        
         FileGroupService.update_by_id(
                 req["file_id"], {"name": req["name"]})
 
         informs = File2DocumentService.get_by_file_id(req["file_id"])
         if informs:
+            print("------------------------------------")
             print(informs)
             if not DocumentService.update_by_id(
                     informs[0].document_id, {"name": req["name"]}):
-                # try:
-                #     if AdminUser.query(user_id=current_user.id, role_level=1):
-                #         FileAdminService.update_by_id(
-                #     informs[0].document_id, {"name": req["name"]})
-                #     else:
-                #         FileGroupService.update_by_id(
-                #     informs[0].document_id, {"name": req["name"]})
-                #         FileAdminService.update_by_id(
-                #     informs[0].document_id, {"name": req["name"]})
-                # except Exception as e:
-                #     print("1、2级表知识库写入根路径失败")
                 return get_data_error_result(
                     message="Database error (Document rename)!")
 
@@ -910,11 +947,15 @@ async def get(file_id):
 
     try:
         e, file = FileService.get_by_id(file_id)
+
         if not e:
             return get_data_error_result(message="Document not found!")
         if not check_file_team_permission(file, current_user.id):
+            print("hello")
             return get_json_result(data=False, message='No authorization.', code=RetCode.AUTHENTICATION_ERROR)
 
+        print(file.parent_id)
+        print(file.location)
         blob = await asyncio.to_thread(settings.STORAGE_IMPL.get, file.parent_id, file.location)
         if not blob:
             b, n = File2DocumentService.get_storage_address(file_id=file_id)

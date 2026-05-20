@@ -33,8 +33,10 @@ from api.db.services.user_service import TenantService, UserTenantService
 from api.utils.api_utils import get_error_data_result, server_error_response, get_data_error_result, validate_request, not_allowed_parameters, \
     get_request_json
 from api.db import VALID_FILE_TYPES
+from api.db.services.file_admin_service import FileAdminService
+from api.db.services.file_group_service import FileGroupService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.db_models import File, AdminUser
+from api.db.db_models import File, AdminUser, File_Admin, File_Group
 from api.utils.api_utils import get_json_result
 from rag.nlp import search
 from api.constants import DATASET_NAME_LIMIT
@@ -131,14 +133,66 @@ async def update():
             return get_data_error_result(
                 message="Duplicated dataset name.")
 
+        
         del req["kb_id"]
         connectors = []
         if "connectors" in req:
             connectors = req["connectors"]
             del req["connectors"]
-
+        
+        org_name = kb.name
         if not KnowledgebaseService.update_by_id(kb.id, req):
             return get_data_error_result()
+        
+        from peewee import DoesNotExist
+        # 获取到知识库的原始相关信息
+        if org_name != req['name']:
+            print(kb.tenant_id)
+            # 通过这三个字段精准定位一行数据
+            print(org_name)
+            try:
+                file_record = File.get(
+                    File.name == org_name,
+                    File.tenant_id == kb.tenant_id,
+                    # File.source_type == FileSource.KNOWLEDGEBASE
+                )
+                file_record.name = req['name']
+                file_record.save()
+            except DoesNotExist:
+                # 找不到记录说明没权限或不存在，直接跳过即可
+                pass
+            try:        
+                file_record2 = File_Admin.get(
+                    File_Admin.name == org_name,
+                    File_Admin.tenant_id == kb.tenant_id,
+                    # File_Admin.source_type == FileSource.KNOWLEDGEBASE
+                )
+                file_record2.name = req['name']
+                file_record2.save()
+            except DoesNotExist:
+                # 找不到记录说明没权限或不存在，直接跳过即可
+                pass
+            try:
+                file_record3 = File_Group.get(
+                    File_Group.name == org_name,
+                    File_Group.tenant_id == kb.tenant_id,
+                    # File_Group.source_type == FileSource.KNOWLEDGEBASE
+                )
+
+                # 👇 1. 将新名字赋值给 file_record
+                
+                
+                file_record3.name = req['name']
+                # 👇 2. 调用 save() 方法，将修改同步到数据库
+
+
+                file_record3.save()
+            except DoesNotExist:
+                # 找不到记录说明没权限或不存在，直接跳过即可
+                pass
+            print(f"文件记录同步更新成功，新名字为: {req['name']}")
+
+
 
         if kb.pagerank != req.get("pagerank", 0):
             if req.get("pagerank", 0) > 0:
@@ -281,15 +335,45 @@ async def rm():
 
         def _rm_sync():
             for doc in DocumentService.query(kb_id=req["kb_id"]):
+                # 删除doc
                 if not DocumentService.remove_document(doc, kbs[0].tenant_id):
                     return get_data_error_result(
                         message="Database error (Document removal)!")
+                
                 f2d = File2DocumentService.get_by_document_id(doc.id)
                 if f2d:
                     FileService.filter_delete([File.source_type == FileSource.KNOWLEDGEBASE, File.id == f2d[0].file_id])
+                    FileAdminService.filter_delete([File_Admin.source_type == FileSource.KNOWLEDGEBASE, File_Admin.id == f2d[0].file_id])
+                    # 如果删除的kb不属于 管理员自己的，二级表也删除
+                    kb_list = KnowledgebaseService.query(id=req["kb_id"])
+                    kb = kb_list[0] if kb_list else None
+                    tenant_id = kb.tenant_id if kb else None
+                    if tenant_id:
+                        # 判断是否是一级管理员的
+                        is_admin_create = AdminUser.query(user_id=tenant_id, role_level=1)
+                        if not is_admin_create:
+                            FileGroupService.filter_delete([File_Group.source_type == FileSource.KNOWLEDGEBASE, File_Group.id == f2d[0].file_id])
+
+
+
                 File2DocumentService.delete_by_document_id(doc.id)
             FileService.filter_delete(
                 [File.source_type == FileSource.KNOWLEDGEBASE, File.type == "folder", File.name == kbs[0].name])
+            
+            FileAdminService.filter_delete([File_Admin.source_type == FileSource.KNOWLEDGEBASE, File_Admin.type == "folder", File_Admin.name == kbs[0].name])
+            # 如果删除的kb不属于 管理员自己的，二级表也删除
+            kb_list = KnowledgebaseService.query(id=req["kb_id"])
+            kb_del = kb_list[0] if kb_list else None
+            print(kb_del)
+            tenant_id = kb_del.tenant_id if kb_del else None
+
+            if tenant_id:
+                # 判断是否是一级管理员的
+                is_admin_create = AdminUser.query(user_id=tenant_id, role_level=1)
+                if not is_admin_create:
+                    FileGroupService.filter_delete([File_Group.source_type == FileSource.KNOWLEDGEBASE, File_Group.type == "folder", File_Group.name == kbs[0].name])
+
+            
             if not KnowledgebaseService.delete_by_id(req["kb_id"]):
                 return get_data_error_result(
                     message="Database error (Knowledgebase removal)!")

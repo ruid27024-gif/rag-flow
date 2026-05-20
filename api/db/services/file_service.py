@@ -411,6 +411,23 @@ class FileService(CommonService):
             return True
         cls.delete_folder_by_pf_id(parent_id)
         return False
+    
+    @classmethod
+    @DB.connection_context()
+    def is_root_node(cls, file_id):
+        # 判断指定 ID 是否为根节点
+        # Args:
+        #     file_id: 文件/文件夹 ID
+        # Returns:
+        #     Boolean: True 表示是根节点，False 表示不是
+        
+        e, file = cls.get_by_id(file_id)
+        # 如果文件不存在，直接返回 False
+        if not e:
+            return False
+        
+        # 核心判断逻辑：父级 ID 等于自身 ID，即为根节点
+        return file.parent_id == file.id
 
     @classmethod
     @DB.connection_context()
@@ -641,62 +658,99 @@ class FileService(CommonService):
             raise RuntimeError("Database error (File doesn't exist)!")
         return file
 
-    @classmethod
-    @DB.connection_context()
-    def get_all_parent_folders(cls, start_id):
-        # Get all parent folders in path
-        # Args:
-        #     start_id: Starting file ID
-        # Returns:
-        #     List of parent folder objects
-        parent_folders = []
-        current_id = start_id
+    # @classmethod
+    # @DB.connection_context()
+    # def get_all_parent_folders(cls, start_id):
+    #     # Get all parent folders in path
+    #     # Args:
+    #     #     start_id: Starting file ID
+    #     # Returns:
+    #     #     List of parent folder objects
+    #     parent_folders = []
+    #     current_id = start_id
         
-        while current_id:
-            e, file = cls.get_by_id(current_id)
-            if e and file.parent_id != file.id:
+    #     while current_id:
+    #         e, file = cls.get_by_id(current_id)
+    #         # 如果不是根目录
+    #         if e and file.parent_id != file.id:
                 
-                from .user_service import UserService
-                from api.apps import login_required, current_user
+    #             from .user_service import UserService
+    #             from api.apps import login_required, current_user
                 
-                # 获取文件的拥有者（参考库、组参考库、自己）
-                file_owner = UserService.filter_by_id(file.tenant_id)
+    #             # 获取文件的拥有者（参考库、组参考库、自己）
+    #             file_owner = UserService.filter_by_id(file.tenant_id)
 
-                # 参考库的情况
-                if file_owner and file_owner.id != current_user.id and file.parent_id in FileService.get_all_root_id():
-                    file_owner_id = file_owner.id
+    #             # 参考库的情况
+    #             if file_owner and file_owner.id != current_user.id and file.parent_id in FileService.get_all_root_id():
+    #                 # 文件拥有人
+    #                 file_owner_id = file_owner.id
 
-                    global_tenant_id = settings.REFERENCE_TENANT_ID
-                    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
-                    cfg_map_ids = cfg_map.values()
+    #                 global_tenant_id = settings.REFERENCE_TENANT_ID
 
-                    # 如果是全局参考库
-                    if file_owner_id == global_tenant_id:
-                        nickname = "全局文献参考库"
-                    elif file_owner_id in cfg_map_ids:
-                        nickname = "组内文献 + 报告参考库"
-                    else:
-                        nickname = ""
+    #                 cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    #                 cfg_map_ids = cfg_map.values()
 
-                # 如果是文件夹
-                if file.type == FileType.FOLDER.value:
-                    if nickname:
-                        if file.name == '.knowledgebase' :
-                            file.name = nickname
+    #                 # 如果是全局参考库
+    #                 if file_owner_id == global_tenant_id:
+    #                     nickname = "全局文献参考库"
+    #                 elif file_owner_id in cfg_map_ids:
+    #                     nickname = "组内文献 + 报告参考库"
+    #                 else:
+    #                     nickname = ""
 
-                        # 自建的文件夹
-                        else:
-                            file.name = file.name
+                    
+
+    #             # 如果是文件夹
+    #             if file.type == FileType.FOLDER.value:
+    #                 if nickname:
+    #                     if file.name == '.knowledgebase' :
+    #                         file.name = nickname
+
+    #                     # 自建的文件夹
+    #                     else:
+    #                         file.name = file.name
 
 
 
-                # 递归一层一层向上获取
-                parent_folders.append(file)
-                current_id = file.parent_id
-            else:
-                parent_folders.append(file)
-                break
-        return parent_folders
+    #             # 递归一层一层向上获取
+    #             parent_folders.append(file)
+
+    #             current_id = file.parent_id
+    #         else:
+    #             global_tenant_id = settings.REFERENCE_TENANT_ID
+    #             parent_folders.append(file)
+    #             # group_id = UserGroupService.get_group_id_by_id(current_user.id)
+    #             # cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    #             # # 当前在全局参考库下
+    #             # if file.id == global_tenant_id:
+    #             #     # 找到用户属于的组 获取到组id
+                    
+    #             #     if group_id and group_id in cfg_map and cfg_map[group_id]:
+    #             #         group_public_tenant_id = cfg_map[group_id]
+    #             #         flie_group = cls.model.select().where((cls.model.tenant_id==group_public_tenant_id )and (file.parent_id == file.id))
+    #             #         file.name = "组内文献 + 报告参考库"
+    #             #         parent_folders.append(flie_group)
+
+    #             #         # 获取自己的根目录下
+    #             #         file_owner = cls.model.select().where((cls.model.tenant_id==current_user.id)and (file.parent_id == file.id))
+
+    #             #     # 当前在全局参考库下
+    #             #     elif file.id in cfg_map:
+
+    #             #         # 获取参考库的根 + 自己的
+
+    #             #     else :
+
+    #             #         # 获取参考库 + 组参考库的
+
+                    
+
+
+    #             break
+
+    #     print("all--------------------------------------------")
+    #     print(parent_folders)
+    #     return parent_folders
 
     @classmethod
     @DB.connection_context()

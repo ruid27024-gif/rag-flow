@@ -317,22 +317,23 @@ async def upload_report():
         return server_error_response(e)
 
 
-
+# 知识库的上传
 @manager.route("/upload", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("kb_id")
 async def upload():
-    # 知识库id
+    # 获取知识库id
     form = await request.form
     kb_id = form.get("kb_id")
 
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
     
-    # 文件
+    # 获取文件
     files = await request.files
     if "file" not in files:
         return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
+
 
     file_objs = files.getlist("file")
     for file_obj in file_objs:
@@ -345,7 +346,8 @@ async def upload():
     e, kb = KnowledgebaseService.get_by_id(kb_id)
     if not e:
         raise LookupError("Can't find this dataset!")
-    # 鉴权
+    
+    # 鉴权 
     if not check_kb_team_write_permission(kb, current_user.id):
         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 

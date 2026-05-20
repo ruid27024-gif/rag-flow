@@ -64,54 +64,41 @@ class FileAdminService(CommonService):
         else:
             files = cls.model.select().where((cls.model.parent_id == pf_id), ~(cls.model.id == pf_id))
         count = files.count()
-        print(count)
+
         if desc:
             files = files.order_by(cls.model.getter_by(orderby).desc())
         else:
             files = files.order_by(cls.model.getter_by(orderby).asc())
 
+        # file = cls.model.select().where((cls.model.tenant_id == tenant_id)&(cls.model.id == cls.model.parent_id)).first()
+        root_id = files[0].parent_id if files else None
+
+        from peewee import Case
+        if pf_id == root_id:
+            sort_logic = Case(
+            cls.model.name,
+            [
+                (None, 0),
+                ("全局参考库", 1),
+                ("工艺研究一室", 2),
+                ("工艺研究二室", 3),
+                ("工艺研究三室", 4),
+                ("新品事业部研发部", 5),
+            ],
+            )
+
+            files = files.order_by(sort_logic)
+
         files = files.paginate(page_number, items_per_page)
 
         res_files = list(files.dicts())
+
         print(res_files)
-
-
-        file = cls.model.select().where((cls.model.tenant_id == tenant_id)&(cls.model.id == cls.model.parent_id)).first()
-        root_id = file.id
-
-        if pf_id == root_id:
-            print("部门排序开始... ...")
-            def custom_sort_key(x):
-                name = x["name"]
-                
-                # 1. 处理 None 值：优先级 0 (最高，排第一)
-                if name is None:
-                    return (0, "")
-                    
-                # 2. 处理 "全局参考库"：优先级 1 (排第二)
-                if name == "全局参考库":
-                    return (1, "")
-                
-                if name == "工艺研究一室":
-                    return (2, "")
-                
-                if name == "工艺研究二室":
-                    return (3, "")
-                
-                if name == "工艺研究三室":
-                    return (4, "")
-                
-                if name == "新品事业部研发部":
-                    return (5, "")
-                
-                else:
-                    return(6, "")
-                    
-            res_files = sorted(res_files, key=custom_sort_key)
-
         for file in res_files:
             if file["type"] == FileType.FOLDER.value:
+                # 获取每个文件夹的大小
                 file["size"] = cls.get_folder_size(file["id"])
+
                 file["kbs_info"] = []
                 children = list(
                     cls.model.select()

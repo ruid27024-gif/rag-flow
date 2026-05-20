@@ -286,9 +286,10 @@ const Login = () => {
             </div>
             {/* <div className="text-xl font-bold self-center">{t('Company')}</div> */}
           </div>
-          <h1 className="text-[36px] font-medium  text-center mb-2">
+          <h1 className="pl-3 text-transparent bg-clip-text bg-gradient-to-r from-[#065F46] to-[#34D399]">
             {t('title')}
           </h1>
+
           <p className="text-sm text-gray-400 text-center mt-6 mb-10">
             {t('annotation')}
           </p>
