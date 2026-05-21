@@ -296,21 +296,19 @@ async def add_user_to_group():
         # file = File.select().where((File.parent_id == File.id)
         #                 & (File.tenant_id == add_user.id)).first()
         file = FileService.get_root_folder(add_user.id)
-        
-        try:
-            # 直接把人挂到1级表
-            file1 = FileAdminService.insert({
-                "id": file['id'],  # 昵称的id
-                "parent_id": group_id,
-                "tenant_id": current_user.id,
-                "created_by": current_user.id,
-                "name": add_user.nickname,
-                "location": "",
-                "size": 0,
-                "type": FileType.FOLDER.value
-            })
-        except Exception as e:
-                pass
+
+        # 直接把人挂到1级表
+        file1 = FileAdminService.insert({
+            "id": file['id'],  # 昵称的id
+            "parent_id": group_id,
+            "tenant_id": current_user.id,
+            "created_by": current_user.id,
+            "name": add_user.nickname,
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
 
         # 判断拉入的用户是否为二级管理员
         if AdminUser.query(user_id=user_id, role_level=2):
@@ -374,35 +372,38 @@ async def add_user_to_group():
 async def delete_user_group():
     req = await get_request_json()
     pid = req.get("id")
+
     user_id = req.get("user_id")
     group_id = req.get("group_id")
 
-    try:
-        error_response = check_admin(current_user)
-        if error_response:
-            return error_response
 
-        # 删除1级表、二级表中的连接
-        FileAdminService.model.delete().where(FileAdminService.model.tenant_id == user_id).execute()
-        FileGroupService.model.delete().where(FileGroupService.model.tenant_id == user_id).execute()
+    error_response = check_admin(current_user)
+    if error_response:
+        return error_response
+    file = FileService.get_root_folder(user_id)
+
+    # 删除1级表、二级表中的连接
+    FileAdminService.model.delete().where(FileAdminService.model.id == file['id']).execute()
+    FileGroupService.model.delete().where(FileGroupService.model.id == file['id']).execute()
 
 
-        if pid is not None:
-            deleted = UserGroupService.delete_by_id(pid)
-            
-            return get_json_result(data={"deleted": deleted})
+    if pid is not None:
+        deleted = UserGroupService.delete_by_id(pid)
         
+        return get_json_result(data={"deleted": deleted})
+    
 
-        if user_id and group_id:
-            deleted = UserGroupService.delete_by_user_group(user_id=user_id, group_id=group_id)
-            return get_json_result(data={"deleted": deleted})
+    if user_id and group_id:
+        deleted = UserGroupService.delete_by_user_group(user_id=user_id, group_id=group_id)
+        return get_json_result(data={"deleted": deleted})
 
-        return get_json_result(
-            code=RetCode.ARGUMENT_ERROR,
-            message="required argument are missing: id or (user_id, group_id)",
-        )
-    except Exception as e:
-        return server_error_response(e)
+    return get_json_result(
+        code=RetCode.ARGUMENT_ERROR,
+        message="required argument are missing: id or (user_id, group_id)",
+    )
+    
+    # except Exception as e:
+    #     return server_error_response(e)
 
 
 @manager.route("/list", methods=["GET"])  # noqa: F821

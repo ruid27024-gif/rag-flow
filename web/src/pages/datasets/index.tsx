@@ -172,7 +172,7 @@ export default function Datasets() {
                       </h2>
 
                       {/* 卡片区域 */}
-                      <div className="grid grid-cols-[repeat(auto-fill,_minmax(280px,_333px))] gap-6">
+                      <div className="grid grid-cols-[repeat(auto-fill,_minmax(200px,_300px))] gap-6">
                         {datasets.map((dataset) => (
                           <DatasetCard
                             dataset={dataset}

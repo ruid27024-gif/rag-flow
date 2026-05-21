@@ -66,6 +66,7 @@ export default function Files() {
     showMoveFileModal,
     moveFileVisible,
     onMoveFileOk,
+    onMoveFileOk2,
     hideMoveFileModal,
     moveFileLoading,
   } = useHandleMoveFile({ clearRowSelection });
@@ -88,6 +89,40 @@ export default function Files() {
       )}
     </div>
   );
+  // ... 其他状态 ...
+  const [draggedFile, setDraggedFile] = useState<any | null>(null);
+
+  // ✅ 1. 在父组件中定义具体的拖拽处理逻辑
+  const handleDragStart = (e: React.DragEvent, file: any) => {
+    e.stopPropagation(); // ✅ 阻止事件冒泡，防止被表格点击事件干扰
+    setDraggedFile(file);
+    e.dataTransfer.effectAllowed = 'move';
+    // 加上这个，兼容性更好，防止某些浏览器拖拽失效
+    e.dataTransfer.setData('text/plain', file.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // ✅ 必须有这句，否则 drop 事件永远不会触发
+    e.stopPropagation(); // ✅ 阻止事件冒泡
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  // Files.tsx
+
+  const handleDrop = async (e: React.DragEvent, targetFolder: any) => {
+    e.preventDefault();
+    // setHoveredFolderId(null);
+    console.log(targetFolder.id);
+    if (!draggedFile || draggedFile.id === targetFolder.id) return;
+
+    try {
+      await onMoveFileOk2(targetFolder.id, draggedFile.id);
+
+      // 刷新列表等操作...
+    } catch (error) {
+      // ...
+    }
+  };
 
   return (
     <section className="p-8">
@@ -132,6 +167,10 @@ export default function Files() {
         showMoveFileModal={showMoveFileModal}
         // ✅ 2. 把保存文件的函数传给 FilesTable
         onMoveClick={setCurrentMoveFile} // 2. 把设置状态的函数传下去
+        // ✅ 2. 把定义好的函数作为 props 传给子组件
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       ></FilesTable>
       {fileUploadVisible && (
         <FileUploadDialog

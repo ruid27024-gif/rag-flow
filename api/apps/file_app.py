@@ -82,6 +82,7 @@ async def upload():
         root_folder = FileService.get_root_folder(current_user.id)
         pf_id = root_folder["id"]
 
+
     # 上传权限
     if not allow(pf_id):
         return get_data_error_result(message="Error checking folder ownership")

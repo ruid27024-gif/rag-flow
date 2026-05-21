@@ -528,56 +528,6 @@ class FileService(CommonService):
             except Exception as e:
                     print(f"错误详情: {e}")
             return kb_folder
-        # # 如果存在.knowladge
-        # try:
-        #     # 管理员只放1级表
-        #     if AdminUser.query(user_id=tenant_id, role_level=1):
-        #         knowladge_id = kb_folder.id
-        #         file = {
-        #             "id": knowladge_id,
-        #             "parent_id": root_id,
-        #             "tenant_id": tenant_id,
-        #             "created_by": tenant_id,
-        #             "name": KNOWLEDGEBASE_FOLDER_NAME,
-        #             "type": kb_folder.type,
-        #             "size": kb_folder.size,
-        #             "location": kb_folder.location,
-        #             "source_type": FileSource.KNOWLEDGEBASE,
-        #         }
-        #         FileAdminService.save(**file)
-        #     if AdminUser.query(user_id=tenant_id, role_level=2):
-        #         knowladge_id = kb_folder.id
-        #         file = {
-        #             "id": knowladge_id,
-        #             "parent_id": root_id,
-        #             "tenant_id": tenant_id,
-        #             "created_by": tenant_id,
-        #             "name": KNOWLEDGEBASE_FOLDER_NAME,
-        #             "type": kb_folder.type,
-        #             "size": kb_folder.size,
-        #             "location": kb_folder.location,
-        #             "source_type": FileSource.KNOWLEDGEBASE,
-        #         }
-        #         FileAdminService.save(**file)
-        #         FileGroupService.save(**file)
-        #     else:
-        #         knowladge_id = kb_folder.id
-        #         file = {
-        #             "id": knowladge_id,
-        #             "parent_id": root_id,
-        #             "tenant_id": tenant_id,
-        #             "created_by": tenant_id,
-        #             "name": KNOWLEDGEBASE_FOLDER_NAME,
-        #             "type": kb_folder.type,
-        #             "size": kb_folder.size,
-        #             "location": kb_folder.location,
-        #             "source_type": FileSource.KNOWLEDGEBASE,
-        #         }
-        #         FileGroupService.save(**file)
-        #         FileAdminService.save(**file)
-        # except Exception as e:
-        #     print(f"❌ 错误详情: {e}")
-
         return kb_folder.to_dict()
 
     @classmethod
@@ -936,6 +886,10 @@ class FileService(CommonService):
     @classmethod
     @DB.connection_context()
     def upload_document(self, kb, file_objs, user_id, src="local", parent_path: str | None = None):
+        
+        # 获取知识库的tenant_id
+        kb_tenant_id = kb.tenant_id
+        user_id = kb_tenant_id
         # 获取当前用户的根
         root_folder = self.get_root_folder(user_id)
         pf_id = root_folder["id"]

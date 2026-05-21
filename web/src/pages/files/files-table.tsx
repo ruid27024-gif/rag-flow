@@ -57,13 +57,25 @@ import { isFolderType } from './util';
 //   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
 //   UseMoveDocumentShowType;
 
+// type FilesTableProps = Pick<
+//   ReturnType<typeof useFetchFileList>,
+//   'files' | 'loading' | 'pagination' | 'setPagination' | 'total'
+// > &
+//   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
+//   UseMoveDocumentShowType & // ✅ 在这里加上 onMoveClick 的类型定义
+//   { onMoveClick?: (record: IFile) => void };
 type FilesTableProps = Pick<
   ReturnType<typeof useFetchFileList>,
   'files' | 'loading' | 'pagination' | 'setPagination' | 'total'
 > &
   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
-  UseMoveDocumentShowType & // ✅ 在这里加上 onMoveClick 的类型定义
-  { onMoveClick?: (record: IFile) => void };
+  UseMoveDocumentShowType & // ✅ 单独扩展出拖拽和移动需要的额外回调函数
+  {
+    onMoveClick?: (record: IFile) => void;
+    onDragStart?: (e: React.DragEvent, file: any) => void;
+    onDragOver?: (e: React.DragEvent) => void;
+    onDrop?: (e: React.DragEvent, file: any) => void;
+  };
 
 export function FilesTable({
   onMoveClick,
@@ -75,6 +87,9 @@ export function FilesTable({
   rowSelection,
   setRowSelection,
   showMoveFileModal,
+  onDragStart, // 2. 解构接收 props
+  onDragOver,
+  onDrop,
 }: FilesTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -122,6 +137,7 @@ export function FilesTable({
           onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label="Select row"
           disabled={!row.getCanSelect()}
+          onClick={(e) => e.stopPropagation()} // ✅ 阻止点击复选框时触发整行点击
         />
       ),
       enableSorting: false,
@@ -154,24 +170,36 @@ export function FilesTable({
         };
 
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex gap-2">
-                <span className="size-4">
-                  <FileIcon name={name} type={type}></FileIcon>
-                </span>
-                <span
-                  className={cn('truncate', { ['cursor-pointer']: isFolder })}
-                  onClick={handleNameClick}
-                >
-                  {name}
-                </span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{name}</p>
-            </TooltipContent>
-          </Tooltip>
+          <div
+            className="flex gap-2 items-center"
+            draggable // 让这一整块区域都能被拖拽
+            onDragStart={(e) => {
+              // 手动触发父组件传下来的拖拽开始事件
+              onDragStart?.(e, row.original);
+            }}
+            // 阻止这个 div 的点击事件冒泡，防止和拖拽冲突
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex gap-2">
+                  <span className="size-4">
+                    <FileIcon name={name} type={type}></FileIcon>
+                  </span>
+                  <span
+                    className={cn('truncate', { ['cursor-pointer']: isFolder })}
+                    onClick={handleNameClick}
+                  >
+                    {name}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {/* <p>{name}</p> */}
+                <p>{isFolder ? `点击进入文件夹：${name}` : name}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
         );
       },
     },
@@ -226,13 +254,17 @@ export function FilesTable({
       enablePinning: true,
       cell: ({ row }) => {
         return (
-          <ActionCell
-            row={row}
-            showConnectToKnowledgeModal={showConnectToKnowledgeModal}
-            showFileRenameModal={showFileRenameModal}
-            showMoveFileModal={showMoveFileModal}
-            onMoveClick={onMoveClick} // 2. 把回调函数传给 ActionCell
-          ></ActionCell>
+          <div onClick={(e) => e.stopPropagation()}>
+            {' '}
+            {/* ✅ 阻止点击操作按钮时触发整行点击 */}
+            <ActionCell
+              row={row}
+              showConnectToKnowledgeModal={showConnectToKnowledgeModal}
+              showFileRenameModal={showFileRenameModal}
+              showMoveFileModal={showMoveFileModal}
+              onMoveClick={onMoveClick} // 2. 把回调函数传给 ActionCell
+            ></ActionCell>
+          </div>
         );
       },
     },
@@ -300,29 +332,80 @@ export function FilesTable({
               <TableSkeleton columnsLength={columns.length}></TableSkeleton>
             ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
-                  className="group"
-                  // 👇 使用动态 className，完美保留 hover 效果
-                  // className={cn(
-                  //   "group",
-                  //   isKnowledgeBaseType(row.original.source_type) && "bg-[#ffc0cb] hover:bg-[#ffb6c1]"
-                  // )}
-                  // onClick={() => row.toggleSelected(!row.getIsSelected())}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cell.column.columnDef.meta?.cellClassName}
+                // <TableRow
+                //   key={row.id}
+                //   data-state={row.getIsSelected() && 'selected'}
+                //   className="group"
+                //   draggable
+                //   onDragStart={(e) => onDragStart?.(e, row.original)}
+                //   // 只有当前行是文件夹时，才允许作为“放置目标”
+                //   onDragOver={row.original.type === 'folder' ? onDragOver : undefined}
+                //   onDrop={row.original.type === 'folder' ? (e) => onDrop?.(e, row.original) : undefined}
+
+                //   // 💡 视觉优化：如果是文件夹，鼠标放上去显示可拖入的样式
+                //   style={{
+                //     cursor: row.original.type === 'folder' ? 'copy' : 'default'
+                //   }}
+                //   // ✅ 核心修改：绑定整行点击事件，如果是文件夹则跳转
+                //   onClick={() => {
+                //     if (isFolderType(row.original.type)) {
+                //       navigateToOtherFolder(row.original.id);
+                //     }
+                //   }}
+                // >
+                //   {row.getVisibleCells().map((cell) => (
+                //     <TableCell
+                //       key={cell.id}
+                //       className={cell.column.columnDef.meta?.cellClassName}
+                //     >
+                //       {flexRender(
+                //         cell.column.columnDef.cell,
+                //         cell.getContext(),
+                //       )}
+                //     </TableCell>
+                //   ))}
+                // </TableRow>
+
+                <Tooltip key={row.id} delayDuration={200}>
+                  <TooltipTrigger asChild>
+                    <TableRow
+                      data-state={row.getIsSelected() && 'selected'}
+                      className="group"
+                      draggable
+                      onDragStart={(e) => onDragStart?.(e, row.original)}
+                      onDragOver={
+                        row.original.type === 'folder' ? onDragOver : undefined
+                      }
+                      onDrop={
+                        row.original.type === 'folder'
+                          ? (e) => onDrop?.(e, row.original)
+                          : undefined
+                      }
+                      style={{
+                        cursor:
+                          row.original.type === 'folder' ? 'copy' : 'default',
+                      }}
+                      onClick={() => {
+                        if (isFolderType(row.original.type)) {
+                          navigateToOtherFolder(row.original.id);
+                        }
+                      }}
                     >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </TooltipTrigger>
+                  {/* 整行悬浮时的统一提示 */}
+                  {/* <TooltipContent side="top" align="end">
+                  <p>点击查阅、长按移动</p>
+                </TooltipContent> */}
+                </Tooltip>
               ))
             ) : (
               <TableEmpty columnsLength={columns.length}></TableEmpty>
