@@ -24,24 +24,28 @@ export default function DatasetWrapper() {
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink onClick={navigateToDatasetList}>
+              <BreadcrumbLink
+                onClick={navigateToDatasetList}
+                className="cursor-pointer"
+              >
                 <span
                   className="
                   text-lg font-bold
                   bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500
                   bg-clip-text text-transparent
-                  group-hover:text-slate-900 dark:group-hover:text-white
-                  transition-all duration-300
-                  cursor-pointer
-                "
+                  ml-2
+                  transition-all duration-300 ease-in-out
+                  hover:underline hover:decoration-2 hover:underline-offset-4
+                  hover:scale-105 hover:opacity-80
+                  "
                 >
                   {t('knowledgeDetails.dataset')}
                 </span>
               </BreadcrumbLink>
             </BreadcrumbItem>
-            <BreadcrumbSeparator />
+            <BreadcrumbSeparator className="translate-y-[7px]" />
             <BreadcrumbItem>
-              <BreadcrumbPage className="w-28 whitespace-nowrap text-ellipsis overflow-hidden">
+              <BreadcrumbPage className="w-28 whitespace-nowrap text-ellipsis overflow-hidden translate-y-[3px] text-gray-400 dark:text-gray-500">
                 {data.name}
               </BreadcrumbPage>
             </BreadcrumbItem>

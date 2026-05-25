@@ -286,7 +286,20 @@ const Login = () => {
             </div>
             {/* <div className="text-xl font-bold self-center">{t('Company')}</div> */}
           </div>
-          <h1 className="pl-3 text-transparent bg-clip-text bg-gradient-to-r from-[#065F46] to-[#34D399]">
+          {/* <h1 className="pl-3 text-4xl text-transparent bg-clip-text bg-gradient-to-r from-[#065F46] to-[#34D399]">
+            {t('title')}
+          </h1> */}
+          <h1
+            className="pl-3 text-4xl font-extrabold text-transparent bg-clip-text animate-shine, font-['Georgia','Times_New_Roman','serif']"
+            style={{
+              // 从深绿色(#065F46) 渐变到 亮绿色(#34D399)
+              background: 'linear-gradient(90deg, #065F46, #34D399)',
+              backgroundSize: '100% 100%', // 如果不需要流光扫过，尺寸改回100%
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              // willChange: 'background-position', // 静态渐变可以删掉这行
+            }}
+          >
             {t('title')}
           </h1>
 
@@ -449,7 +462,7 @@ const Login = () => {
                   </form>
                 </Form>
 
-                {title === 'login' && registerEnabled && (
+                {/* {title === 'login' && registerEnabled && (
                   <div className="mt-10 text-right">
                     <p className="text-text-disabled text-sm">
                       {t('signInTip')}
@@ -462,7 +475,7 @@ const Login = () => {
                       </Button>
                     </p>
                   </div>
-                )}
+                )} */}
                 {title === 'register' && (
                   <div className="mt-10 text-right">
                     <p className="text-text-disabled text-sm">

@@ -48,7 +48,7 @@ export function NextBanner() {
       {/* <span className="pl-3 text-transparent bg-clip-text  bg-gradient-to-l from-[#40EBE3] to-[#4A51FF]">
         {t('title')}
       </span> */}
-      <span className="pl-3 text-transparent bg-clip-text bg-gradient-to-r from-[#065F46] to-[#34D399]">
+      <span className="pl-3 text-transparent bg-clip-text bg-gradient-to-r from-[#065F46] to-[#34D399] font-['Georgia','Times_New_Roman','serif']">
         {t('title')}
       </span>
     </section>

@@ -164,11 +164,11 @@ export default function Datasets() {
                   ([groupName, datasets]) => (
                     <div key={groupName} className="flex flex-col gap-4">
                       {/* 组名 */}
-                      <h2 className="text-lg font-bold text-gray-700">
+                      <h2 className="text-lg font-bold text-black-500 font-['Georgia','Times_New_Roman','serif']">
                         {groupName}{' '}
-                        <span className="text-sm font-normal text-gray-500">
+                        {/* <span className="text-sm font-normal text-gray-500">
                           ({datasets.length})
-                        </span>
+                        </span> */}
                       </h2>
 
                       {/* 卡片区域 */}
