@@ -785,6 +785,50 @@ async def add_group_admin():
              return get_json_result(data=False, message="User is already an admin", code=RetCode.DATA_ERROR)
         
         AdminUser.insert(user_id=user_id, role_level=2).execute()
+        # 获取拉取人员的根目录
+        file = FileService.get_root_folder(user_id)
+        pf_id = file['id']
+        # Todo:将全局参考库放到
+        # 将当前人员根目录存入到二级表
+        from api.db.services.file_group_service import FileGroupService
+        file2 = FileGroupService.insert({
+        "id": pf_id,  # 昵称的id
+        "parent_id": pf_id,
+        "tenant_id": user_id,
+        "created_by": user_id,
+        "name": "/",
+        "location": "",
+        "size": 0,
+        "type": FileType.FOLDER.value
+    })
+        # 将参考库挂载到当前人员(二级表)
+        from api.db.db_models import File, File_Group
+        # 全局参考库id
+        file_ref = File.select().where((File.parent_id == File.id)
+                            & (File.tenant_id == settings.REFERENCE_TENANT_ID )).first()
+        file_ref.parent_id = pf_id
+        file_ref.name = '全局参考库'
+        File_Group.create(**file_ref.to_dict()) 
+
+        file_group = File_Group.select().where((File_Group.parent_id == file_ref.id)
+                           & (File_Group.tenant_id == settings.REFERENCE_TENANT_ID )
+                           )
+
+        # 把参考库中不是根目录的全部写入二级表
+        file = File.select().where((File.id != File.parent_id)
+                           & (File.tenant_id == settings.REFERENCE_TENANT_ID )
+                           )
+        
+        # 将文件全部写入到全局参考库下
+        if not file_group.exists():
+            for i in file:
+                i.to_dict()
+                print(i.to_dict())
+                try:
+                    File_Group.create(**i.to_dict())
+                except:
+                    pass
+        
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)

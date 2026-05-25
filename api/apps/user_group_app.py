@@ -313,18 +313,57 @@ async def add_user_to_group():
         # 判断拉入的用户是否为二级管理员
         if AdminUser.query(user_id=user_id, role_level=2):
             # 直接把自己加入到二级表
+
             pf_id = file['id']
             try:
+                # file2 = FileGroupService.insert({
+                #     "id": pf_id,  # 昵称的id
+                #     "parent_id": pf_id,
+                #     "tenant_id": user_id,
+                #     "created_by": user_id,
+                #     "name": "/",
+                #     "location": "",
+                #     "size": 0,
+                #     "type": FileType.FOLDER.value
+                # })
+                # 把当前组参考库挂载到这个根上 根据组id获取参考库的id
+
+                cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+                if group_id and group_id in cfg_map and cfg_map[group_id]:
+                    group_public_id = cfg_map[group_id]
+
+                # 获取当前组参考库的根
+                file_ref = FileService.get_root_folder(group_public_id)
+                pf_id_ref = file_ref['id']
+
+                # 把当前组参考库挂载到这个根上 根据组id获取参考库的id
                 file2 = FileGroupService.insert({
-                    "id": pf_id,  # 昵称的id
+                    "id": pf_id_ref,  # 昵称的id
                     "parent_id": pf_id,
                     "tenant_id": user_id,
                     "created_by": user_id,
-                    "name": "/",
+                    "name": "组参考库+文献库",
                     "location": "",
                     "size": 0,
                     "type": FileType.FOLDER.value
                 })
+
+                # 把参考库下的所有文件挂载到当前的组参考库下
+                # 把参考库中不是根目录的全部写入二级表
+                from api.db.db_models import File, File_Group
+                file_group_ref = File.select().where((File.id != File.parent_id)
+                                & (File.tenant_id == group_public_id )
+                                )
+                # 将文件全部写入到全局参考库下
+                for i in file_group_ref:
+                    i.to_dict()
+                    print(i.to_dict())
+                    try:
+                        File_Group.create(**i.to_dict())
+                    except:
+                        pass
+
+                pass
             except Exception as e:
                 pass
 
@@ -382,7 +421,7 @@ async def delete_user_group():
         return error_response
     file = FileService.get_root_folder(user_id)
 
-    # 删除1级表、二级表中的连接
+    # 删除1级表、二级表中人员到组的连接
     FileAdminService.model.delete().where(FileAdminService.model.id == file['id']).execute()
     FileGroupService.model.delete().where(FileGroupService.model.id == file['id']).execute()
 

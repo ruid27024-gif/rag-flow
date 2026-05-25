@@ -532,6 +532,7 @@ async def embedding(docs, mdl, parser_config=None, callback=None):
         tts = np.tile(vts[0], (len(cnts), 1))
         tk_count += c
 
+    # 批量处理正文向量
     @timeout(60)
     def batch_encode(txts):
         nonlocal mdl
@@ -548,6 +549,7 @@ async def embedding(docs, mdl, parser_config=None, callback=None):
         tk_count += c
         callback(prog=0.7 + 0.2 * (i + 1) / len(cnts), msg="")
     cnts = cnts_
+    #  融合标题与正文向量（Weighted Fusion）
     filename_embd_weight = parser_config.get("filename_embd_weight", 0.1) # due to the db support none value
     if not filename_embd_weight:
         filename_embd_weight = 0.1
@@ -776,7 +778,7 @@ async def delete_image(kb_id, chunk_id):
         logging.exception(f"Deleting image of chunk {chunk_id} got exception")
         raise
 
-
+# kb_id 就是 task_dataset_id
 async def insert_es(task_id, task_tenant_id, task_dataset_id, chunks, progress_callback):
     mothers = []
     mother_ids = set([])
@@ -858,7 +860,10 @@ async def parse_author_info(task: dict):
             for i in range(min(2, len(pdf.pages))):
                 page = pdf.pages[i]
                 # Convert to image
-                img = page.to_image(resolution=150).original
+                from deepdoc.parser.pdf_parser import _pdf_render_lock
+                with _pdf_render_lock:
+                    img = page.to_image(resolution=150).original
+
                 img_byte_arr = BytesIO()
                 img.save(img_byte_arr, format='JPEG')
                 images.append(img_byte_arr.getvalue())
@@ -928,6 +933,7 @@ async def parse_author_info(task: dict):
 @timeout(60*60*3, 1)
 async def do_handle_task(task):
     task_type = task.get("task_type", "")
+    print("开始入库 es0 ...")
 
     if task_type == "dataflow" and task.get("doc_id", "") == CANVAS_DEBUG_DOC_ID:
         await run_dataflow(task)
@@ -1092,6 +1098,7 @@ async def do_handle_task(task):
     else:
         # Standard chunking methods
         start_ts = timer()
+        # 📄 1. 文档分块 (Chunking)
         chunks = await build_chunks(task, progress_callback)
         logging.info("Build document {}: {:.2f}s".format(task_document_name, timer() - start_ts))
         if not chunks:
@@ -1100,6 +1107,7 @@ async def do_handle_task(task):
         progress_callback(msg="Generate {} chunks".format(len(chunks)))
         start_ts = timer()
         try:
+            # 🔢 2. 向量化 (Embedding)
             token_count, vector_size = await embedding(chunks, embedding_model, task_parser_config, progress_callback)
         except Exception as e:
             error_message = "Generate embedding error:{}".format(str(e))
@@ -1110,11 +1118,14 @@ async def do_handle_task(task):
         progress_message = "Embedding chunks ({:.2f}s)".format(timer() - start_ts)
         logging.info(progress_message)
         progress_callback(msg=progress_message)
+        # 📑 3. 提取目录 (TOC Extraction - 可选)
         if task["parser_id"].lower() == "naive" and task["parser_config"].get("toc_extraction", False):
             toc_thread = executor.submit(build_TOC, task, chunks, progress_callback)
 
     chunk_count = len(set([chunk["id"] for chunk in chunks]))
     start_ts = timer()
+    print('💾 4. 存入数据库 (Indexing to ES')
+    print(chunks)
     e = await insert_es(task_id, task_tenant_id, task_dataset_id, chunks, progress_callback)
     if not e:
         return

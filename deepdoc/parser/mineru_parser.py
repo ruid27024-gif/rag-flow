@@ -305,6 +305,12 @@ class MinerUParser(RAGFlowPdfParser):
             )
             
             return Path(local_md_dir)
+        except Exception as e:
+            print(f"PDF处理失败，错误信息: {e}")
+            print(f"当前PDF字节流长度: {len(pdf_bytes)}")
+            print(f"当前PDF字节流开头: {pdf_bytes[:20]}")
+            # 可以在这里增加备用解析逻辑，或者直接抛出更明确的自定义异常
+            raise
 
         finally:
             # Clear models and memory

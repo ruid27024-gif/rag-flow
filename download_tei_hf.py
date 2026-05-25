@@ -5,8 +5,8 @@ from huggingface_hub import snapshot_download
 # 这里使用 os.environ 动态设置，无需在终端手动输入
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
-model_id = 'Qwen/Qwen3-Embedding-0.6B'
-local_dir = './tei_data/Qwen/Qwen3-Embedding-0.6B'
+model_id = 'Alibaba-NLP/gte-Qwen2-1.5B-instruct'
+local_dir = './tei_data/Alibaba-NLP/gte-Qwen2-1.5B-instruct'
 
 print(f"正在通过镜像站下载 {model_id} ...")
 

@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  vllm-rerank:
+    image: vllm-custom:latest
+    container_name: vllm-rerank-service
+    restart: unless-stopped
+    
+    # 端口映射
+    ports:
+      - "8000:8000"
+    
+    # 挂载本地模型目录（请将左侧路径替换为你实际的 rerank 模型路径）
+    volumes:
+      - /home/zyb/rag-flow/tei_data/BAAI/bge-reranker-v2-m3:/models/rerank
+    
+    # 核心启动命令：只运行 Rerank 服务
+    command: >
+      vllm serve /models/rerank 
+      --host 0.0.0.0 
+      --port 8000 
+      --dtype half 
+      --gpu-memory-utilization 0.9 
+      --max-model-len 8192
+    
+    # GPU 资源配置（如果你有多张卡，可以按需调整 count 数量）
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # 调大共享内存，防止 vLLM 崩溃（非常重要！）
+    shm_size: '4g'

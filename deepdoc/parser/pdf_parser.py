@@ -48,6 +48,11 @@ if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
 
 
+# 专门用于保护 pypdfium2/pdfplumber 底层图像渲染的全局锁
+_pdf_render_lock = threading.Lock()
+
+
+
 class RAGFlowPdfParser:
     def __init__(self, **kwargs):
         """
@@ -1051,7 +1056,8 @@ class RAGFlowPdfParser:
             with sys.modules[LOCK_KEY_pdfplumber]:
                 with pdfplumber.open(fnm) if isinstance(fnm, str) else pdfplumber.open(BytesIO(fnm)) as pdf:
                     self.pdf = pdf
-                    self.page_images = [p.to_image(resolution=72 * zoomin, antialias=True).annotated for i, p in enumerate(self.pdf.pages[page_from:page_to])]
+                    with _pdf_render_lock:
+                        self.page_images = [p.to_image(resolution=72 * zoomin, antialias=True).annotated for i, p in enumerate(self.pdf.pages[page_from:page_to])]
 
                     try:
                         self.page_chars = [[c for c in page.dedupe_chars().chars if self._has_color(c)] for page in self.pdf.pages[page_from:page_to]]
