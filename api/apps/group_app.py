@@ -141,6 +141,28 @@ async def create_my_group():
             "size": 0,
             "type": FileType.FOLDER.value
         })
+        from api.db.db_models import File, File_Group,File_Admin
+
+        # 当前人员的非根文件
+        file_person_root_fei = File.select().where((File.id != File.parent_id)
+                                                & (File.tenant_id == current_user.id)
+                                                )
+        # 1级表中是否已经存在
+        file_person_admin = File_Admin.select().where((File_Admin.parent_id == pf_id)
+                                                & (File_Admin.tenant_id == current_user.id)
+                                                )
+        
+        # 如果之前1级表中不存在就写入建组人员的非根文件
+        if not file_person_admin.exists():
+        # 将文件全部写入到全局参考库下
+            for i in file_person_root_fei:
+                i.to_dict()
+
+                try:
+                    File_Admin.create(**i.to_dict())
+                except:
+                    pass
+
 
         return get_json_result(data={"group_id": group.group_id})
     except Exception as e:
@@ -182,6 +204,7 @@ async def new_group():
     except Exception as e:
         return server_error_response(e)
 
+
 @manager.route('/list', methods=['GET'])  # noqa: F821
 @login_required
 async def list_groups():
@@ -207,6 +230,13 @@ async def list_groups():
             res.group_id: res.count 
             for res in UserGroup.select(UserGroup.group_id, fn.COUNT(UserGroup.id).alias('count')).group_by(UserGroup.group_id)
         }
+        dept_priority = {
+            "新品事业部研发部": 0,
+            "工艺研究一室": 1,
+            "工艺研究二室": 2,
+            "工艺研究三室": 3
+        }
+        groups = sorted(groups, key=lambda g: dept_priority.get(g.group_name, 99))
 
         group_list = [
             {
@@ -249,7 +279,7 @@ async def list_ref_kbs():
                     )
                     .switch(KnowledgebaseService.model) 
                     .where(KnowledgebaseService.model.tenant_id.in_(tenant_ids))
-                    .order_by(KnowledgebaseService.model.created_by)
+                    .order_by(fn.FIELD(KnowledgebaseService.model.tenant_id, *tenant_ids))
                     .dicts()
                 )
             

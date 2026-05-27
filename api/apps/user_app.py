@@ -623,39 +623,275 @@ async def user_profile():
     return get_json_result(data=data)
 
 
-@manager.route("/group_admins", methods=["GET"])  # noqa: F821
+# @manager.route("/group_admins", methods=["GET"])  # noqa: F821
+# @login_required
+# async def group_admins():
+#     """
+#     Get group administrators (role_level=2).
+#     ---
+#     tags:
+#       - User
+#     security:
+#       - ApiKeyAuth: []
+#     responses:
+#       200:
+#         description: List of group administrators.
+#         schema:
+#           type: array
+#           items:
+#             type: object
+#             properties:
+#               user_id:
+#                 type: string
+#               nickname:
+#                 type: string
+#     """
+#     try:
+#         users = (User
+#                  .select(User.id, User.nickname)
+#                  .join(AdminUser, on=(User.id == AdminUser.user_id))
+#                  .where(AdminUser.role_level == 2))
+#         res = [{"user_id": u.id, "nickname": u.nickname} for u in users]
+#         return get_json_result(data=res)
+#     except Exception as e:
+#         return server_error_response(e)
+
+@manager.route("/group_admins", methods=["GET"])
 @login_required
 async def group_admins():
     """
     Get group administrators (role_level=2).
-    ---
-    tags:
-      - User
-    security:
-      - ApiKeyAuth: []
-    responses:
-      200:
-        description: List of group administrators.
-        schema:
-          type: array
-          items:
-            type: object
-            properties:
-              user_id:
-                type: string
-              nickname:
-                type: string
     """
     try:
-        users = (User
-                 .select(User.id, User.nickname)
-                 .join(AdminUser, on=(User.id == AdminUser.user_id))
-                 .where(AdminUser.role_level == 2))
-        res = [{"user_id": u.id, "nickname": u.nickname} for u in users]
+        # 1. 组合你提供的复杂查询逻辑
+        query = (
+            User
+            .select(
+                User.id,
+                User.nickname,
+                SyncPerson.phone,
+                SyncPerson.gender,
+                SyncDept.mdmCode,         
+                SyncDept.nameOfAdminOrg, 
+                SyncDept.corporateName 
+            )
+            # 关联 SyncPerson 表
+            .join(
+                SyncPerson, 
+                on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+                join_type=JOIN.LEFT_OUTER
+            )
+            .switch(User)
+            # 关联 SyncDept 表
+            .join(
+                SyncDept, 
+                on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                join_type=JOIN.LEFT_OUTER
+            )
+            # 2. 继续保留原有的 AdminUser 筛选条件
+            .join(AdminUser, on=(User.id == AdminUser.user_id))
+            .where(AdminUser.role_level == 2)
+            .order_by(SyncDept.mdmCode.asc(nulls='last'))
+        )
+
+        # 3. 遍历查询结果并组装数据
+        res = []
+        for u in query:
+            res.append({
+                "user_id": u.id,
+                "nickname": u.nickname,
+                # 提取关联表数据（注意处理 LEFT JOIN 可能导致的 None 情况）
+                "phone": u.syncperson.phone if u.syncperson else None,
+                "gender": u.syncperson.gender if u.syncperson else None,
+                "mdmCode": u.syncdept.mdmCode if u.syncdept else None,
+                "nameOfAdminOrg": u.syncdept.nameOfAdminOrg if u.syncdept else None,
+                "corporateName": u.syncdept.corporateName if u.syncdept else None,
+            })
+            
         return get_json_result(data=res)
     except Exception as e:
         return server_error_response(e)
 
+# 任命为组管理员
+@manager.route("/group_admin/new_all", methods=["POST"])  # noqa: F821
+@login_required
+async def add_group_admin_all():
+    """
+    将管理员加入组管理表
+    将管理员的根加入到2级表
+
+    """
+
+    req = await get_request_json()
+    user_id = req.get("user_id")
+    group_id = req.get("group_id")
+
+    if not user_id:
+        return get_json_result(data=False, message="user_id is required", code=RetCode.ARGUMENT_ERROR)
+
+    try:
+        if AdminUser.query(user_id=user_id):
+            return get_json_result(data=False, message="User is already an admin", code=RetCode.DATA_ERROR)
+
+        AdminUser.insert(user_id=user_id, role_level=2).execute()
+        # 获取拉取人员的根目录
+        file = FileService.get_root_folder(user_id)
+        pf_id = file['id']
+        print(pf_id)
+        # 将当前人员根目录存入到二级表
+        from api.db.services.file_group_service import FileGroupService
+        file2 = FileGroupService.insert({
+            "id": pf_id,  # 昵称的id
+            "parent_id": pf_id,
+            "tenant_id": user_id,
+            "created_by": user_id,
+            "name": "/",
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
+        # 将参考库挂载到当前人员(二级表)
+        from api.db.db_models import File, File_Group
+        # 全局参考库id
+        file_ref = File.select().where((File.parent_id == File.id)
+                                       & (File.tenant_id == settings.REFERENCE_TENANT_ID)).first()
+        file_ref.parent_id = pf_id
+        file_ref.name = '全局参考库'
+        File_Group.create(**file_ref.to_dict())
+
+        file_group = File_Group.select().where((File_Group.parent_id == file_ref.id)
+                                               & (File_Group.tenant_id == settings.REFERENCE_TENANT_ID)
+                                               )
+
+        # 把参考库中不是根目录的全部写入二级表
+        file = File.select().where((File.id != File.parent_id)
+                                   & (File.tenant_id == settings.REFERENCE_TENANT_ID)
+                                   )
+
+        # 如果二级表中不存在参考库 非根目录写入
+        if not file_group.exists():
+            for i in file:
+                i.to_dict()
+                print(i.to_dict())
+                try:
+                    File_Group.create(**i.to_dict())
+                except:
+                    pass
+
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        if group_id and group_id in cfg_map and cfg_map[group_id]:
+            group_public_id = cfg_map[group_id]
+
+        # 获取当前组参考库的根
+        file_ref = FileService.get_root_folder(group_public_id)
+        pf_id_ref = file_ref['id']
+
+        # 把当前组参考库挂载到这个根上 根据组id获取参考库的id
+        file2 = FileGroupService.insert({
+            "id": pf_id_ref,  # 昵称的id
+            "parent_id": pf_id,
+            "tenant_id": user_id,
+            "created_by": user_id,
+            "name": "组参考库+文献库",
+            "location": "",
+            "size": 0,
+            "type": FileType.FOLDER.value
+        })
+
+        # 把参考库下的所有非根文件挂载到当前的组参考库下
+        from api.db.db_models import File, File_Group
+
+        file_group_ref = File.select().where((File.id != File.parent_id)
+                        & (File.tenant_id == group_public_id )
+                        )
+
+        file_group2 = File_Group.select().where((File_Group.parent_id == pf_id_ref)
+                                                & (File_Group.tenant_id == group_public_id)
+                                                )
+
+        # 如果之前二级表中不存在就写入
+        if not file_group2.exists():
+        # 将文件全部写入到全局参考库下
+            for i in file_group_ref:
+                i.to_dict()
+                print(i.to_dict())
+                try:
+                    File_Group.create(**i.to_dict())
+                except:
+                    pass
+
+        # 将组内人员全部挂载到当前组长下
+        # 根据组id获取组名称
+        from api.db.services.group_service import GroupService
+        group_name = GroupService.get_name_by_id(group_id)
+
+        # 通过组名称获取所有人
+        persons = SyncPerson.select().where(SyncPerson.organize == group_name)
+        # 触发查询并遍历
+        for p in persons:
+            # 打印具体的字段，比如名字、手机号等
+
+            print(p.mdmName, p.phone, p.organize)
+
+        print("把人员放到二级表")
+        # 遍历每一个人,把每一个人挂在二级管理员
+        for person in persons:
+            # 获取每一个人的账号
+            phone = person.phone
+            name = person.mdmName
+
+            # 过滤掉自己
+            if User.email != phone:
+            # 通过账号获取每一个人的id
+                try:
+                    # 尝试获取匹配该邮箱的用户对象
+                    user = User.get(User.email == phone)
+                    # 获取该用户的 id
+                    user_id = user.id
+                    print(f"获取到的用户ID为: {user_id}")
+
+                    # add_user = UserService.filter_by_id(user_id)
+                    # 获取当前人员的根
+                    file_mem = FileService.get_root_folder(user_id)
+                    person_id = file_mem['id']
+
+                    # 
+                    file2 = FileGroupService.insert({
+                        "id": person_id,  # 昵称的id
+                        "parent_id": pf_id,
+                        "tenant_id": user_id,
+                        "created_by": user_id,
+                        "name": name,
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value
+                    })
+                except:
+                    print("任命：组员写入二级表失败")
+
+            # 当前人员的非根文件
+            file_person_root_fei = File.select().where((File.id != File.parent_id)
+                                                & (File.tenant_id == person_id)
+                                                )
+
+            file_person = File_Group.select().where((File_Group.parent_id == person_id)
+                                                    & (File_Group.tenant_id == user_id)
+                                                    )
+
+            if not file_person.exists():
+                for i in file_person_root_fei:
+                    i.to_dict()
+
+                    try:
+                        File_Group.create(**i.to_dict())
+                    except:
+                        pass
+                    
+
+        return get_json_result(data=True)
+    except Exception as e:
+        return server_error_response(e)
 
 @manager.route("/group_admin/candidates", methods=["GET"])  # noqa: F821
 @login_required
@@ -683,7 +919,7 @@ async def group_admin_candidates():
     try:
         # Find users who are NOT in AdminUser table
 
-                # 1. 构建多表联查的 Query（参考 list_candidate_users 的联表逻辑）
+        # 1. 构建多表联查的 Query（参考 list_candidate_users 的联表逻辑）
         query = (
             User
             .select(
@@ -788,7 +1024,7 @@ async def add_group_admin():
         # 获取拉取人员的根目录
         file = FileService.get_root_folder(user_id)
         pf_id = file['id']
-        # Todo:将全局参考库放到
+
         # 将当前人员根目录存入到二级表
         from api.db.services.file_group_service import FileGroupService
         file2 = FileGroupService.insert({
@@ -828,8 +1064,72 @@ async def add_group_admin():
                     File_Group.create(**i.to_dict())
                 except:
                     pass
+
+        # 将自己的非根目录下的文件全部写入二级表 
+        # 当前人员的非根文件
+        file_person_root_fei = File.select().where((File.id != File.parent_id)
+                                                & (File.tenant_id == current_user.id)
+                                                )
+        for i in file_person_root_fei:
+                i.to_dict()
+
+                try:
+                    File_Group.create(**i.to_dict())
+                except:
+                    pass
         
         return get_json_result(data=True)
+    except Exception as e:
+        return server_error_response(e)
+
+
+@manager.route("/group_admin/delete_all", methods=["POST"])  # noqa: F821
+@login_required
+async def delete_group_admin_all():
+    """
+    Remove a group administrator.
+    ---
+    tags:
+      - User
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: body
+        name: body
+        description: User ID to remove from group admins.
+        required: true
+        schema:
+          type: object
+          properties:
+            user_id:
+              type: string
+    """
+    req = await get_request_json()
+    user_id = req.get("user_id")
+    group_id = req.get("group_id")
+    print(group_id)
+
+    if not user_id:
+        return get_json_result(data=False, message="user_id is required", code=RetCode.ARGUMENT_ERROR)
+
+    try:
+        # Only allow deleting role_level=2 to prevent accidental deletion of super admins (if any)
+        # Assuming role_level 2 is specific for group admins.
+        # Check if user is actually a group admin before deleting?
+        # Or just delete where user_id=... and role_level=2
+        rows = AdminUser.delete().where((AdminUser.user_id == user_id) & (AdminUser.role_level == 2)).execute()
+
+        from api.db.services.file_group_service import FileGroupService
+        # 获取撤销人员的二级表根目录
+        file = FileService.get_root_folder(user_id)
+        pf_id = file['id']
+        # 删除根目录下的所有内容
+        FileGroupService.delete_by_pf_id(pf_id)
+
+        if rows > 0:
+            return get_json_result(data=True)
+        else:
+            return get_json_result(data=False, message="User is not a group admin or not found", code=RetCode.DATA_ERROR)
     except Exception as e:
         return server_error_response(e)
 

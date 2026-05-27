@@ -166,9 +166,24 @@ export default function Datasets() {
                       {/* 组名 */}
                       <h2 className="text-lg font-bold text-black-500 font-['Georgia','Times_New_Roman','serif']">
                         {groupName}{' '}
-                        {/* <span className="text-sm font-normal text-gray-500">
-                          ({datasets.length})
-                        </span> */}
+                        <span
+                          className="
+                          ml-2 relative inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full
+                          bg-gradient-to-br from-emerald-200 via-teal-300 to-green-300
+                          text-[11px] font-bold text-emerald-800
+                          ring-1 ring-white/60
+                          cursor-default select-none
+                          shadow-[0_2px_8px_rgba(52,211,153,0.25),inset_0_1px_1px_rgba(255,255,255,0.6)]
+                          transition-all duration-300 ease-out
+                          hover:scale-110 hover:shadow-[0_0_16px_rgba(52,211,153,0.5),0_0_24px_rgba(16,185,129,0.3),inset_0_1px_2px_rgba(255,255,255,0.8)]
+                        "
+                        >
+                          <span className="relative z-10 drop-shadow-sm">
+                            {datasets.length}
+                          </span>
+                          <span className="absolute left-1 top-1 h-2 w-2 rounded-full bg-white/80 blur-[1px]" />
+                          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500/20 blur-sm" />
+                        </span>
                       </h2>
 
                       {/* 卡片区域 */}

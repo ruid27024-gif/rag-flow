@@ -63,6 +63,20 @@ class GroupService {
     });
   }
 
+  // 2级管理员1键拉取
+  addallMemberToMyGroup(groupId: string) {
+    return request.post(api.add_all_member_to_my_group, {
+      data: { group_id: groupId },
+    });
+  }
+
+  // 1级管理员1键拉取
+  addallUserToGroup(groupId: string) {
+    return request.post(api.add_all_user_to_group, {
+      data: { group_id: groupId },
+    });
+  }
+
   removeMemberFromMyGroup(userId: string) {
     return request.post(api.remove_member_from_my_group, {
       data: { user_id: userId },

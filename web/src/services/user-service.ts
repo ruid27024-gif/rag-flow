@@ -144,6 +144,12 @@ export const listGroupAdminCandidates = () =>
 export const addGroupAdmin = (userId: string) =>
   post(api.add_group_admin, { user_id: userId });
 
+export const addGroupAdminall = (userId: string, GroupId: string) =>
+  post(api.add_group_admin_all, { user_id: userId, group_id: GroupId });
+
+export const delGroupAdminall = (userId: string, GroupId: string) =>
+  post(api.del_group_admin_all, { user_id: userId, group_id: GroupId });
+
 export const removeGroupAdmin = (userId: string) =>
   post(api.delete_group_admin, { user_id: userId });
 

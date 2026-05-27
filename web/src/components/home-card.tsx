@@ -1,6 +1,6 @@
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate } from '@/utils/date';
+// import { formatDate } from '@/utils/date';
 import { ReactNode } from 'react';
 
 interface IProps {
@@ -22,25 +22,27 @@ export function HomeCard({
   sharedBadge,
   icon,
 }: IProps) {
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    // 新增：获取时、分、秒并补零
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    // 拼接成你想要的格式，这里以 YYYY/MM/DD HH:mm:ss 为例
+    return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+  };
   return (
     <Card
-      // className="
-      //   group relative overflow-hidden
-      //   bg-gradient-to-b from-white/10 to-white/5
-      //   backdrop-blur-xl
-      //   border border-white/20
-      //   shadow-[0_4px_12px_-2px_rgba(0,0,0,0.3)]
-      //   hover:bg-white/15 hover:-translate-y-1 hover:shadow-[0_6px_20px_-1px_rgba(0,0,0,0.35)]
-      //   transition-all duration-300 ease-out
-      // "
       onClick={() => {
         // navigateToSearch(data?.id);
         onClick?.();
       }}
     >
-      {/* 顶部高光内阴影（模拟玻璃边缘反光） */}
-      {/* <div className="absolute inset-0 rounded-lg shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] pointer-events-none" /> */}
-
       <CardContent className="p-4 flex gap-2 items-start group h-full w-full hover:shadow-md">
         <div className="flex justify-between mb-4">
           <RAGFlowAvatar

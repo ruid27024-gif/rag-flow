@@ -25,8 +25,12 @@ export default {
 
   my_group_members: `${api_host}/user_group/my_group/members`,
   add_member_to_my_group: `${api_host}/user_group/my_group/members/add`,
+  add_all_member_to_my_group: `${api_host}/user_group/my_group/members/add_all`,
+
   remove_member_from_my_group: `${api_host}/user_group/my_group/members/remove`,
   add_user_to_group: `${api_host}/user_group/new`,
+  add_all_user_to_group: `${api_host}/user_group/new_all`,
+
   remove_user_from_group: `${api_host}/user_group/delete`,
   list_candidate_users: `${api_host}/user_group/candidates`,
   // user
@@ -41,6 +45,9 @@ export default {
   group_admins: `${api_host}/user/group_admins`,
   group_admin_candidates: `${api_host}/user/group_admin/candidates`,
   add_group_admin: `${api_host}/user/group_admin/new`,
+  add_group_admin_all: `${api_host}/user/group_admin/new_all`,
+  del_group_admin_all: `${api_host}/user/group_admin/delete_all`,
+
   delete_group_admin: `${api_host}/user/group_admin/delete`,
   tenant_info: `${api_host}/user/tenant_info`,
   set_tenant_info: `${api_host}/user/set_tenant_info`,

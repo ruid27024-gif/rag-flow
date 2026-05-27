@@ -23,13 +23,29 @@ import groupService from '@/services/group-service';
 import RefKbService from '@/services/refkb-service';
 import {
   addGroupAdmin,
+  addGroupAdminall,
+  delGroupAdminall,
   listGroupAdminCandidates,
   listGroupAdmins,
   removeGroupAdmin,
 } from '@/services/user-service';
 import { Spin, Transfer } from 'antd';
-import { Plus, Settings, Trash2, Users } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Plus,
+  RefreshCw,
+  Settings,
+  ShieldCheck,
+  ShieldX,
+  Trash2,
+  Users,
+} from 'lucide-react'; // 确保引入了 RefreshCw 图标
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { DialogConfigModal } from './DialogConfigModal';
 
 interface Group {
@@ -100,6 +116,7 @@ interface GroupMember {
   mdmCode?: string | null; // 部门代码
   nameOfAdminOrg?: string | null; // 部门名称
   corporateName?: string | null; // 公司/企业名称
+  is_admin?: boolean; // 是否是管理员
 }
 
 export interface CandidateUser {
@@ -155,7 +172,13 @@ const AdminFiles = () => {
   // Group Admin State
   const [isGroupAdminModalOpen, setIsGroupAdminModalOpen] = useState(false);
   const [groupAdmins, setGroupAdmins] = useState<
-    { user_id: string; nickname: string }[]
+    {
+      user_id: string;
+      nickname: string;
+      phone: string;
+      nameOfAdminOrg: string;
+      mdmCode: string;
+    }[]
   >([]);
   const [groupAdminLoading, setGroupAdminLoading] = useState(false);
   const [isAddGroupAdminModalOpen, setIsAddGroupAdminModalOpen] =
@@ -401,6 +424,7 @@ const AdminFiles = () => {
       const { data } = await listGroupAdmins();
       if (data?.code === 0 && Array.isArray(data?.data)) {
         setGroupAdmins(data.data);
+        console.log(data.data);
       } else {
         setGroupAdmins([]);
       }
@@ -440,6 +464,7 @@ const AdminFiles = () => {
   const filteredCandidates = useMemo(() => {
     // 如果所有筛选条件都为空，直接返回所有候选人
     if (!searchKeyword && !searchPhone && !selectedDept) return candidates;
+    // if (!searchKeyword.trim() && !searchPhone.trim() && !selectedDept) return [];
 
     return candidates.filter((user) => {
       // 1. 匹配昵称或用户ID
@@ -460,28 +485,56 @@ const AdminFiles = () => {
     });
   }, [candidates, searchKeyword, searchPhone, selectedDept]); // 记得把 selectedDept 加入依赖数组
 
+  // const filteredadminCandidates = useMemo(() => {
+  //   // 如果所有筛选条件都为空，直接返回所有候选人
+  //   if (!searchKeyword && !searchPhone && !selectedDept) return adminCandidates;
+
+  //   return adminCandidates.filter((user) => {
+  //     // 1. 匹配昵称或用户ID
+  //     const keyword = searchKeyword.toLowerCase();
+  //     const matchKeyword =
+  //       !searchKeyword ||
+  //       user.nickname?.toLowerCase().includes(keyword) ||
+  //       user.user_id?.toString().includes(keyword);
+
+  //     // 2. 匹配手机号
+  //     const matchPhone = !searchPhone || user.phone?.includes(searchPhone);
+
+  //     // 3. 新增：匹配部门（如果没选部门则默认通过，否则必须等于用户的部门）
+  //     const matchDept = !selectedDept || user.nameOfAdminOrg === selectedDept;
+
+  //     // 三个条件必须同时满足
+  //     return matchKeyword && matchPhone && matchDept;
+  //   });
+  // }, [adminCandidates, searchKeyword, searchPhone, selectedDept]);
+
+  // 2. 核心优化：创建一个延迟更新的值
+  // deferredKeyword 会在你停止打字后，或者浏览器空闲时才去更新
+  const deferredKeyword = useDeferredValue(searchKeyword);
+  const deferredPhone = useDeferredValue(searchPhone);
+
+  // 繁重的过滤计算
   const filteredadminCandidates = useMemo(() => {
-    // 如果所有筛选条件都为空，直接返回所有候选人
-    if (!searchKeyword && !searchPhone && !selectedDept) return adminCandidates;
+    // 这里全部使用延迟的 deferred 值
+    if (!deferredKeyword && !deferredPhone && !selectedDept)
+      return adminCandidates;
 
     return adminCandidates.filter((user) => {
-      // 1. 匹配昵称或用户ID
-      const keyword = searchKeyword.toLowerCase();
+      const keyword = deferredKeyword.toLowerCase();
       const matchKeyword =
-        !searchKeyword ||
+        !deferredKeyword ||
         user.nickname?.toLowerCase().includes(keyword) ||
         user.user_id?.toString().includes(keyword);
 
-      // 2. 匹配手机号
-      const matchPhone = !searchPhone || user.phone?.includes(searchPhone);
+      // 修改点1：这里把 searchPhone 换成 deferredPhone
+      const matchPhone = !deferredPhone || user.phone?.includes(deferredPhone);
 
-      // 3. 新增：匹配部门（如果没选部门则默认通过，否则必须等于用户的部门）
       const matchDept = !selectedDept || user.nameOfAdminOrg === selectedDept;
 
-      // 三个条件必须同时满足
       return matchKeyword && matchPhone && matchDept;
     });
-  }, [adminCandidates, searchKeyword, searchPhone, selectedDept]);
+    // 修改点2：依赖项数组里也要换成 deferredPhone
+  }, [adminCandidates, deferredKeyword, deferredPhone, selectedDept]);
 
   // 添加组员的
   const handleAddGroupAdmin = async () => {
@@ -671,12 +724,41 @@ const AdminFiles = () => {
     try {
       let res;
       if (isGroupAdmin) {
+        // 添加所有成员
         res = await groupService.addMemberToMyGroup(newMemberUserId);
       } else {
+        // 添加所有成员
         res = await groupService.addUserToGroup(
           newMemberUserId,
           selectedGroup!.id,
         );
+      }
+
+      if (res.data?.code === 0) {
+        message.success('添加成功');
+        if (selectedGroup?.id) {
+          fetchMembers(selectedGroup.id);
+        }
+      } else {
+        message.error(res.data?.message || '添加失败');
+      }
+    } catch (error) {
+      console.error('Failed to add member:', error);
+      message.error('添加失败，请检查权限或网络');
+    } finally {
+      setAddingMember(false);
+    }
+  };
+
+  const handleAddallMember = async () => {
+    if (!selectedGroup?.id && !isGroupAdmin) return;
+    setAddingMember(true);
+    try {
+      let res;
+      if (isGroupAdmin) {
+        res = await groupService.addallMemberToMyGroup(selectedGroup!.id);
+      } else {
+        res = await groupService.addallUserToGroup(selectedGroup!.id);
       }
 
       if (res.data?.code === 0) {
@@ -706,6 +788,49 @@ const AdminFiles = () => {
       } else {
         res = await groupService.removeUserFromGroup(userId, selectedGroup!.id);
       }
+
+      if (res.data?.code === 0) {
+        message.success('移除成功');
+        if (selectedGroup?.id) {
+          fetchMembers(selectedGroup.id);
+        }
+      } else {
+        message.error(res.data?.message || '移除失败');
+      }
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      message.error('移除失败，请检查权限或网络');
+    }
+  };
+
+  // 任命为管理员
+  const handleSetAdmin = async (userId: string) => {
+    if (!selectedGroup?.id && !isGroupAdmin) return;
+    try {
+      let res;
+
+      res = await addGroupAdminall(userId, selectedGroup!.id);
+
+      if (res.data?.code === 0) {
+        message.success('任命成功');
+        if (selectedGroup?.id) {
+          fetchMembers(selectedGroup.id);
+        }
+      } else {
+        message.error(res.data?.message || '任命失败');
+      }
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      message.error('移除失败，请检查权限或网络');
+    }
+  };
+
+  // 取消任命
+  const handleCancelAdmin = async (userId: string) => {
+    if (!selectedGroup?.id && !isGroupAdmin) return;
+    try {
+      let res;
+      res = await delGroupAdminall(userId, selectedGroup!.id);
 
       if (res.data?.code === 0) {
         message.success('移除成功');
@@ -1014,148 +1139,6 @@ const AdminFiles = () => {
         />
       </Modal>
 
-      <Modal
-        title={
-          <div className="flex justify-between items-center pr-8">
-            <span>{selectedGroup?.group_name ?? ''} - 成员管理</span>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setIsAddMemberModalOpen(true)}
-              className="h-8 w-8"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-        }
-        open={isMemberModalOpen}
-        onOk={() => setIsMemberModalOpen(false)}
-        onCancel={() => setIsMemberModalOpen(false)}
-        size="large"
-        className="w-[1100px] max-w-[calc(100vw-2rem)]"
-        footer={null}
-      >
-        <div className="p-4">
-          {memberLoading ? (
-            <div className="text-center py-4">加载中...</div>
-          ) : (
-            <>
-              <div className="rounded-md border mb-4 overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {/* 1. 表头：新增了一列展示详细用户信息 */}
-                      <TableHead className="min-w-[180px]">用户</TableHead>
-                      <TableHead className="min-w-[200px]">用户信息</TableHead>
-                      <TableHead className="min-w-[180px]">添加人</TableHead>
-                      <TableHead className="min-w-[200px]">添加时间</TableHead>
-                      <TableHead className="w-[80px]">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {memberCurrentItems.length > 0 ? (
-                      memberCurrentItems.map((m) => (
-                        <TableRow key={`${m.user_id}-${m.created_time}`}>
-                          {/* 2. 用户名列：展示昵称或ID */}
-                          <TableCell className="whitespace-nowrap font-medium">
-                            {m.nickname || m.user_id}
-                          </TableCell>
-
-                          {/* 3. 新增列：展示电话、性别、部门 */}
-                          <TableCell className="space-y-1 py-2">
-                            {/* 电话 */}
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              📞 {m.phone || '-'}
-                            </div>
-
-                            {/* 部门与公司 */}
-                            <div className="text-sm text-muted-foreground flex items-center gap-1 truncate max-w-[250px]">
-                              🏢
-                              <span className="truncate">
-                                {m.nameOfAdminOrg ||
-                                  m.corporateName ||
-                                  '未知部门'}
-                              </span>
-                            </div>
-
-                            {/* 性别 (可选，如果空间不够可以隐藏) */}
-                            {m.gender && (
-                              <div className="text-xs text-muted-foreground">
-                                {m.gender === '1' || m.gender === '男'
-                                  ? '♂ 男'
-                                  : '♀ 女'}
-                              </div>
-                            )}
-                          </TableCell>
-
-                          {/* 4. 添加人列 */}
-                          <TableCell className="whitespace-nowrap">
-                            {m.created_by_nickname || m.created_by}
-                          </TableCell>
-
-                          {/* 5. 时间列 */}
-                          <TableCell>
-                            {m.created_time
-                              ? new Date(m.created_time).toLocaleString()
-                              : '-'}
-                          </TableCell>
-
-                          {/* 6. 操作列 */}
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleRemoveMember(m.user_id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center h-24">
-                          暂无数据
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {memberTotalPages > 1 && (
-                <div className="flex justify-center gap-2 mt-4">
-                  <button
-                    className="px-3 py-1 border rounded disabled:opacity-50"
-                    onClick={() =>
-                      handleMemberPageChange(memberCurrentPage - 1)
-                    }
-                    disabled={memberCurrentPage === 1}
-                    type="button"
-                  >
-                    上一页
-                  </button>
-                  <span className="px-3 py-1 flex items-center">
-                    {memberCurrentPage} / {memberTotalPages}
-                  </span>
-                  <button
-                    className="px-3 py-1 border rounded disabled:opacity-50"
-                    onClick={() =>
-                      handleMemberPageChange(memberCurrentPage + 1)
-                    }
-                    disabled={memberCurrentPage === memberTotalPages}
-                    type="button"
-                  >
-                    下一页
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </Modal>
-
       {/* 点击第一张后触发 isModalOpen*/}
       <Modal
         title={
@@ -1286,16 +1269,49 @@ const AdminFiles = () => {
 
       <Modal
         title={
-          <div className="flex justify-between items-center pr-8">
-            <span>{selectedGroup?.group_name ?? ''} - 成员管理</span>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setIsAddMemberModalOpen(true)}
-              className="h-8 w-8"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+          <div className="flex justify-between items-center w-full !w-full">
+            {/* 左侧标题 */}
+            <span className="font-medium mr-6">
+              {selectedGroup?.group_name ?? ''} - 成员管理
+            </span>
+            {/* <div className="flex-grow"></div> */}
+            {/* 右侧按钮组（移到 pr-8 外面，紧贴关闭按钮） */}
+            <div className="flex items-center gap-2">
+              {/* 单个添加成员按钮 */}
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => setIsAddMemberModalOpen(true)}
+                className="h-8 w-8 border-gray-300 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-400"
+                title="添加单个成员"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+
+              {/* 一键拉取成员按钮 */}
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      '确定要一键拉取更新所有成员吗？此操作可能需要一些时间。',
+                    )
+                  ) {
+                    handleAddallMember();
+                  }
+                }}
+                disabled={addingMember} // 拉取中禁用
+                className="h-8 w-8 border-gray-300 hover:bg-green-50 hover:text-green-600 hover:border-green-400"
+                title="一键拉取成员"
+              >
+                {addingMember ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" /> // 加载中旋转
+                ) : (
+                  <RefreshCw className="h-4 w-4" /> // 正常同步图标
+                )}
+              </Button>
+            </div>
           </div>
         }
         open={isMemberModalOpen}
@@ -1317,9 +1333,12 @@ const AdminFiles = () => {
                       {/* 1. 表头：新增了一列展示详细用户信息 */}
                       <TableHead className="min-w-[180px]">用户</TableHead>
                       <TableHead className="min-w-[200px]">用户信息</TableHead>
-                      <TableHead className="min-w-[180px]">添加人</TableHead>
+                      <TableHead className="min-w-[100px]">添加人</TableHead>
                       <TableHead className="min-w-[200px]">添加时间</TableHead>
-                      <TableHead className="w-[80px]">操作</TableHead>
+                      <TableHead className="w-[150px]">删除</TableHead>
+                      <TableHead className="w-[150px]">任命</TableHead>
+                      <TableHead className="w-[150px]">撤销任命</TableHead>
+                      {/* <TableHead className="w-[180px]">当前权限</TableHead> */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1376,11 +1395,83 @@ const AdminFiles = () => {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleRemoveMember(m.user_id)}
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `确定要移除 ${m.nickname} 吗？`,
+                                  )
+                                ) {
+                                  handleRemoveMember(m.user_id);
+                                }
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </TableCell>
+
+                          {/* 6. 操作列：合并后的管理员状态按钮 */}
+                          <TableCell>
+                            {m.is_admin ? (
+                              // 状态1：已经是管理员，显示绿色的徽章（不可点击）
+                              <span
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-green-200 bg-green-50 text-green-600 shadow-sm"
+                                title="已是管理员"
+                              >
+                                <ShieldCheck className="h-4 w-4" />
+                              </span>
+                            ) : (
+                              // 状态2：不是管理员，显示灰色的任命按钮（点击后变绿）
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-gray-400 hover:text-green-600 hover:bg-green-50"
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `确定要将 ${m.nickname} 设置为管理员吗？`,
+                                    )
+                                  ) {
+                                    handleSetAdmin(m.user_id);
+                                  }
+                                }}
+                                title="点击任命为管理员"
+                              >
+                                <ShieldCheck className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+
+                          {/* 6. 操作列：撤销管理员 */}
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-orange-500 hover:text-orange-700 hover:bg-orange-50"
+                              title="撤销管理员"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    '确定要撤销该用户的管理员权限吗？',
+                                  )
+                                ) {
+                                  handleCancelAdmin(m.user_id);
+                                }
+                              }}
+                            >
+                              <ShieldX className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+
+                          {/* <TableCell>
+                            {m.is_admin && (
+                              <span
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600 shadow-sm"
+                                title="管理员"
+                              >
+                                <ShieldCheck className="h-4 w-4" />
+                              </span>
+                            )}
+                          </TableCell> */}
                         </TableRow>
                       ))
                     ) : (
@@ -1500,20 +1591,6 @@ const AdminFiles = () => {
               <Spin tip="加载候选用户中..." />
             </div>
           ) : (
-            // <div className="space-y-4">
-            //   <div className="relative">
-            //     <Input
-            //       type="text"
-            //       placeholder="搜索昵称或用户ID..."
-            //       value={searchKeyword}
-            //       onChange={(e) => setSearchKeyword(e.target.value)}
-            //       className="w-full"
-            //     />
-            //     <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
-            //       🔍
-            //     </span>
-            //   </div>
-
             <div className="space-y-4">
               {/* 1. 姓名搜索框 */}
               <div className="flex items-center gap-3">
@@ -1529,9 +1606,6 @@ const AdminFiles = () => {
                     onChange={(e) => setSearchKeyword(e.target.value)}
                     className="w-full"
                   />
-                  <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
-                    🔍
-                  </span>
                 </div>
               </div>
               {/* 2. 手机号搜索框 */}
@@ -1657,7 +1731,9 @@ const AdminFiles = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>昵称</TableHead>
-                    <TableHead>用户ID</TableHead>
+                    <TableHead>手机号</TableHead>
+                    <TableHead>组名</TableHead>
+                    <TableHead>部门编码</TableHead>
                     <TableHead className="w-[80px]">操作</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1666,7 +1742,9 @@ const AdminFiles = () => {
                     groupAdmins.map((admin) => (
                       <TableRow key={admin.user_id}>
                         <TableCell>{admin.nickname}</TableCell>
-                        <TableCell>{admin.user_id}</TableCell>
+                        <TableCell>{admin.phone}</TableCell>
+                        <TableCell>{admin.nameOfAdminOrg}</TableCell>
+                        <TableCell>{admin.mdmCode}</TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -1722,9 +1800,6 @@ const AdminFiles = () => {
                     onChange={(e) => setSearchKeyword(e.target.value)}
                     className="w-full"
                   />
-                  <span className="absolute right-3 top-2.5 text-gray-400 text-sm">
-                    🔍
-                  </span>
                 </div>
               </div>
               {/* 2. 手机号搜索框 */}

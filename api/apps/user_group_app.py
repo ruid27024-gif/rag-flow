@@ -3,6 +3,7 @@ from quart import request
 from api.apps import current_user, login_required
 from api.db.db_models import AdminUser, Group, User, UserGroup, SyncPerson, SyncDept
 from api.db.services.user_group_service import UserGroupService
+from api.db.services.group_service import GroupService
 from api.utils.api_utils import get_json_result, get_request_json, server_error_response, validate_request
 from common.constants import RetCode
 from common import settings
@@ -16,6 +17,7 @@ from api.db.services import UserService
 from peewee import IntegrityError
 from api.db.db_models import DB
 from peewee import JOIN
+from api.db.db_models import File, File_Group,File_Admin
 
 def check_admin(user):
     is_admin = AdminUser.query(user_id=user.id, role_level=1)
@@ -39,6 +41,96 @@ def check_group_admin(user):
     return None
 
 
+# @manager.route("/my_group/members", methods=["GET"])  # noqa: F821
+# @login_required
+# async def list_my_group_members():
+#     try:
+#         error_response = check_group_admin(current_user)
+#         if error_response:
+#             return error_response
+
+#         # Find current user's group
+#         user_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
+#         if not user_group:
+#             return get_json_result(data=[])
+
+#         group_id = user_group.group_id
+        
+#         rows = list(
+#             UserGroup.select(UserGroup.user_id, UserGroup.created_by, UserGroup.created_time).where(
+#                 UserGroup.group_id == group_id
+#             )
+#         )
+#         user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
+#         nickname_by_user_id = {}
+#         if user_ids:
+#             # nickname_by_user_id = {
+#             #     u.id: u.nickname
+#             #     for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
+#             # }
+
+#             query = (
+#                 User
+#                 .select(
+#                     User.id,
+#                     User.nickname,
+#                     SyncPerson.phone,
+#                     SyncPerson.gender,
+#                     SyncDept.mdmCode,         
+#                     SyncDept.nameOfAdminOrg, 
+#                     SyncDept.corporateName 
+#                 )
+#                 # 1. User 关联 SyncPerson
+#                 # 保持原样，假设 User.email 和 SyncPerson.phone 都是 unicode_ci
+#                 .join(
+#                     SyncPerson, 
+#                     on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
+#                     join_type=JOIN.LEFT_OUTER
+#                 )
+#                 .switch(User)
+#                 # 2. SyncPerson 关联 SyncDept (关键修改点)
+#                 # 将 collate 改为 'utf8mb4_0900_ai_ci' 以匹配 SyncDept 表的默认规则
+#                 .join(
+#                     SyncDept, 
+#                     on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+#                     join_type=JOIN.LEFT_OUTER
+#                 )
+#             )
+
+#             results = (
+#                 query
+#                 .where(User.id.in_(user_ids))
+#                 .dicts() 
+#             )
+
+#             # 2. 处理结果：把列表转成以 id 为 key 的字典
+#             # 结构示例: { 101: { "id": 101, "nickname": "...", "phone": "...", ... }, ... }
+#             user_info_map = {item['id']: item for item in results}
+
+
+#         data = [
+#             {
+#                 "user_id": r.user_id,
+#                 "nickname": user_info_map.get(r.user_id, {}).get("nickname"),
+#                 "created_by": r.created_by,
+#                 "created_by_nickname": nickname_by_user_id.get(r.created_by),
+#                 "created_time": r.created_time,
+
+#                 "phone": user_info_map.get(r.user_id, {}).get("phone"),
+#                 "gender": user_info_map.get(r.user_id, {}).get("gender"),
+        
+#                 "mdmCode": user_info_map.get(r.user_id, {}).get("mdmCode"),
+#                 "nameOfAdminOrg": user_info_map.get(r.user_id, {}).get("nameOfAdminOrg"),
+#                 "corporateName": user_info_map.get(r.user_id, {}).get("corporateName"),
+#             }
+#             for r in rows
+#         ]
+
+#         print(data)
+#         return get_json_result(data=data)
+#     except Exception as e:
+#         return server_error_response(e)
+
 @manager.route("/my_group/members", methods=["GET"])  # noqa: F821
 @login_required
 async def list_my_group_members():
@@ -59,14 +151,13 @@ async def list_my_group_members():
                 UserGroup.group_id == group_id
             )
         )
+        # 注意：这里也要把 created_by 的 user_id 加入集合，防止创建者信息漏查
         user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
-        nickname_by_user_id = {}
+        
+        # 初始化字典
+        user_info_map = {}
+        
         if user_ids:
-            # nickname_by_user_id = {
-            #     u.id: u.nickname
-            #     for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
-            # }
-
             query = (
                 User
                 .select(
@@ -76,22 +167,28 @@ async def list_my_group_members():
                     SyncPerson.gender,
                     SyncDept.mdmCode,         
                     SyncDept.nameOfAdminOrg, 
-                    SyncDept.corporateName 
+                    SyncDept.corporateName,
+                    AdminUser.role_level  # 💡 1. 新增：选中管理员等级字段
                 )
                 # 1. User 关联 SyncPerson
-                # 保持原样，假设 User.email 和 SyncPerson.phone 都是 unicode_ci
                 .join(
                     SyncPerson, 
                     on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
                     join_type=JOIN.LEFT_OUTER
                 )
                 .switch(User)
-                # 2. SyncPerson 关联 SyncDept (关键修改点)
-                # 将 collate 改为 'utf8mb4_0900_ai_ci' 以匹配 SyncDept 表的默认规则
+                # 2. SyncPerson 关联 SyncDept
                 .join(
                     SyncDept, 
                     on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
                     join_type=JOIN.LEFT_OUTER
+                )
+                .switch(User) # 💡 2. 新增：切回 User 表，准备关联 AdminUser
+                # 3. User 关联 AdminUser
+                .join(
+                    AdminUser, 
+                    on=(User.id == AdminUser.user_id), 
+                    join_type=JOIN.LEFT_OUTER # 使用左连接，确保普通用户也能查出来
                 )
             )
 
@@ -101,33 +198,208 @@ async def list_my_group_members():
                 .dicts() 
             )
 
-            # 2. 处理结果：把列表转成以 id 为 key 的字典
-            # 结构示例: { 101: { "id": 101, "nickname": "...", "phone": "...", ... }, ... }
+            # 将查询结果转为字典，方便后续取值
             user_info_map = {item['id']: item for item in results}
 
-
-        data = [
-            {
+        # 组装最终返回的数据
+        data = []
+        for r in rows:
+            info = user_info_map.get(r.user_id, {})
+            role_level = info.get("role_level")
+            
+            data.append({
                 "user_id": r.user_id,
-                "nickname": user_info_map.get(r.user_id, {}).get("nickname"),
+                "nickname": info.get("nickname"),
                 "created_by": r.created_by,
-                "created_by_nickname": nickname_by_user_id.get(r.created_by),
+                "created_by_nickname": user_info_map.get(r.created_by, {}).get("nickname"),
                 "created_time": r.created_time,
 
-                "phone": user_info_map.get(r.user_id, {}).get("phone"),
-                "gender": user_info_map.get(r.user_id, {}).get("gender"),
+                "phone": info.get("phone"),
+                "gender": info.get("gender"),
         
-                "mdmCode": user_info_map.get(r.user_id, {}).get("mdmCode"),
-                "nameOfAdminOrg": user_info_map.get(r.user_id, {}).get("nameOfAdminOrg"),
-                "corporateName": user_info_map.get(r.user_id, {}).get("corporateName"),
-            }
-            for r in rows
-        ]
+                "mdmCode": info.get("mdmCode"),
+                "nameOfAdminOrg": info.get("nameOfAdminOrg"),
+                "corporateName": info.get("corporateName"),
+                
+                # 💡 3. 新增：返回管理员相关字段
+                "role_level": role_level,
+                # 如果 role_level 大于 0，则 is_admin 为 True
+                "is_admin": bool(role_level and role_level > 0) 
+            })
 
         print(data)
+
         return get_json_result(data=data)
     except Exception as e:
         return server_error_response(e)
+    
+# 二级管理员一键拉取用户到自己的组内
+@manager.route("/my_group/members/add_all", methods=["POST"])  # noqa: F821
+@login_required
+@validate_request()
+async def add_member_to_my_group_all():
+    req = await get_request_json()
+
+
+    error_response = check_group_admin(current_user)
+    if error_response:
+        return error_response
+
+    user_group = UserGroup.select().where(UserGroup.user_id == current_user.id).first()
+    if not user_group:
+            return get_json_result(
+            code=RetCode.OPERATING_ERROR,
+            message="You do not have a group. Please create one first."
+        )
+    
+
+
+    admin = AdminUser.select().where(AdminUser.role_level  == 1).first()
+    admin_id = admin.user_id
+
+    # 获取当前的组id
+    group_id = req["group_id"]
+    print(f'当前组id为：{group_id}')
+
+    # 根据组id获取组名称
+    group_name = GroupService.get_name_by_id(group_id)
+    print(group_name)
+
+    # 通过组名称获取所有人
+    persons = SyncPerson.select().where(SyncPerson.organize == group_name.strip())
+    print(persons)
+    for p in persons:
+        # 打印你需要的字段，比如 mdmName、phone、email 等
+        print(f"姓名: {p.mdmName}, 手机号: {p.phone}, 邮箱: {p.email}")
+
+    success_count = 0
+    # 遍历每一个人
+    for person in persons:
+        # 获取每一个人的账号
+        phone = person.phone
+        print(person.mdmName)
+        # 过滤自己
+        if User.email != phone:
+            # 通过账号获取每一个人的id
+            try:
+                # 尝试获取匹配该邮箱的用户对象
+                user = User.get(User.email == phone)
+                # 获取该用户的 id
+                user_id = user.id
+                print(f"获取到的用户ID为: {user_id}")
+                # 判断该用户是否已经存在组内
+                user_in_group = UserGroup.get_or_none(
+                    (UserGroup.user_id == user_id) &
+                    (UserGroup.group_id == group_id)
+                )
+                print(user_in_group)
+                if not user_in_group:
+                    print("存在未录入的数据")
+                    # 把人员拉入组内
+                    obj = UserGroupService.save(
+                        user_id=user_id,
+                        group_id=group_id,
+                        created_by=current_user.id,
+                    )
+
+                    # 拿到当前用户的根
+                    add_user = UserService.filter_by_id(user_id)
+
+                    file = FileService.get_root_folder(user_id)
+                    print(file)
+                    # 直接把人挂到1级表的对应组号上
+                    file1 = FileAdminService.insert({
+                        "id": file['id'],  # 昵称的id
+                        "parent_id": group_id,
+                        "tenant_id": admin_id,
+                        "created_by": current_user.id,
+                        "name": user.nickname,
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value
+                    })
+
+                    # 将非根目录全部写入到一级表
+                    # 获取当前人员的根
+                    file_mem = FileService.get_root_folder(user_id)
+                    person_id = file_mem['id']
+                    # 将人员文件全部挂在组id下面
+                    # 当前人员的非根文件
+                    file_person_root_fei = File.select().where((File.id != File.parent_id)
+                                                            & (File.tenant_id == person_id)
+                                                            )
+                    # 1级表中是否已经存在
+                    file_person_admin = File_Admin.select().where((File_Admin.parent_id == person_id)
+                                                            & (File_Admin.tenant_id == user_id)
+                                                            )
+                    
+                    # 如果之前1级表中不存在就写入
+                    if not file_person_admin.exists():
+                    # 将文件全部写入1级表
+                        for i in file_person_root_fei:
+                            i.to_dict()
+
+                            try:
+                                File_Admin.create(**i.to_dict())
+                            except:
+                                pass
+
+
+                    # 判断组内是否存在二级管理员
+                    query = (AdminUser
+                            .select()
+                            .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
+                            .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+
+                    admin = query.get_or_none()
+                    if admin:
+                        # 2. 获取第一个结果 （组管理员）
+                        group_user = query.first()
+                        # 获取组管理员的根目录
+                        root_folder = FileService.model.select().where(
+                            (FileService.model.tenant_id == group_user.user_id), (
+                                    FileService.model.parent_id == FileService.model.id)).first()
+                        # 根目录id
+                        pf_id = root_folder.id
+                        # 将新增用户添加到二级别表
+                        file3 = FileGroupService.insert({
+                            "id": file['id'],  # 昵称的id
+                            "parent_id": pf_id,
+                            "tenant_id": group_user.user_id,
+                            "created_by": group_user.user_id,
+                            "name": add_user.nickname,
+                            "location": "",
+                            "size": 0,
+                            "type": FileType.FOLDER.value
+                        })
+
+                        # 将非根目录全部写入到二级表
+                        # 2级表中是否已经存在
+                        file_person_group = File_Group.select().where((File_Group.parent_id == person_id)
+                                                                & (File_Group.tenant_id == user_id)
+                                                                )
+                        
+                        # 文件全部写入到2级表
+                        if not file_person_group.exists():
+                            for i in file_person_root_fei:
+                                i.to_dict()
+                                print(i.to_dict())
+                                try:
+                                    File_Group.create(**i.to_dict())
+                                except:
+                                    pass
+                        success_count += 1
+                            
+            except User.DoesNotExist:
+                print("该邮箱没有对应的用户")
+
+
+    return get_json_result(data={
+        "success_count": success_count, 
+        "msg": f"成功拉取 {success_count} 名成员"
+    })  
+
+
 
 # 二级管理员添加用户到自己的组内
 @manager.route("/my_group/members/add", methods=["POST"])  # noqa: F821
@@ -242,6 +514,148 @@ async def remove_member_from_my_group():
         return get_json_result(data={"deleted": deleted})
     except Exception as e:
         return server_error_response(e)
+    
+    
+# 拉取全量的人员数据入组
+# 1级别管理员拉人
+@manager.route("/new_all", methods=["POST"])  # noqa: F821
+@login_required
+@validate_request("group_id")
+async def add_all_user_to_group():
+    req = await get_request_json()
+    # 获取当前的组id
+    group_id = req["group_id"]
+    print(group_id)
+
+    # 根据组id获取组名称
+    group_name = GroupService.get_name_by_id(group_id)
+
+    # 通过组名称获取所有人
+    persons = SyncPerson.select().where(SyncPerson.organize == group_name)
+    for p in persons:
+    # 打印你需要的字段，比如 mdmName、phone、email 等
+        print(f"姓名: {p.mdmName}, 手机号: {p.phone}, 邮箱: {p.email}")
+    success_count = 0
+    # 遍历每一个人
+    for person in persons:
+        # 获取每一个人的账号
+        phone = person.phone
+        # 通过账号获取每一个人的id
+        
+        # 尝试获取匹配该邮箱的用户对象
+        user = User.get(User.email == phone)
+        # 获取该用户的 id
+        user_id = user.id
+        print(f"获取到的用户ID为: {user_id}")
+        # 判断该用户是否已经存在组内
+        user_in_group = UserGroup.get_or_none(
+            (UserGroup.user_id == user_id) &
+            (UserGroup.group_id == group_id)
+        )
+        # 💡 优化1：增加计数器，统计成功拉取的人数
+        print(user_in_group)
+
+        if not user_in_group:
+            success_count += 1
+            print(success_count)
+            # 把人员拉入组内
+            obj = UserGroupService.save(
+                user_id=user_id,
+                group_id=group_id,
+                created_by=current_user.id,
+            )
+
+            # 拿到当前用户的根
+            add_user = UserService.filter_by_id(user_id)
+
+            file = FileService.get_root_folder(user_id)
+
+            # 直接把人挂到1级表的组id下面
+            file1 = FileAdminService.insert({
+                "id": file['id'],  # 昵称的id
+                "parent_id": group_id,
+                "tenant_id": current_user.id,
+                "created_by": current_user.id,
+                "name": user.nickname,
+                "location": "",
+                "size": 0,
+                "type": FileType.FOLDER.value
+            })
+
+            # 获取当前人员的根
+            file_mem = FileService.get_root_folder(user_id)
+            person_id = file_mem['id']
+            # 将人员文件全部挂在组id下面
+            # 当前人员的非根文件
+            file_person_root_fei = File.select().where((File.id != File.parent_id)
+                                                    & (File.tenant_id == person_id)
+                                                    )
+            # 1级表中是否已经存在
+            file_person_admin = File_Admin.select().where((File_Admin.parent_id == person_id)
+                                                    & (File_Admin.tenant_id == user_id)
+                                                    )
+            
+            # 如果之前二级表中不存在就写入
+            if not file_person_admin.exists():
+                print("不存在")
+                # 将文件全部写入到全局参考库下
+                for i in file_person_root_fei:
+                    i.to_dict()
+                    print(i.to_dict())
+                    try:
+                        File_Admin.create(**i.to_dict())
+                    except:
+                        pass
+
+            
+            # 2级表中是否已经存在
+            file_person_group = File_Group.select().where((File_Group.parent_id == person_id)
+                                                    & (File_Group.tenant_id == user_id)
+                                                    )
+
+            # 判断组内是否存在二级管理员
+            query = (AdminUser
+                        .select()
+                        .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
+                        .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+
+            admin_group = query.get_or_none()
+            if admin_group:
+                # 2. 获取第一个结果 （组管理员）
+                group_user = query.first()
+                # 获取组管理员的根目录
+                root_folder = FileService.model.select().where((FileService.model.tenant_id == group_user.user_id), (
+                        FileService.model.parent_id == FileService.model.id)).first()
+                # 根目录id
+                pf_id = root_folder.id
+                # 将新增用户添加到二级别表
+                file3 = FileGroupService.insert({
+                    "id": file['id'],  # 昵称的id
+                    "parent_id": pf_id,
+                    "tenant_id": group_user.user_id,
+                    "created_by": group_user.user_id,
+                    "name": add_user.nickname,
+                    "location": "",
+                    "size": 0,
+                    "type": FileType.FOLDER.value
+                })
+
+                # 文件全部写入到2级表
+                if not file_person_group.exists():
+                    for i in file_person_root_fei:
+                        i.to_dict()
+                        print(i.to_dict())
+                        try:
+                            File_Group.create(**i.to_dict())
+                        except:
+                            pass
+
+    # 💡 优化4：返回标准的 JSON 结果
+    return get_json_result(data={
+        "success_count": success_count, 
+        "msg": f"全量拉取完成，成功拉取 {success_count} 名成员"
+    })
+
 
 # 1级别管理员拉人
 @manager.route("/new", methods=["POST"])  # noqa: F821
@@ -267,6 +681,8 @@ async def add_user_to_group():
         existing_manager = query.get_or_none()
 
         is_new_user_manager = AdminUser.query(user_id=user_id, role_level=2)
+
+
         
         if not existing_manager and not is_new_user_manager:
              return get_json_result(
@@ -277,6 +693,7 @@ async def add_user_to_group():
         exists = UserGroup.get_or_none(
             (UserGroup.user_id == user_id) & (UserGroup.group_id == group_id)
         )
+
         if exists:
             return get_json_result(
                 code=RetCode.DATA_ERROR,
@@ -611,31 +1028,11 @@ async def list_group_members():
                 UserGroup.group_id == group_id
             )
         )
+        # 收集所有需要查询详情的 user_id
         user_ids = list({r.user_id for r in rows} | {r.created_by for r in rows})
-        nickname_by_user_id = {}
-        # if user_ids:
-        #     nickname_by_user_id = {
-        #         u.id: u.nickname
-        #         for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
-        #     }
-
-        # data = [
-        #     {
-        #         "user_id": r.user_id,
-        #         "nickname": nickname_by_user_id.get(r.user_id),
-        #         "created_by": r.created_by,
-        #         "created_by_nickname": nickname_by_user_id.get(r.created_by),
-        #         "created_time": r.created_time,
-        #     }
-        #     for r in rows
-        # ]
-
+        
+        user_info_map = {}
         if user_ids:
-            # nickname_by_user_id = {
-            #     u.id: u.nickname
-            #     for u in User.select(User.id, User.nickname).where(User.id.in_(user_ids))
-            # }
-
             query = (
                 User
                 .select(
@@ -645,21 +1042,27 @@ async def list_group_members():
                     SyncPerson.gender,
                     SyncDept.mdmCode,         
                     SyncDept.nameOfAdminOrg, 
-                    SyncDept.corporateName 
+                    SyncDept.corporateName,
+                    AdminUser.role_level  # 💡 1. 新增：选中管理员等级字段
                 )
                 # 1. User 关联 SyncPerson
-                # 保持原样，假设 User.email 和 SyncPerson.phone 都是 unicode_ci
                 .join(
                     SyncPerson, 
                     on=(User.email.collate('utf8mb4_unicode_ci') == SyncPerson.phone),
                     join_type=JOIN.LEFT_OUTER
                 )
                 .switch(User)
-                # 2. SyncPerson 关联 SyncDept (关键修改点)
-                # 将 collate 改为 'utf8mb4_0900_ai_ci' 以匹配 SyncDept 表的默认规则
+                # 2. SyncPerson 关联 SyncDept
                 .join(
                     SyncDept, 
                     on=(SyncPerson.organizationCode.collate('utf8mb4_0900_ai_ci') == SyncDept.mdmCode),
+                    join_type=JOIN.LEFT_OUTER
+                )
+                .switch(User) # 💡 2. 新增：切回 User 表，准备关联 AdminUser
+                # 3. User 关联 AdminUser (左连接，保证非管理员也能查出来)
+                .join(
+                    AdminUser, 
+                    on=(User.id == AdminUser.user_id), 
                     join_type=JOIN.LEFT_OUTER
                 )
             )
@@ -670,11 +1073,10 @@ async def list_group_members():
                 .dicts() 
             )
 
-            # 2. 处理结果：把列表转成以 id 为 key 的字典
-            # 结构示例: { 101: { "id": 101, "nickname": "...", "phone": "...", ... }, ... }
+            # 把查询结果转为以 user_id 为 key 的字典，方便后续快速取值
             user_info_map = {item['id']: item for item in results}
 
-
+        # 组装最终返回的数据
         data = [
             {
                 "user_id": r.user_id,
@@ -689,11 +1091,14 @@ async def list_group_members():
                 "mdmCode": user_info_map.get(r.user_id, {}).get("mdmCode"),
                 "nameOfAdminOrg": user_info_map.get(r.user_id, {}).get("nameOfAdminOrg"),
                 "corporateName": user_info_map.get(r.user_id, {}).get("corporateName"),
+                
+                # 💡 3. 新增：返回管理员相关字段
+                "role_level": user_info_map.get(r.user_id, {}).get("role_level"),
+                "is_admin": bool(user_info_map.get(r.user_id, {}).get("role_level") and user_info_map.get(r.user_id, {}).get("role_level") > 0)
             }
             for r in rows
         ]
 
-        print(data)
         return get_json_result(data=data)
     except Exception as e:
         return server_error_response(e)
