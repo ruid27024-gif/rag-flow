@@ -82,13 +82,21 @@ export function Sessions({
               >
                 <span
                   className="
-    text-2xl font-bold
-    bg-gradient-to-l from-cyan-400 to-emerald-400
-    bg-clip-text
-    text-transparent
-    group-hover:text-black dark:group-hover:text-black
-    transition-all duration-300
-  "
+                  text-2xl font-bold
+                  bg-gradient-to-l from-cyan-400 to-emerald-400
+                  bg-clip-text
+                  text-transparent
+                  [-webkit-text-fill-color:transparent]
+                  group-hover:bg-none
+                  group-hover:text-black
+                  group-hover:[-webkit-text-fill-color:#000]
+                  dark:group-hover:text-black
+                  dark:group-hover:[-webkit-text-fill-color:#000]
+                  transition-all duration-300
+                "
+                  style={{
+                    fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, serif`,
+                  }}
                 >
                   {t('chat.server')}
                 </span>

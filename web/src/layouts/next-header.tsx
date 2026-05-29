@@ -87,6 +87,13 @@ export function Header() {
         name: t('header.admin'),
         icon: Shield,
       });
+
+      //   list.push({
+      //     path: '/admin/services', // 直接写死或定义在 config 中
+      //     name: '服务', // 确保 i18n 有这个 key
+      //     icon: File, // 使用不同的图标以便区分
+      //     isExternal: true, // 👈 打标记，告诉 handleClick 这是一个外部跳转
+      // });
     }
 
     return list;
@@ -163,6 +170,40 @@ export function Header() {
       }
       return;
     }
+    const target = tagsData.find((item) => item.path === path);
+
+    // if (target?.isExternal) {
+    //   // 👇 获取当前的 Token
+    //   const token = getAuthorization();
+
+    //   // 👇 拼接 Token 到 URL
+    //   // 假设外部服务通过 URL 参数 ?token=xxx 来接收
+    //   const url = new URL(path as string);
+    //   url.searchParams.set('token', token || '');
+
+    //   // 👇 执行全页面跳转
+    //   window.location.href = url.toString();
+
+    //   return; // 阻止后续的 navigate
+    // }
+
+    // // 👇 换个变量名，比如 currentTag，避免和上面的 targetPath 冲突
+    // const currentTag = tagsData.find(item => item.path === path);
+
+    // // 如果是外部链接（即我们刚刚加的 9222 端口跳转）
+    // if (currentTag?.isExternal) {
+    //   // const token = getToken(); // 获取当前登录的 Token
+    //   const token = getAuthorization();
+
+    //   // 拼接 URL，带上 token 参数
+    //   const separator = (path as string).includes('?') ? '&' : '?';
+    //   const finalUrl = `${path}${separator}token=${encodeURIComponent(token || '')}`;
+
+    //   // 执行跳转
+    //   window.location.href = finalUrl;
+    //   return; // 阻止后续的 navigate 逻辑
+    // }
+
     navigate(path as Routes);
   };
 
@@ -191,19 +232,7 @@ export function Header() {
         onChange={handleChange}
         activeClassName="text-bg-base bg-metallic-gradient border-b-[#00BEB4] border-b-2"
       ></Segmented>
-      {/* 
-    <div className="relative w-[200px] h-full flex items-center justify-end">
-      <HengfengLogo>
-        
-        <button
-          onClick={handleSmartClick}
-          className="w-full h-full rounded-full bg-white/10 backdrop-blur-sm border border-cyan-300/50 hover:bg-white/20 transition-colors flex items-center justify-center"
-        >
-          
-          <span className="text-white text-xs font-bold">恒</span>
-        </button>
-      </HengfengLogo>
-    </div> */}
+
       <div className="flex items-center gap-5 text-text-badge">
         {/* <a
           target="_blank"

@@ -4,8 +4,6 @@ import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ChatBasicSetting from './chat-basic-settings';
-import { ChatModelSettings } from './chat-model-settings';
-import { ChatPromptEngine } from './chat-prompt-engine';
 import { SavingButton } from './saving-button';
 
 type ChatSettingsProps = {
@@ -33,7 +31,9 @@ export function ChatSettings({
       <div className="flex justify-between items-center text-base pb-2">
         {/* 左侧标题区域 */}
         <div className="flex items-center gap-2">
-          <h2 className="font-medium text-gray-900">{t('chat.chatSetting')}</h2>
+          <h2 className="font-medium text-gray-900 dark:text-gray-100">
+            {t('chat.chatSetting')}
+          </h2>
           {/* 新增的副标题，使用稍小的字体和浅色 */}
           <span className="text-sm font-normal text-blue-500">
             （填写第一项即可）
@@ -48,9 +48,9 @@ export function ChatSettings({
         <section className="space-y-6 overflow-auto flex-1 pr-4 min-h-0">
           <ChatBasicSetting></ChatBasicSetting>
           <Separator />
-          <ChatPromptEngine></ChatPromptEngine>
+          {/* <ChatPromptEngine></ChatPromptEngine>
           <Separator />
-          <ChatModelSettings></ChatModelSettings>
+          <ChatModelSettings></ChatModelSettings> */}
         </section>
         <div className="space-x-5 text-right pt-4">
           <Button variant={'outline'} onClick={switchSettingVisible}>

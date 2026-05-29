@@ -398,6 +398,15 @@ const routes = [
         path: `/user-setting${Routes.DataSource}`,
         component: `@/pages/user-setting${Routes.DataSource}`,
       },
+
+      {
+        path: 'services', // 假设这个常量是 '/admin/services'
+        component: '@/pages/admin/service-status',
+      },
+      {
+        path: 'users', // 假设是 '/admin/users'
+        component: '@/pages/admin/users',
+      },
     ],
   },
 

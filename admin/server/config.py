@@ -229,11 +229,13 @@ def load_configurations(config_path: str) -> list[BaseConfig]:
     for k, v in raw_configs.items():
         match k:
             case "ragflow":
-                name: str = f'ragflow_{ragflow_count}'
+                # f'ragflow_{ragflow_count}'
+                name: str = f'云枢_{ragflow_count}'
                 host: str = v['host']
                 http_port: int = v['http_port']
                 config = RAGFlowServerConfig(id=id_count, name=name, host=host, port=http_port,
-                                             service_type="ragflow_server",
+                                            #  service_type="ragflow_server",
+                                             service_type="yunshu_server",
                                              detail_func_name="check_ragflow_server_alive")
                 configurations.append(config)
                 id_count += 1

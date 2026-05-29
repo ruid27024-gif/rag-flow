@@ -78,13 +78,14 @@ class FileAdminService(CommonService):
             sort_logic = Case(
             cls.model.name,
             [
-                (None, 0),
+                (".knowledgebase", 0),
                 ("全局参考库", 1),
                 ("工艺研究一室", 2),
                 ("工艺研究二室", 3),
                 ("工艺研究三室", 4),
-                ("新品事业部研发部", 5),
+                ("新品事业部研发部", 5)
             ],
+            6
             )
 
             files = files.order_by(sort_logic)

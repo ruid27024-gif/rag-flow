@@ -64,6 +64,8 @@ if __name__ == '__main__':
     setup_auth(login_manager)
     init_default_admin()
     SERVICE_CONFIGS.configs = load_configurations(SERVICE_CONF)
+    print(SERVICE_CONFIGS.configs)
+
 
     try:
         logging.info("RAGFlow Admin service start...")

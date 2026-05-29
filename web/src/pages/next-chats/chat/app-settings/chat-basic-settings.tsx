@@ -141,8 +141,7 @@ export default function ChatBasicSetting() {
       ></SwitchFormField> */}
       <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
 
-      <div className="flex items-center gap-2 mb-4">
-        {/* 短横线 */}
+      {/* <div className="flex items-center gap-2 mb-4">
         <div className="h-4 w-1 bg-blue-500 rounded-full"></div>
         <span className="text-sm font-bold text-gray-900">
           固定项（参数展示区域）
@@ -165,7 +164,7 @@ export default function ChatBasicSetting() {
             <FormMessage />
           </FormItem>
         )}
-      />
+      /> */}
 
       {/* <TavilyFormField></TavilyFormField> */}
 

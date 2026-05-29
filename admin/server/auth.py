@@ -40,32 +40,35 @@ def setup_auth(login_manager):
     def load_user(web_request):
         jwt = Serializer(secret_key=settings.SECRET_KEY)
         authorization = web_request.headers.get("Authorization")
+        print(authorization)
         if authorization:
-            try:
-                access_token = str(jwt.loads(authorization))
 
-                if not access_token or not access_token.strip():
-                    logging.warning("Authentication attempt with empty access token")
-                    return None
-
-                # Access tokens should be UUIDs (32 hex characters)
-                if len(access_token.strip()) < 32:
-                    logging.warning(f"Authentication attempt with invalid token format: {len(access_token)} chars")
-                    return None
-
-                user = UserService.query(
-                    access_token=access_token, status=StatusEnum.VALID.value
-                )
-                if user:
-                    if not user[0].access_token or not user[0].access_token.strip():
-                        logging.warning(f"User {user[0].email} has empty access_token in database")
-                        return None
-                    return user[0]
-                else:
-                    return None
-            except Exception as e:
-                logging.warning(f"load_user got exception {e}")
+            access_token = str(jwt.loads(authorization))
+            print("传入的auth为")
+            print(access_token)
+            if not access_token or not access_token.strip():
+                logging.warning("Authentication attempt with empty access token")
+                print("1")
                 return None
+
+            # Access tokens should be UUIDs (32 hex characters)
+            if len(access_token.strip()) < 32:
+                logging.warning(f"Authentication attempt with invalid token format: {len(access_token)} chars")
+                print("2")
+                return None
+
+            print("hello")
+            user = UserService.query(
+                access_token=access_token, status=StatusEnum.VALID.value
+            )
+            if user:
+                if not user[0].access_token or not user[0].access_token.strip():
+                    logging.warning(f"User {user[0].email} has empty access_token in database")
+                    return None
+                return user[0]
+            else:
+                return None
+
         else:
             return None
 
@@ -168,7 +171,9 @@ def login_verify(f):
             }), 200
 
         username = auth.parameters['username']
+        print(username)
         password = auth.parameters['password']
+        print(password)
         try:
             if not check_admin(username, password):
                 return jsonify({

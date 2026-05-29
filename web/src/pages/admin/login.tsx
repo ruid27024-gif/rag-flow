@@ -65,6 +65,9 @@ function AdminLogin() {
           email: req.data.email,
         };
 
+        console.log(token);
+        console.log(authorization);
+
         authorizationUtil.setItems({
           Authorization: authorization as string,
           Token: token,

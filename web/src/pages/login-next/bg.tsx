@@ -122,6 +122,7 @@ export const BgSvg = ({ isPaused = false }: { isPaused?: boolean }) => {
       </svg>
     );
   };
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none ">
       <div className="absolute top-0 left-0 right-0 w-full">

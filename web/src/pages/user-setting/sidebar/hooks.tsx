@@ -27,5 +27,22 @@ export const useHandleMenuClick = () => {
     [logout, navigate],
   );
 
+  //   const handleMenuClick = useCallback(
+  //   (key: Routes) => () => {
+  //     if (key === Routes.Logout) {
+  //       logout();
+  //     } else {
+  //       setActive(key);
+  //       // 核心修改：判断如果是管理员路径，就直接跳转，不再拼接 user-setting
+  //       if (key.startsWith('/admin')) {
+  //         navigate(key);
+  //       } else {
+  //         navigate(`${Routes.UserSetting}${key}`);
+  //       }
+  //     }
+  //   },
+  //   [logout, navigate],
+  // );
+
   return { handleMenuClick, active, setActive };
 };

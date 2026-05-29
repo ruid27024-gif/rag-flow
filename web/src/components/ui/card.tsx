@@ -9,9 +9,22 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      'rounded-lg border-border-button border-0.5 shadow-sm bg-bg-input transition-shadow',
+      'border-border-button border shadow-sm bg-bg-input transition-shadow',
       className,
     )}
+    // className={cn(
+    //   // 使用 Tailwind 自带的绿色边框
+    //   'border border-purple-200 shadow-sm bg-bg-input transition-shadow',
+    //   className,
+    // )}
+
+    // className={cn(
+    //   // 1. 把 shadow-md 换成更扩散的 shadow-xl
+    //   // 2. 加上 -translate-y-1.5 保持上移
+    //   // 3. 加上 will-change-transform 让渲染更丝滑，避免边缘发虚
+    //   'bg-bg-input shadow-xl transition-all hover:shadow-2xl -translate-y-1.5 will-change-transform',
+    //   className,
+    // )}
     {...props}
   />
 ));

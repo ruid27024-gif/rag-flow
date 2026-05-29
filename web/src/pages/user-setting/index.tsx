@@ -37,7 +37,7 @@ const UserSetting = () => {
           </BreadcrumbList>
         </Breadcrumb>
       </PageHeader>
-      <div
+      {/* <div
         className={cn(
           styles.settingWrapper,
           'overflow-auto flex flex-1 pt-4 pr-4 pb-4',
@@ -46,6 +46,30 @@ const UserSetting = () => {
         <SideBar></SideBar>
         <div className={cn(styles.outletWrapper, 'flex flex-1 rounded-lg')}>
           <Outlet></Outlet>
+        </div>
+      </div> */}
+
+      <div
+        className={cn(
+          styles.settingWrapper,
+          'flex flex-row flex-1 pt-4 pr-4 pb-4 overflow-hidden',
+        )}
+      >
+        {/* 2. 左侧：锁定宽度 */}
+        {/* <div className="w-[337px] flex-shrink-0 h-full">
+      <SideBar />
+    </div> */}
+        <SideBar></SideBar>
+
+        {/* 3. 右侧：flex-1 自动占满剩余宽度，h-full 占满高度 */}
+        <div
+          className={cn(
+            styles.outletWrapper,
+            'flex-1 h-full ml-4 rounded-lg overflow-hidden',
+          )}
+        >
+          {/* 这里的内容现在应该能撑满高度了 */}
+          <Outlet />
         </div>
       </div>
     </section>

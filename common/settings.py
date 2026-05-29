@@ -134,6 +134,8 @@ def get_svr_queue_names():
 
 def _get_or_create_secret_key():
     secret_key = os.environ.get("RAGFLOW_SECRET_KEY")
+    secret_key = 'a7f3c9e1b4d20856f1a9c3e7b2d40856f1a9c3e7b2d40856f1a9c3e7b2d40856'
+    # print(secret_key)
     if secret_key and len(secret_key) >= 32:
         return secret_key
 

@@ -107,7 +107,7 @@ export default function Datasets() {
             <EmptyAppCard
               showIcon
               size="large"
-              className="w-[480px] p-14"
+              className="w-[480px] p-14 "
               isSearch={!!searchString}
               type={EmptyCardType.Dataset}
               onClick={() => showModal()}
@@ -116,21 +116,23 @@ export default function Datasets() {
         )}
         {(!!kbs?.length || searchString) && (
           <>
-            <ListFilterBar
-              title={t('header.dataset')}
-              searchString={searchString}
-              onSearchChange={handleInputChange}
-              value={filterValue}
-              filters={owners}
-              onChange={handleFilterSubmit}
-              className="px-8"
-              icon={'datasets'}
-            >
-              <Button onClick={showModal}>
-                <Plus className=" size-2.5" />
-                {t('knowledgeList.createKnowledgeBase')}
-              </Button>
-            </ListFilterBar>
+            <div className="px-8 pt-5">
+              <ListFilterBar
+                title={t('header.dataset')}
+                searchString={searchString}
+                onSearchChange={handleInputChange}
+                value={filterValue}
+                filters={owners}
+                onChange={handleFilterSubmit}
+                // className="px-8"
+                icon={'datasets'}
+              >
+                <Button onClick={showModal}>
+                  <Plus className=" size-2.5" />
+                  {t('knowledgeList.createKnowledgeBase')}
+                </Button>
+              </ListFilterBar>
+            </div>
             {(!kbs?.length || kbs?.length <= 0) && searchString && (
               <div className="flex w-full items-center justify-center h-[calc(100vh-164px)]">
                 <EmptyAppCard
@@ -159,12 +161,26 @@ export default function Datasets() {
 
             {/* 滚动容器包含所有内容 */}
             <div className="flex-1 min-h-0 overflow-y-auto">
-              <div className="flex flex-col gap-8 w-full p-8">
+              <div className="flex flex-col gap-4 w-full px-8 pt-1">
                 {Object.entries(groupedDatasets).map(
                   ([groupName, datasets]) => (
                     <div key={groupName} className="flex flex-col gap-4">
                       {/* 组名 */}
-                      <h2 className="text-lg font-bold text-black-500 font-['Georgia','Times_New_Roman','serif']">
+                      <h2
+                        className="
+                            pl-3
+                            text-transparent
+                            [-webkit-text-fill-color:transparent]
+                            bg-clip-text
+                            bg-gradient-to-r
+                            from-[#065F46]
+                            to-[#34D399]
+                            font-serif
+                          "
+                        style={{
+                          fontFamily: `Georgia, "Times New Roman", serif`,
+                        }}
+                      >
                         {groupName}{' '}
                         <span
                           className="
@@ -178,9 +194,10 @@ export default function Datasets() {
                           hover:scale-110 hover:shadow-[0_0_16px_rgba(52,211,153,0.5),0_0_24px_rgba(16,185,129,0.3),inset_0_1px_2px_rgba(255,255,255,0.8)]
                         "
                         >
-                          <span className="relative z-10 drop-shadow-sm">
+                          <span className="relative z-10 text-blue [-webkit-text-fill-color:#2563eb]">
                             {datasets.length}
                           </span>
+
                           <span className="absolute left-1 top-1 h-2 w-2 rounded-full bg-white/80 blur-[1px]" />
                           <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500/20 blur-sm" />
                         </span>

@@ -273,6 +273,29 @@ const Login = () => {
       />
       <div className=" h-[inherit] relative overflow-auto">
         <BgSvg isPaused={isUserInteracting} />
+        {/* 独立的背景层，直接放在页面最外层或你需要的位置 */}
+        {/* <div style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          width: '100%', 
+          height: '600px', // 或者写 height: '100vh' 让它铺满全屏
+          zIndex: 0        // 层级设为 0，保证它在最底层
+        }}>
+          <FloatingLines 
+            enabledWaves={["top","middle","bottom"]}
+            lineCount={8}
+            lineDistance={8}
+            bendRadius={8}
+            bendStrength={-2}
+            interactive
+            parallax={true}
+            animationSpeed={1}
+            gradientStart="#10B981"
+            gradientMid="#6f6f6f"
+            gradientEnd="#6a6a6a"
+          />
+        </div> */}
 
         <div className="absolute top-3 flex flex-col items-center mb-12 w-full text-text-primary">
           <div className="flex items-center mb-4 w-full pl-10 pt-10 ">
@@ -289,7 +312,7 @@ const Login = () => {
           {/* <h1 className="pl-3 text-4xl text-transparent bg-clip-text bg-gradient-to-r from-[#065F46] to-[#34D399]">
             {t('title')}
           </h1> */}
-          <h1
+          {/* <h1
             className="pl-3 text-4xl font-extrabold text-transparent bg-clip-text animate-shine, font-['Georgia','Times_New_Roman','serif']"
             style={{
               // 从深绿色(#065F46) 渐变到 亮绿色(#34D399)
@@ -298,6 +321,36 @@ const Login = () => {
               WebkitBackgroundClip: 'text',
               backgroundClip: 'text',
               // willChange: 'background-position', // 静态渐变可以删掉这行
+            }}
+          >
+            {t('title')}
+          </h1> */}
+
+          {/* <h1
+            className="pl-3 text-4xl font-extrabold animate-shine font-['Georgia','Times_New_Roman','serif']"
+            style={{
+              background: 'linear-gradient(90deg, #065F46, #34D399, #065F46)',
+              backgroundSize: '200% 100%',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              color: 'transparent',
+              WebkitFontSmoothing: 'antialiased',
+            }}
+          >
+            {t('title')}
+          </h1> */}
+
+          <h1
+            className="pl-3 text-4xl font-extrabold animate-shine font-serif"
+            style={{
+              fontFamily: `Georgia, "Times New Roman", serif`,
+              background: 'linear-gradient(90deg, #065F46, #34D399, #065F46)',
+              backgroundSize: '200% 100%',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              color: 'transparent',
+              WebkitTextFillColor: 'transparent',
+              WebkitFontSmoothing: 'antialiased',
             }}
           >
             {t('title')}

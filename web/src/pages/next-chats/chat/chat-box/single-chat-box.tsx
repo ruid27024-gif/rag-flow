@@ -208,7 +208,12 @@ export function SingleChatBox({
               {/* 装饰性背景光晕 */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-green-400/20 blur-3xl rounded-full pointer-events-none" />
 
-              <h1 className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight">
+              <h1
+                className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight"
+                style={{
+                  fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, Georgia, "Times New Roman", serif`,
+                }}
+              >
                 木本·云枢 智能小助手
                 <span className="ml-2 inline-block animate-bounce text-green-600">
                   <TimeIcon />

@@ -25,5 +25,5 @@ export function groupListByType<T extends Record<string, any>>(
 export function buildOwnersFilter<T extends Record<string, any>>(list: T[]) {
   const owners = groupListByType(list, 'tenant_id', 'nickname');
 
-  return { field: 'owner', list: owners, label: 'Owner' };
+  return { field: 'owner', list: owners, label: '创建人' };
 }

@@ -23,6 +23,7 @@ import ThemeSwitch from '../components/theme-switch';
 import { IS_ENTERPRISE } from '../utils';
 
 const AdminNavigationLayout = () => {
+  console.log(IS_ENTERPRISE);
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -43,7 +44,7 @@ const AdminNavigationLayout = () => {
         name: t('admin.userManagement'),
         icon: <LucideUserCog className="size-[1em]" />,
       },
-      ...(IS_ENTERPRISE
+      ...(1
         ? [
             {
               path: Routes.AdminWhitelist,

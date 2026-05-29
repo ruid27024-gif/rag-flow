@@ -1,3 +1,4 @@
+import { HomeIcon } from '@/components/svg-icon';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -35,7 +36,6 @@ import {
   RefreshCw,
   Settings,
   ShieldCheck,
-  ShieldX,
   Trash2,
   Users,
 } from 'lucide-react'; // 确保引入了 RefreshCw 图标
@@ -46,6 +46,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DialogConfigModal } from './DialogConfigModal';
 
 interface Group {
@@ -130,6 +131,7 @@ export interface CandidateUser {
 }
 
 const AdminFiles = () => {
+  const { t } = useTranslation();
   const { data: userInfo } = useFetchUserInfo();
   const isGroupAdmin = userInfo?.role_level === 2;
   // const isSuperAdmin = userInfo?.role_level === 1 || userInfo?.is_admin_user;
@@ -889,7 +891,17 @@ const AdminFiles = () => {
 
   return (
     <div className="p-8">
-      <div className="flex gap-4 mb-8">
+      <div>
+        {/* 图标和标题的简单组合 */}
+        <div className="text-2xl font-semibold flex items-center gap-2.5">
+          {/* 1. 图标 */}
+          <HomeIcon name="set" width={'32'} />
+          {/* 2. 名称 */}
+          <span>{'系统设置'}</span>
+        </div>
+      </div>
+
+      <div className="flex gap-4 mb-8 mt-5">
         {isGroupAdmin ? (
           <>
             <Card
@@ -978,8 +990,8 @@ const AdminFiles = () => {
               onClick={() => setIsGroupAdminKbOpen(true)}
             >
               <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-teal-600" />
                 </div>
                 <div>
                   <h3 className="font-medium text-lg">参考库权限管理</h3>
@@ -1214,11 +1226,18 @@ const AdminFiles = () => {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              // 调用删除函数，传入当前组的 ID
                               onClick={(e) => {
-                                // 阻止事件冒泡，防止触发行的双击事件
+                                // 1. 阻止事件冒泡
                                 e.stopPropagation();
-                                handleDeleteGroup(group.id);
+
+                                // 2. 增加二次确认
+                                if (
+                                  window.confirm(
+                                    `确定要删除该组吗？此操作不可撤销！`,
+                                  )
+                                ) {
+                                  handleDeleteGroup(group.id);
+                                }
                               }}
                               title="删除组"
                             >
@@ -1335,9 +1354,9 @@ const AdminFiles = () => {
                       <TableHead className="min-w-[200px]">用户信息</TableHead>
                       <TableHead className="min-w-[100px]">添加人</TableHead>
                       <TableHead className="min-w-[200px]">添加时间</TableHead>
-                      <TableHead className="w-[150px]">删除</TableHead>
-                      <TableHead className="w-[150px]">任命</TableHead>
-                      <TableHead className="w-[150px]">撤销任命</TableHead>
+                      <TableHead className="w-[100px]">删除</TableHead>
+                      <TableHead className="w-[100px]">管理员</TableHead>
+                      {/* <TableHead className="w-[150px]">撤销任命</TableHead> */}
                       {/* <TableHead className="w-[180px]">当前权限</TableHead> */}
                     </TableRow>
                   </TableHeader>
@@ -1412,15 +1431,26 @@ const AdminFiles = () => {
                           {/* 6. 操作列：合并后的管理员状态按钮 */}
                           <TableCell>
                             {m.is_admin ? (
-                              // 状态1：已经是管理员，显示绿色的徽章（不可点击）
-                              <span
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-green-200 bg-green-50 text-green-600 shadow-sm"
-                                title="已是管理员"
+                              // 状态1：已经是管理员，显示绿色的徽章，点击后触发“撤销”逻辑
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-green-600 bg-green-50 hover:bg-green-100 hover:text-green-700"
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `确定要撤销 ${m.nickname} 的管理员权限吗？`,
+                                    )
+                                  ) {
+                                    handleCancelAdmin(m.user_id);
+                                  }
+                                }}
+                                title="点击撤销管理员权限"
                               >
                                 <ShieldCheck className="h-4 w-4" />
-                              </span>
+                              </Button>
                             ) : (
-                              // 状态2：不是管理员，显示灰色的任命按钮（点击后变绿）
+                              // 状态2：不是管理员，显示灰色的任命按钮，点击后触发“任命”逻辑
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -1440,38 +1470,6 @@ const AdminFiles = () => {
                               </Button>
                             )}
                           </TableCell>
-
-                          {/* 6. 操作列：撤销管理员 */}
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-orange-500 hover:text-orange-700 hover:bg-orange-50"
-                              title="撤销管理员"
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    '确定要撤销该用户的管理员权限吗？',
-                                  )
-                                ) {
-                                  handleCancelAdmin(m.user_id);
-                                }
-                              }}
-                            >
-                              <ShieldX className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-
-                          {/* <TableCell>
-                            {m.is_admin && (
-                              <span
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600 shadow-sm"
-                                title="管理员"
-                              >
-                                <ShieldCheck className="h-4 w-4" />
-                              </span>
-                            )}
-                          </TableCell> */}
                         </TableRow>
                       ))
                     ) : (
@@ -1750,9 +1748,15 @@ const AdminFiles = () => {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                            onClick={() =>
-                              handleRemoveGroupAdmin(admin.user_id)
-                            }
+                            onClick={(e) => {
+                              // 1. 阻止事件冒泡
+                              e.stopPropagation();
+
+                              // 2. 增加二次确认
+                              if (window.confirm(`确定要撤销该组管理员吗！`)) {
+                                handleRemoveGroupAdmin(admin.user_id);
+                              }
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
