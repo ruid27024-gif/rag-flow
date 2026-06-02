@@ -181,8 +181,8 @@ export default function Datasets() {
                           fontFamily: `Georgia, "Times New Roman", serif`,
                         }}
                       >
-                        {groupName}{' '}
-                        <span
+                        {groupName}
+                        {/* <span
                           className="
                           ml-2 relative inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full
                           bg-gradient-to-br from-emerald-200 via-teal-300 to-green-300
@@ -200,7 +200,7 @@ export default function Datasets() {
 
                           <span className="absolute left-1 top-1 h-2 w-2 rounded-full bg-white/80 blur-[1px]" />
                           <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500/20 blur-sm" />
-                        </span>
+                        </span> */}
                       </h2>
 
                       {/* 卡片区域 */}

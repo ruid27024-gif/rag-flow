@@ -27,12 +27,14 @@ const UserSetting = () => {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink onClick={navigateToHome}>
-                <House className="size-4" />
+                <House className="size-6 ml-8 text-gray-600 hover:text-blue-600 transition-colors" />
               </BreadcrumbLink>
             </BreadcrumbItem>
-            <BreadcrumbSeparator />
+            <BreadcrumbSeparator className="translate-y-[7px]" />
             <BreadcrumbItem>
-              <BreadcrumbPage>{t('setting.profile')}</BreadcrumbPage>
+              <BreadcrumbPage className="w-28 whitespace-nowrap text-ellipsis overflow-hidden translate-y-[3px] text-gray-400 dark:text-gray-500">
+                {t('setting.profile')}
+              </BreadcrumbPage>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>

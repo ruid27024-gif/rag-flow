@@ -13,6 +13,7 @@ import {
   isSupportedPreviewDocumentType,
 } from '@/utils/document-util';
 import { CellContext } from '@tanstack/react-table';
+import { Tooltip } from 'antd';
 import { t } from 'i18next';
 import {
   ArrowDownToLine,
@@ -92,34 +93,55 @@ export function ActionCell({
   return (
     <section className="flex gap-4 items-center text-text-sub-title-invert opacity-0 group-hover:opacity-100 transition-opacity">
       {isKnowledgeBase || (
-        <Button
-          variant="transparent"
-          className="border-none hover:bg-bg-card text-text-primary"
-          size={'sm'}
-          onClick={handleShowConnectToKnowledgeModal}
+        <Tooltip
+          title="链接知识库"
+          placement="top" // 强制显示在按钮上方（可选 top/bottom/left/right 等）
+          color="#1677ff" // 自定义背景色（例如 Antd 的主题蓝）
+          overlayInnerStyle={{ color: '#fff', fontSize: '13px' }} // 自定义内部文字样式
         >
-          <Link2 />
-        </Button>
+          <Button
+            variant="transparent"
+            className="border-none hover:bg-bg-card text-text-primary"
+            size={'sm'}
+            onClick={handleShowConnectToKnowledgeModal}
+          >
+            <Link2 />
+          </Button>
+        </Tooltip>
       )}
       {isKnowledgeBase || (
-        <Button
-          variant="transparent"
-          className="border-none hover:bg-bg-card text-text-primary"
-          size={'sm'}
-          onClick={handleShowMoveFileModal}
+        <Tooltip
+          title="文件转移"
+          placement="top" // 强制显示在按钮上方（可选 top/bottom/left/right 等）
+          color="#1677ff" // 自定义背景色（例如 Antd 的主题蓝）
+          overlayInnerStyle={{ color: '#fff', fontSize: '13px' }} // 自定义内部文字样式
         >
-          <FolderInput />
-        </Button>
+          <Button
+            variant="transparent"
+            className="border-none hover:bg-bg-card text-text-primary"
+            size={'sm'}
+            onClick={handleShowMoveFileModal}
+          >
+            <FolderInput />
+          </Button>
+        </Tooltip>
       )}
       {isKnowledgeBase || (
-        <Button
-          variant="transparent"
-          className="border-none hover:bg-bg-card text-text-primary"
-          size={'sm'}
-          onClick={handleShowFileRenameModal}
+        <Tooltip
+          title="重命名"
+          placement="top" // 强制显示在按钮上方（可选 top/bottom/left/right 等）
+          color="#1677ff" // 自定义背景色（例如 Antd 的主题蓝）
+          overlayInnerStyle={{ color: '#fff', fontSize: '13px' }} // 自定义内部文字样式
         >
-          <FolderPen />
-        </Button>
+          <Button
+            variant="transparent"
+            className="border-none hover:bg-bg-card text-text-primary"
+            size={'sm'}
+            onClick={handleShowFileRenameModal}
+          >
+            <FolderPen />
+          </Button>
+        </Tooltip>
       )}
       {isFolder || (
         <Button
@@ -194,13 +216,20 @@ export function ActionCell({
             ),
           }}
         >
-          <Button
-            variant="transparent"
-            className="border-none hover:bg-bg-card text-text-primary"
-            size={'sm'}
+          <Tooltip
+            title="删除"
+            placement="top" // 强制显示在按钮上方（可选 top/bottom/left/right 等）
+            color="#1677ff" // 自定义背景色（例如 Antd 的主题蓝）
+            overlayInnerStyle={{ color: '#fff', fontSize: '13px' }} // 自定义内部文字样式
           >
-            <Trash2 />
-          </Button>
+            <Button
+              variant="transparent"
+              className="border-none hover:bg-bg-card text-text-primary"
+              size={'sm'}
+            >
+              <Trash2 />
+            </Button>
+          </Tooltip>
         </ConfirmDeleteDialog>
       )}
     </section>

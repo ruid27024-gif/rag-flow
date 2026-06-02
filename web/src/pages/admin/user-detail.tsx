@@ -13,8 +13,6 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 
-import { Routes } from '@/routes';
-
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import Spotlight from '@/components/spotlight';
 import { Badge } from '@/components/ui/badge';
@@ -26,8 +24,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  // TableHead,
-  // TableHeader,
+  TableHead,
+  TableHeader,
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -40,10 +38,7 @@ import {
 
 import { TableEmpty } from '@/components/table-skeleton';
 import EnterpriseFeature from './components/enterprise-feature';
-import {
-  // getSortIcon,
-  parseBooleanish,
-} from './utils';
+import { getSortIcon, parseBooleanish } from './utils';
 
 const ASSET_NAMES = ['dataset', 'flow'];
 
@@ -59,7 +54,8 @@ function UserDatasetTable(props: {
   const columnDefs = useMemo(
     () => [
       datasetColumnHelper.accessor('name', {
-        header: t('admin.name'),
+        // header: t('admin.name'),
+        header: '知识库名称',
         cell: ({ row, cell }) => (
           <div className="flex items-center gap-2">
             <RAGFlowAvatar
@@ -71,17 +67,19 @@ function UserDatasetTable(props: {
         ),
       }),
       // #region
-      /*
-      datasetColumnHelper.accessor('name', {
-        header: t('admin.name'),
-        enableSorting: false,
-      }),
+
+      // datasetColumnHelper.accessor('name', {
+      //   header: t('admin.name'),
+      //   enableSorting: false,
+      // }),
       datasetColumnHelper.accessor('status', {
         header: t('admin.status'),
         cell: ({ cell }) => {
           return (
             <Badge
-              variant={parseBooleanish(cell.getValue()) ? 'success' : 'destructive'}
+              variant={
+                parseBooleanish(cell.getValue()) ? 'success' : 'destructive'
+              }
               className="pl-[.35em]"
             >
               <LucideDot className="size-[1em] stroke-[8] mr-1" />
@@ -89,7 +87,8 @@ function UserDatasetTable(props: {
                 parseBooleanish(cell.getValue())
                   ? 'admin.active'
                   : 'admin.inactive',
-              )}"
+              )}
+              "
             </Badge>
           );
         },
@@ -118,7 +117,7 @@ function UserDatasetTable(props: {
         header: t('admin.permission'),
         enableSorting: false,
       }),
-      */
+
       // #endregion
     ],
     [t],
@@ -137,7 +136,7 @@ function UserDatasetTable(props: {
   return (
     <section className="space-y-4">
       <Table>
-        {/* <TableHeader>
+        <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
@@ -163,7 +162,7 @@ function UserDatasetTable(props: {
               ))}
             </TableRow>
           ))}
-        </TableHeader> */}
+        </TableHeader>
 
         <TableBody>
           {table.getRowModel().rows?.length ? (
@@ -325,7 +324,8 @@ function AdminUserDetail() {
         <Button
           variant="outline"
           className="h-10 px-3 dark:bg-bg-input dark:border-border-button"
-          onClick={() => navigate(`${Routes.AdminUserManagement}`)}
+          // onClick={() => navigate(`${Routes.AdminUserManagement}`)}
+          onClick={() => navigate('/user-setting/users')}
         >
           <LucideArrowLeft />
           <span>{t('admin.back')}</span>

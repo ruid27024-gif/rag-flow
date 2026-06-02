@@ -263,6 +263,7 @@ class MinerUParser(RAGFlowPdfParser):
         elif len(backend_str) > 4 and backend_str.startswith("vlm-"):
             backend_str = backend_str[4:]
         
+        print(backend_str)
         # Prepare env
         local_image_dir, local_md_dir = prepare_env(str(output_dir), pdf_file_name, options.method)
         image_writer = FileBasedDataWriter(local_image_dir)
@@ -280,7 +281,7 @@ class MinerUParser(RAGFlowPdfParser):
             middle_json, infer_result = vlm_doc_analyze(
                 pdf_bytes, 
                 image_writer=image_writer, 
-                backend="transformers", 
+                backend='vllm-engine', 
                 server_url=options.server_url
             )
 

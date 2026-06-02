@@ -81,9 +81,11 @@ export default function SearchPage() {
                 </span>
               </BreadcrumbLink>
             </BreadcrumbItem>
-            <BreadcrumbSeparator />
+            <BreadcrumbSeparator className="translate-y-[7px]" />
             <BreadcrumbItem>
-              <BreadcrumbPage>{SearchData?.name}</BreadcrumbPage>
+              <BreadcrumbPage className="w-28 whitespace-nowrap text-ellipsis overflow-hidden translate-y-[3px] text-gray-400 dark:text-gray-500">
+                {SearchData?.name}
+              </BreadcrumbPage>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
