@@ -122,8 +122,10 @@ const Home = () => {
           }}
         >
           <button
+            // title="点击对话"
             onClick={handleSmartClick}
             className="absolute z-[100] rounded-full flex items-center justify-center group cursor-pointer"
+            // className="absolute z- rounded-full flex items-center justify-center group cursor-pointer overflow-hidden"
             style={{
               right: '18%',
               bottom: '18%',
@@ -136,12 +138,23 @@ const Home = () => {
               transition: 'all 0.3s ease',
             }}
           >
-            <span
+            {/* <span
               className="font-bold drop-shadow-md group-hover:scale-110 transition-transform"
               style={{ color: '#2979FF' }}
             >
               恒
-            </span>
+            </span> */}
+            <img
+              src="/48@4x.png" // 这里换成你的图片地址
+              alt="Avatar"
+              // style={{ mask: 'radial-gradient(circle, white 100%, transparent 100%)' }}
+              // className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+              className="w-full h-full object-cover scale-110 group-hover:scale-[1.3] transition-transform duration-300"
+              // 解释：
+              // w-full h-full: 让图片填满 40x40 的容器
+              // object-cover: 保持图片比例裁剪，不会变形
+              // group-hover:scale-110: 保留了你原来文字悬停放大的效果
+            />
           </button>
         </div>
       </section>

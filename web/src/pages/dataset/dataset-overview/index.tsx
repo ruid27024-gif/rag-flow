@@ -267,7 +267,7 @@ const FileLogsPage: FC = () => {
               {topAllData.totalFiles.precent}%{' '}
             </span>
             <span className="font-normal text-text-secondary text-xs">
-              from last week
+              上周占比
             </span>
           </div>
         </StatCard>

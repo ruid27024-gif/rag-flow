@@ -26,7 +26,7 @@ import { PipelineResultSearchParams } from '@/pages/dataflow-result/constant';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
 import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
 import { IDataSourceInfoMap } from '@/pages/user-setting/data-source/interface';
-import { formatDate, formatSecondsToHumanReadable } from '@/utils/date';
+import { formatSecondsToHumanReadable } from '@/utils/date';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -47,6 +47,20 @@ import { RunningStatus } from '../dataset/constant';
 import ProcessLogModal from '../process-log-modal';
 import { LogTabs, ProcessingType, ProcessingTypeMap } from './dataset-common';
 import { DocumentLog, FileLogsTableProps, IFileLogItem } from './interface';
+
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
 
 export const getFileLogsTableColumns = (
   t: TFunction<'translation', string>,
@@ -80,9 +94,10 @@ export const getFileLogsTableColumns = (
     // },
     {
       accessorKey: 'id',
+      // header: t('taskId'),
       header: 'ID',
       cell: ({ row }) => (
-        <div className="text-text-primary">{row.original.id}</div>
+        <div className="text-text-primary text-center">{row.original.id}</div>
       ),
     },
     {
@@ -161,8 +176,9 @@ export const getFileLogsTableColumns = (
         );
       },
       cell: ({ row }) => (
-        <div className="text-text-primary">
+        <div className="text-text-primary text-center">
           {formatDate(row.original.process_begin_at)}
+          {/* {row.original.process_begin_at} */}
         </div>
       ),
     },
@@ -170,7 +186,9 @@ export const getFileLogsTableColumns = (
       accessorKey: 'task_type',
       header: t('task'),
       cell: ({ row }) => (
-        <div className="text-text-primary">{row.original.task_type}</div>
+        <div className="text-text-primary text-center">
+          {row.original.task_type}
+        </div>
       ),
     },
     {
@@ -184,6 +202,86 @@ export const getFileLogsTableColumns = (
           }
         />
       ),
+    },
+    {
+      accessorKey: 'document_id_count',
+      header: '文档解析次数',
+      cell: ({ row }) => {
+        const count = row.original.document_id_count || 0;
+
+        const colorMap: Record<number, string> = {
+          1: 'bg-gradient-to-r from-green-50 to-green-100 text-green-700 ring-green-200',
+          2: 'bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 ring-emerald-200',
+          3: 'bg-gradient-to-r from-teal-50 to-teal-100 text-teal-700 ring-teal-200',
+          4: 'bg-gradient-to-r from-cyan-50 to-cyan-100 text-cyan-700 ring-cyan-200',
+          5: 'bg-gradient-to-r from-sky-50 to-sky-100 text-sky-700 ring-sky-200',
+          6: 'bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 ring-blue-200',
+          7: 'bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 ring-indigo-200',
+          8: 'bg-gradient-to-r from-violet-50 to-violet-100 text-violet-700 ring-violet-200',
+          9: 'bg-gradient-to-r from-orange-50 to-orange-100 text-orange-700 ring-orange-200',
+          10: 'bg-gradient-to-r from-red-50 to-red-100 text-red-700 ring-red-200',
+        };
+
+        const normalizedCount = Math.min(Math.max(count, 1), 10);
+
+        const className =
+          count <= 0
+            ? 'bg-gray-50 text-gray-500 ring-gray-200'
+            : colorMap[normalizedCount];
+
+        return (
+          <div className="flex items-center">
+            <span
+              className={`
+            inline-flex items-center justify-center
+            min-w-[54px] px-2.5 py-1
+            text-xs font-semibold tracking-wide
+            rounded-full ring-1 ring-inset
+            transition-all duration-200
+            ${className}
+          `}
+              title={`该文档共解析 ${count} 次`}
+            >
+              <svg
+                className="mr-1 h-3 w-3 opacity-80"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M21.015 4.356v4.992"
+                />
+              </svg>
+              {count} 次
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: 'is_latest_parse',
+      header: '是否最新',
+      cell: ({ row }) => {
+        const isLatest = row.original.is_latest_parse === 1;
+
+        return (
+          <span
+            className={`
+          inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
+          ${
+            isLatest
+              ? 'bg-green-50 text-green-700 ring-green-200'
+              : 'bg-gray-50 text-gray-500 ring-gray-200'
+          }
+        `}
+          >
+            {isLatest ? '最新' : '历史'}
+          </span>
+        );
+      },
     },
     {
       id: 'operations',
@@ -252,7 +350,7 @@ export const getDatasetLogsTableColumns = (
     // },
     {
       accessorKey: 'id',
-      header: 'ID',
+      header: t('taskId'),
       cell: ({ row }) => (
         <div className="text-text-primary">{row.original.id}</div>
       ),
@@ -420,7 +518,7 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
+                <TableHead key={header.id} className="text-center">
                   {flexRender(
                     header.column.columnDef.header,
                     header.getContext(),

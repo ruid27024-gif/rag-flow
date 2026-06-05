@@ -706,7 +706,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     if stream:
         last_ans = ""
         answer = ""
-        async for ans in chat_mdl.async_chat_streamly(prompt + prompt4citation, msg[1:], gen_conf):
+        async for ans in chat_mdl.async_chat_streamly(prompt + prompt4citation, msg[1:], gen_conf,dialog_id=dialog.id):
             if thought:
                 ans = re.sub(r"^.*</think>", "", ans, flags=re.DOTALL)
             answer = ans

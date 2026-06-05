@@ -22,11 +22,12 @@ import threading
 from functools import partial
 from typing import Generator
 
-from api.db.db_models import LLM
+from api.db.db_models import LLM, APIToken
 from api.db.services.common_service import CommonService
 from api.db.services.tenant_llm_service import LLM4Tenant, TenantLLMService
 from common.constants import LLMType
 from common.token_utils import num_tokens_from_string
+from datetime import datetime
 
 
 class LLMService(CommonService):
@@ -420,6 +421,20 @@ class LLMBundle(LLM4Tenant):
                 async for txt in chat_partial(**use_kwargs):
                     if isinstance(txt, int):
                         total_tokens = txt
+                        print("************************************************")
+                        try:
+                            # 创建一条新的流水记录
+                            APIToken.create(
+                                tenant_id=self.tenant_id,       # 当前租户ID
+                                dialog_id=kwargs.get("dialog_id"), # 传入的对话ID
+                                token=str(total_tokens),        # 注意：模型定义是 CharField，可能需要转字符串
+                                source="chat",                  # 标记来源
+                                beta="",                        # 如果没有值可以留空
+                                create_time=datetime.now()      # 如果模型里有这个字段（截图里有，但代码没贴出来）
+                            )
+                        except Exception as e:
+                            print(f"Failed to log usage: {e}")
+                        print(total_tokens)
                         break
 
                     if txt.endswith("</think>"):

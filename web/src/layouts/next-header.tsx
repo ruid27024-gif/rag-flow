@@ -88,6 +88,12 @@ export function Header() {
         icon: Shield,
       });
 
+      list.push({
+        path: '/dashboard',
+        name: '仪表盘',
+        icon: Shield,
+      });
+
       //   list.push({
       //     path: '/admin/services', // 直接写死或定义在 config 中
       //     name: '服务', // 确保 i18n 有这个 key

@@ -83,6 +83,7 @@ class TaskStatus(StrEnum):
     DONE = "3"
     FAIL = "4"
     SCHEDULE = "5"
+    # FAIL1 = "6"  # 新增：解析作者失败
 
 
 VALID_TASK_STATUS = {TaskStatus.UNSTART, TaskStatus.RUNNING, TaskStatus.CANCEL, TaskStatus.DONE, TaskStatus.FAIL,

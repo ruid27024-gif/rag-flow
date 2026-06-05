@@ -622,6 +622,7 @@ async def list_pipeline_dataset_logs():
 
     try:
         logs, tol = PipelineOperationLogService.get_dataset_logs_by_kb_id(kb_id, page_number, items_per_page, orderby, desc, operation_status, create_date_from, create_date_to)
+        print(logs)
         return get_json_result(data={"total": tol, "logs": logs})
     except Exception as e:
         return server_error_response(e)

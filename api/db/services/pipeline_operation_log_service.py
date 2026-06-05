@@ -177,7 +177,7 @@ class PipelineOperationLogService(CommonService):
         with DB.atomic():
             obj = cls.save(**log)
 
-            limit = int(os.getenv("PIPELINE_OPERATION_LOG_LIMIT", 1000))
+            limit = int(os.getenv("PIPELINE_OPERATION_LOG_LIMIT", 10000))
             total = cls.model.select().where(cls.model.kb_id == document.kb_id).count()
 
             if total > limit:
@@ -193,29 +193,132 @@ class PipelineOperationLogService(CommonService):
     def record_pipeline_operation(cls, document_id, pipeline_id, task_type, fake_document_ids=[]):
         return cls.create(document_id=document_id, pipeline_id=pipeline_id, task_type=task_type, fake_document_ids=fake_document_ids)
 
+    # @classmethod
+    # @DB.connection_context()
+    # def get_file_logs_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, operation_status, types, suffix, create_date_from=None, create_date_to=None):
+    #     fields = cls.get_file_logs_fields()
+    #     if keywords:
+    #         logs = cls.model.select(*fields).where((cls.model.kb_id == kb_id), (fn.LOWER(cls.model.document_name).contains(keywords.lower())))
+    #     else:
+    #         logs = cls.model.select(*fields).where(cls.model.kb_id == kb_id)
+
+    #     logs = logs.where(cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID)
+
+    #     if operation_status:
+    #         logs = logs.where(cls.model.operation_status.in_(operation_status))
+    #     if types:
+    #         logs = logs.where(cls.model.document_type.in_(types))
+    #     if suffix:
+    #         logs = logs.where(cls.model.document_suffix.in_(suffix))
+    #     if create_date_from:
+    #         logs = logs.where(cls.model.create_date >= create_date_from)
+    #     if create_date_to:
+    #         logs = logs.where(cls.model.create_date <= create_date_to)
+
+    #     count = logs.count()
+    #     if desc:
+    #         logs = logs.order_by(cls.model.getter_by(orderby).desc())
+    #     else:
+    #         logs = logs.order_by(cls.model.getter_by(orderby).asc())
+
+    #     if page_number and items_per_page:
+    #         logs = logs.paginate(page_number, items_per_page)
+
+    #     return list(logs.dicts()), count
+    
     @classmethod
     @DB.connection_context()
-    def get_file_logs_by_kb_id(cls, kb_id, page_number, items_per_page, orderby, desc, keywords, operation_status, types, suffix, create_date_from=None, create_date_to=None):
+    def get_file_logs_by_kb_id(
+        cls,
+        kb_id,
+        page_number,
+        items_per_page,
+        orderby,
+        desc,
+        keywords,
+        operation_status,
+        types,
+        suffix,
+        create_date_from=None,
+        create_date_to=None
+    ):
         fields = cls.get_file_logs_fields()
+        from peewee import fn, Case
+        # 用于统计相同 document_id 数量
+        LogCountAlias = cls.model.alias()
+
+        document_id_count = (
+            LogCountAlias
+            .select(fn.COUNT(LogCountAlias.id))
+            .where(
+                LogCountAlias.kb_id == cls.model.kb_id,
+                LogCountAlias.document_id == cls.model.document_id,
+                LogCountAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+            )
+        ).alias("document_id_count")
+        
+        # 用于判断当前行是否为最新解析
+        LogLatestAlias = cls.model.alias()
+
+        latest_log_id = (
+            LogLatestAlias
+            .select(LogLatestAlias.id)
+            .where(
+                LogLatestAlias.kb_id == cls.model.kb_id,
+                LogLatestAlias.document_id == cls.model.document_id,
+                LogLatestAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+            )
+            .order_by(
+                LogLatestAlias.create_date.desc(),
+                LogLatestAlias.id.desc()
+            )
+            .limit(1)
+        )
+
+        is_latest_parse = Case(
+            None,
+            [
+                (cls.model.id == latest_log_id, 1),
+            ],
+            0
+        ).alias("is_latest_parse")
+
+        # 把新增列加入查询字段
+        fields = [
+            *fields,
+            document_id_count,
+            is_latest_parse,
+        ]
+
         if keywords:
-            logs = cls.model.select(*fields).where((cls.model.kb_id == kb_id), (fn.LOWER(cls.model.document_name).contains(keywords.lower())))
+            logs = cls.model.select(*fields).where(
+                cls.model.kb_id == kb_id,
+                fn.LOWER(cls.model.document_name).contains(keywords.lower())
+            )
         else:
-            logs = cls.model.select(*fields).where(cls.model.kb_id == kb_id)
+            logs = cls.model.select(*fields).where(
+                cls.model.kb_id == kb_id
+            )
 
         logs = logs.where(cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID)
 
         if operation_status:
             logs = logs.where(cls.model.operation_status.in_(operation_status))
+
         if types:
             logs = logs.where(cls.model.document_type.in_(types))
+
         if suffix:
             logs = logs.where(cls.model.document_suffix.in_(suffix))
+
         if create_date_from:
             logs = logs.where(cls.model.create_date >= create_date_from)
+
         if create_date_to:
             logs = logs.where(cls.model.create_date <= create_date_to)
 
         count = logs.count()
+
         if desc:
             logs = logs.order_by(cls.model.getter_by(orderby).desc())
         else:
@@ -225,6 +328,137 @@ class PipelineOperationLogService(CommonService):
             logs = logs.paginate(page_number, items_per_page)
 
         return list(logs.dicts()), count
+
+
+
+    # @classmethod
+    # @DB.connection_context()
+    # def get_file_logs_by_kb_id(
+    #     cls,
+    #     kb_id,
+    #     page_number,
+    #     items_per_page,
+    #     orderby,
+    #     desc,
+    #     keywords,
+    #     operation_status,
+    #     types,
+    #     suffix,
+    #     create_date_from=None,
+    #     create_date_to=None,
+    # ):
+    #     from peewee import fn, Case
+
+    #     fields = cls.get_file_logs_fields()
+
+    #     # 1. 统一构造过滤条件
+    #     conditions = [
+    #         cls.model.kb_id == kb_id,
+    #         cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+    #     ]
+
+    #     if keywords:
+    #         conditions.append(
+    #             fn.LOWER(cls.model.document_name).contains(keywords.lower())
+    #         )
+
+    #     if operation_status:
+    #         conditions.append(cls.model.operation_status.in_(operation_status))
+
+    #     if types:
+    #         conditions.append(cls.model.document_type.in_(types))
+
+    #     if suffix:
+    #         conditions.append(cls.model.document_suffix.in_(suffix))
+
+    #     if create_date_from:
+    #         conditions.append(cls.model.create_date >= create_date_from)
+
+    #     if create_date_to:
+    #         conditions.append(cls.model.create_date <= create_date_to)
+
+    #     # 2. 子查询：按 document_id 分组，每个文件按 create_date 倒序编号
+    #     ranked_query = (
+    #         cls.model
+    #         .select(
+    #             *fields,
+    #             fn.ROW_NUMBER().over(
+    #                 partition_by=[cls.model.document_id],
+    #                 order_by=[cls.model.create_date.desc()]
+    #             ).alias("rn")
+    #         )
+    #         .where(*conditions)
+    #         .alias("ranked_logs")
+    #     )
+
+    #     # 3. 外层查询：只取每个 document_id 最新的一条 rn = 1
+    #     final_query = (
+    #         cls.model
+    #         .select(
+    #             ranked_query.c.id,
+    #             ranked_query.c.kb_id,
+    #             ranked_query.c.document_id,
+    #             ranked_query.c.document_name,
+    #             ranked_query.c.document_type,
+    #             ranked_query.c.document_suffix,
+    #             ranked_query.c.operation_status,
+    #             ranked_query.c.operation_status.alias("status"),
+    #             ranked_query.c.create_date,
+    #             ranked_query.c.update_date,
+    #             ranked_query.c.process_begin_at,
+    #             ranked_query.c.process_duration,
+    #             ranked_query.c.progress_msg,
+    #             ranked_query.c.source_from,
+    #             ranked_query.c.task_type,
+    #             ranked_query.c.dsl,
+    #             Case(
+    #                 None,
+    #                 [
+    #                     (ranked_query.c.operation_status == 3, "成功"),
+    #                 ],
+    #                 "失败",
+    #             ).alias("final_status"),
+    #         )
+    #         .from_(ranked_query)
+    #         .where(ranked_query.c.rn == 1)
+    #     )
+
+    #     # 4. 统计总数：按 document_id 去重
+    #     count_query = (
+    #         cls.model
+    #         .select(fn.COUNT(fn.DISTINCT(cls.model.document_id)))
+    #         .where(*conditions)
+    #     )
+
+    #     count = count_query.scalar() or 0
+
+    #     # 5. 排序字段映射，注意：这里必须用 ranked_query.c.xxx，不能用 cls.model.xxx
+    #     order_field_map = {
+    #         "id": ranked_query.c.id,
+    #         "document_id": ranked_query.c.document_id,
+    #         "document_name": ranked_query.c.document_name,
+    #         "document_type": ranked_query.c.document_type,
+    #         "document_suffix": ranked_query.c.document_suffix,
+    #         "operation_status": ranked_query.c.operation_status,
+    #         "status": ranked_query.c.operation_status,
+    #         "create_date": ranked_query.c.create_date,
+    #         "update_date": ranked_query.c.update_date,
+    #         "process_begin_at": ranked_query.c.process_begin_at,
+    #         "process_duration": ranked_query.c.process_duration,
+    #     }
+
+    #     order_field = order_field_map.get(orderby, ranked_query.c.create_date)
+
+    #     if desc:
+    #         final_query = final_query.order_by(order_field.desc())
+    #     else:
+    #         final_query = final_query.order_by(order_field.asc())
+
+    #     # 6. 分页
+    #     if page_number and items_per_page:
+    #         final_query = final_query.paginate(page_number, items_per_page)
+
+    #     return list(final_query.dicts()), count
 
     @classmethod
     @DB.connection_context()

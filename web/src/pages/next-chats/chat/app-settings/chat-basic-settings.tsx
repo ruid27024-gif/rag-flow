@@ -35,14 +35,18 @@ export default function ChatBasicSetting() {
       <div className="flex items-center gap-2 mb-4">
         {/* 短横线 */}
         <div className="h-4 w-1 bg-red-500 rounded-full"></div>
-        <span className="text-sm font-bold text-gray-900">必填项-1</span>
+        <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
+          必填项-1
+        </span>
       </div>
       <KnowledgeBaseFormField></KnowledgeBaseFormField>
 
       <div className="flex items-center gap-2 mb-4">
         {/* 短横线 */}
         <div className="h-4 w-1 bg-green-500 rounded-full"></div>
-        <span className="text-sm font-bold text-gray-900">选填项-7</span>
+        <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
+          选填项-7
+        </span>
       </div>
 
       {/* <LLMFormField

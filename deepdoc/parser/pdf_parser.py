@@ -67,6 +67,7 @@ class RAGFlowPdfParser:
 
         """
 
+
         self.ocr = OCR()
         self.parallel_limiter = None
         if settings.PARALLEL_DEVICES > 1:

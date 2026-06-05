@@ -120,6 +120,18 @@ const routes = [
     ],
   },
   {
+    path: '/dashboard',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/dashboard',
+        component: '@/pages/dashboard',
+      },
+    ],
+  },
+
+  {
     path: Routes.Datasets,
     layout: false,
     component: '@/layouts/next',
@@ -130,6 +142,7 @@ const routes = [
       },
     ],
   },
+
   {
     path: Routes.Chats,
     layout: false,

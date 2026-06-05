@@ -16,13 +16,22 @@ export enum RunningStatus {
   SCHEDULE = '5',
 }
 
+// export const RunningStatusMap = {
+//   [RunningStatus.UNSTART]: 'Pending',
+//   [RunningStatus.RUNNING]: 'Running',
+//   [RunningStatus.CANCEL]: 'Cancel',
+//   [RunningStatus.DONE]: 'Success',
+//   [RunningStatus.FAIL]: 'Failed',
+//   [RunningStatus.SCHEDULE]: 'Schedule',
+// };
+
 export const RunningStatusMap = {
-  [RunningStatus.UNSTART]: 'Pending',
-  [RunningStatus.RUNNING]: 'Running',
-  [RunningStatus.CANCEL]: 'Cancel',
-  [RunningStatus.DONE]: 'Success',
-  [RunningStatus.FAIL]: 'Failed',
-  [RunningStatus.SCHEDULE]: 'Schedule',
+  [RunningStatus.UNSTART]: '未开始',
+  [RunningStatus.RUNNING]: '运行中',
+  [RunningStatus.CANCEL]: '已取消',
+  [RunningStatus.DONE]: '成功',
+  [RunningStatus.FAIL]: '失败',
+  [RunningStatus.SCHEDULE]: '排队中', // 或者译为 "排队中"
 };
 
 export enum ModelVariableType {

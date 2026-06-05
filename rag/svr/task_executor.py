@@ -249,7 +249,8 @@ async def build_chunks(task, progress_callback):
             progress_callback(-1, "Get file from minio: %s" % str(e).replace("'", ""))
         logging.exception("Chunking {}/{} got exception".format(task["location"], task["name"]))
         raise
-
+    
+    
     try:
         async with chunk_limiter:
             cks = await asyncio.to_thread(

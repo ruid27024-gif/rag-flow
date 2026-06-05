@@ -22,8 +22,7 @@ python rag/svr/task_executor.py
 
 conda activate rag-flow
 export PYTHONPATH=$(pwd)
-cd admin/server
-python admin_server.py 
+python admin/server/admin_server.py 
 
 
 # 注册ngrok后的token

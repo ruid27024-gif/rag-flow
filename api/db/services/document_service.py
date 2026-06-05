@@ -898,6 +898,11 @@ class DocumentService(CommonService):
                 tsks = TaskService.query(doc_id=d["id"], order_by=Task.create_time)
                 if not tsks:
                     continue
+
+                # 【修改点 1】：获取任务列表的长度，用于后续判断
+                tasks_len = len(tsks)
+                effective_task_count = 0
+
                 msg = []
                 prg = 0
                 finished = True
@@ -908,6 +913,9 @@ class DocumentService(CommonService):
                 special_task_running = False
                 priority = 0
                 for t in tsks:
+                    if tasks_len > 1 and (t.task_type or "").lower() == "parse_author_info":
+                        continue
+                    effective_task_count += 1
                     task_type = (t.task_type or "").lower()
                     if task_type in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES:
                         special_task_running = True
@@ -919,7 +927,8 @@ class DocumentService(CommonService):
                     if t.progress_msg.strip():
                         msg.append(t.progress_msg)
                     priority = max(priority, t.priority)
-                prg /= len(tsks)
+                # prg /= len(tsks)
+                prg /= effective_task_count
                 if finished and bad:
                     prg = -1
                     status = TaskStatus.FAIL.value

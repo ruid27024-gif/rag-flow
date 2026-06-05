@@ -277,11 +277,12 @@ class MinerUParser(RAGFlowPdfParser):
             # Convert PDF bytes
             pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
             
+            
             # Use vlm_doc_analyze for all backends as per pdf_utils.py pattern
             middle_json, infer_result = vlm_doc_analyze(
                 pdf_bytes, 
                 image_writer=image_writer, 
-                backend='vllm-engine', 
+                backend=backend_str, 
                 server_url=options.server_url
             )
 

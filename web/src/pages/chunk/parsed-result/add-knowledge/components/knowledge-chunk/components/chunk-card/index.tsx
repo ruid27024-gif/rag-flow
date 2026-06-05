@@ -98,7 +98,7 @@ const ChunkCard = ({
           </Popover>
         )}
         <section
-          onDoubleClick={handleContentDoubleClick}
+          // onDoubleClick={handleContentDoubleClick}
           onClick={handleContentClick}
           className={styles.content}
         >
