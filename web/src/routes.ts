@@ -130,6 +130,17 @@ const routes = [
       },
     ],
   },
+  {
+    path: '/dialog',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/dialog',
+        component: '@/pages/dialog',
+      },
+    ],
+  },
 
   {
     path: Routes.Datasets,

@@ -8,6 +8,9 @@ import {
 import * as echarts from 'echarts';
 import { Box, MessagesSquare, UserCheck, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+// 使用相对路径向上找一层到 pages，再进入 dialog
+import '../dialog/GroupMemberStatsPage.css';
 
 /**
  * 监听当前是否为黑夜模式
@@ -759,6 +762,16 @@ const periodOptions = [
 ];
 
 const GroupStatsDashboard = () => {
+  const [switchSide, setSwitchSide] = useState<'left' | 'right'>('left');
+  const navigate = useNavigate();
+  const handleGoLog = useCallback(() => {
+    setSwitchSide('right');
+
+    window.setTimeout(() => {
+      navigate('/dialog');
+    }, 250);
+  }, [navigate]);
+
   const [backendData, setBackendData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -1075,9 +1088,38 @@ const GroupStatsDashboard = () => {
             <ReloadOutlined />
             刷新
           </button>
+
+          <div
+            className={`page-switch ${
+              switchSide === 'left' ? 'page-switch-left' : 'page-switch-right'
+            }`}
+          >
+            <button
+              type="button"
+              className={`page-switch-item ${
+                switchSide === 'left' ? 'page-switch-item-active' : ''
+              }`}
+              onClick={(event) => {
+                event.preventDefault();
+              }}
+            >
+              看板
+            </button>
+
+            <button
+              type="button"
+              className={`page-switch-item ${
+                switchSide === 'right' ? 'page-switch-item-active' : ''
+              }`}
+              onClick={handleGoLog}
+            >
+              日志
+            </button>
+
+            <div className="page-switch-slider" />
+          </div>
         </div>
       </div>
-
       <div className="mb-[22px] flex flex-wrap gap-5">
         <StatCard
           title="总 Token 消耗"

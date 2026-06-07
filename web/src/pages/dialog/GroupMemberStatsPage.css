@@ -1,0 +1,461 @@
+.stats-page {
+  height: calc(100vh - 120px);
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.stats-sider {
+  height: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+  min-height: 0;
+  background: #fff;
+}
+
+.stats-sider .ant-layout-sider-children {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #e5e7eb transparent;
+}
+
+.stats-sider .ant-layout-sider-children::-webkit-scrollbar {
+  width: 3px;
+}
+
+.stats-sider .ant-layout-sider-children::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stats-sider .ant-layout-sider-children::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 10px;
+}
+
+.stats-sider .ant-layout-sider-children:hover::-webkit-scrollbar-thumb {
+  background-color: #9ca3af;
+}
+
+.stats-content {
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding-left: 24px;
+  overscroll-behavior: contain;
+}
+
+.sider-header {
+  margin-bottom: 16px;
+}
+
+.sider-title {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ant-color-text-heading); /* ✅ 使用标题专用变量 */
+  margin-bottom: 12px;
+  padding: 0 6px;
+}
+
+.period-select {
+  width: 100%;
+}
+
+.loading-box,
+.empty-box {
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.group-list {
+  padding-bottom: 24px;
+}
+
+.group-block {
+  margin-bottom: 22px;
+}
+/* 1. 父容器控制整体布局和颜色（可选） */
+.group-title {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  color: #9333ea; /* (可选) 如果你想让图标也是紫色，就保留这行；如果只想文字紫，删掉这行 */
+}
+
+/* 2. 核心代码：只针对里面的 span 文字生效 */
+.group-title span {
+  color: #9333ea !important; /* 强制变为紫色 */
+  text-underline-offset: 4px; /* (优化) 让下划线离文字稍微远一点，不拥挤 */
+  text-decoration-color: rgba(
+    147,
+    51,
+    234,
+    0.6
+  ); /* (优化) 下划线颜色稍微淡一点，更有层次感 */
+}
+
+/* 图标颜色与文字呼应 */
+.group-title .anticon {
+  font-size: 22px;
+  margin-right: 10px;
+  color: #2c3e50;
+}
+
+/* 可选：给图标也加上一点呼应，或者保持黑色作为对比 */
+.group-title .anticon {
+  color: #1890ff;
+  margin-right: 6px;
+}
+
+/* 容器布局 */
+.group-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* 标签之间的间距 */
+  margin-top: 12px;
+}
+
+/* 通用标签样式 - 打造“胶囊”底座 */
+.group-summary .ant-tag {
+  border: none !important; /* 去掉边框，显得干净 */
+  border-radius: 999px !important; /* 全圆角胶囊形状 */
+  padding: 4px 12px !important; /* 调整内边距，让文字呼吸 */
+  font-size: 12px;
+  font-weight: 500; /* 字体稍微加粗一点点，更有质感 */
+  display: inline-flex !important; /* 确保图标和文字垂直居中 */
+  align-items: center;
+  line-height: 1.5 !important; /* 修正行高 */
+  height: auto !important; /* 允许高度自适应 */
+  transition: all 0.3s ease; /* 增加一点平滑过渡 */
+  cursor: default;
+}
+
+/* --- 蓝色 Token 标签 (清爽科技蓝) --- */
+.group-summary .ant-tag-blue {
+  background-color: #e6f7ff !important; /* 极淡的蓝色背景 */
+  color: #1890ff !important; /* 标准品牌蓝文字 */
+}
+
+/* 悬浮时稍微加深，增加交互感 */
+.group-summary .ant-tag-blue:hover {
+  background-color: #bae7ff !important;
+}
+
+/* --- 绿色 次数 标签 (自然生机绿) --- */
+.group-summary .ant-tag-green {
+  background-color: #f6ffed !important; /* 极淡的绿色背景 */
+  color: #52c41a !important; /* 标准品牌绿文字 */
+}
+
+/* 悬浮时稍微加深 */
+.group-summary .ant-tag-green:hover {
+  background-color: #d9f7be !important;
+}
+
+/* --- 列表项通用样式 --- */
+.member-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  background-color: transparent;
+
+  transition: all 0.3s ease; /* 增加过渡动画，体验更丝滑 */
+}
+
+/* --- 悬浮状态 (Hover) --- */
+/* 亮色模式：浅灰背景；暗色模式：微亮背景 */
+/* ✅ 推荐的 Hover 写法 */
+.member-item:hover {
+  /* 使用 Antd 的填充色变量，暗色模式下会自动变成微亮的灰色 */
+  background-color: var(--ant-color-fill-secondary, rgba(0, 0, 0, 0.06));
+}
+
+/* 如果是深色模式，且没有变量支持，手动改一下 */
+@media (prefers-color-scheme: dark) {
+  .member-item:hover {
+    background-color: rgba(255, 255, 255, 0.08); /* 微微发亮的白色 */
+  }
+}
+
+/* --- 激活/选中状态 (Active) --- */
+/* 亮色模式：浅蓝背景 + 蓝色左边框 */
+/* 暗色模式：深蓝背景 + 蓝色左边框 */
+.member-item-active {
+  /* ✅ 自动适配：亮色是浅蓝，暗色是深蓝/深灰蓝 */
+  background-color: var(--ant-color-primary-bg, rgba(24, 144, 255, 0.1));
+
+  /* 边框保持品牌色，或者稍微调暗一点 */
+  border-left: 3px solid var(--ant-color-primary, #1890ff);
+
+  /* 确保文字颜色是清晰的（通常 antd 变量会自动处理，但加上更保险） */
+  color: var(--ant-color-text);
+}
+
+/* 修改后 */
+.member-name {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--ant-color-text); /* ✅ 使用 Ant Design 变量，自动适配黑白 */
+}
+
+.member-main {
+  margin-bottom: 8px;
+}
+
+.member-id {
+  display: block;
+  margin-left: 24px;
+  margin-top: 4px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.member-stats {
+  display: flex;
+  justify-content: space-between;
+  color: #6b7280;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.no-member {
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 8px 6px;
+}
+
+.stats-content {
+  padding: 28px;
+  overflow: auto;
+}
+
+.content-card {
+  min-height: calc(100vh - 56px);
+  border-radius: 18px;
+}
+
+.content-loading,
+.content-empty {
+  height: 520px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.error-alert {
+  margin-bottom: 20px;
+}
+
+.content-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  gap: 16px;
+}
+
+.user-title {
+  margin-bottom: 8px !important;
+}
+
+.user-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.period-tag {
+  margin-top: 4px;
+}
+
+.stat-card {
+  border-radius: 14px;
+}
+
+.detail-section,
+.overall-section {
+  margin-top: 32px;
+}
+
+.detail-row {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.detail-label {
+  width: 120px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.detail-value {
+  color: #111827;
+  word-break: break-all;
+}
+
+.detail-value.strong {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f766e;
+}
+
+.overall-card {
+  border-radius: 14px;
+}
+.token-card .ant-statistic-content {
+  color: #faad14;
+}
+
+.dialog-card .ant-statistic-content {
+  color: #52c41a;
+}
+
+.app-card .ant-statistic-content {
+  color: #1677ff;
+}
+
+.conversation-card .ant-statistic-content {
+  color: #722ed1;
+}
+
+.message-card .ant-statistic-content {
+  color: #eb2f96;
+}
+
+.dark .token-card .ant-statistic-content {
+  color: #ffd666;
+}
+
+.dark .dialog-card .ant-statistic-content {
+  color: #95de64;
+}
+
+.dark .app-card .ant-statistic-content {
+  color: #69b1ff;
+}
+
+.dark .conversation-card .ant-statistic-content {
+  color: #b37feb;
+}
+
+.dark .message-card .ant-statistic-content {
+  color: #ff85c0;
+}
+
+.page-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  width: 180px;
+  height: 42px;
+  padding: 4px;
+
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid #e5e7eb;
+
+  overflow: hidden;
+}
+
+.page-switch-item {
+  position: relative;
+  z-index: 2;
+
+  flex: 1;
+  height: 34px;
+
+  border: none;
+  outline: none;
+  background: transparent;
+
+  cursor: pointer;
+
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+
+  transition: color 0.25s ease;
+}
+
+.page-switch-item:hover {
+  color: #00beb4;
+}
+
+.page-switch-item-active {
+  color: #ffffff;
+  cursor: default;
+}
+
+.page-switch-slider {
+  position: absolute;
+  z-index: 1;
+
+  top: 4px;
+  left: 4px;
+
+  width: calc(50% - 4px);
+  height: 34px;
+
+  border-radius: 999px;
+  background: linear-gradient(135deg, #00beb4 0%, #14b8a6 100%);
+  box-shadow: 0 4px 12px rgba(0, 190, 180, 0.3);
+
+  transition: transform 0.25s ease;
+}
+
+/* 滑块在左侧 */
+.page-switch-left .page-switch-slider {
+  transform: translateX(0);
+}
+
+/* 滑块在右侧 */
+.page-switch-right .page-switch-slider {
+  transform: translateX(100%);
+}
+@media screen and (max-width: 768px) {
+  .stats-page {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .stats-sider {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 auto !important;
+  }
+
+  .stats-content {
+    padding: 16px;
+  }
+
+  .content-header {
+    flex-direction: column;
+  }
+
+  .detail-row {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 10px 0;
+    gap: 4px;
+  }
+
+  .detail-label {
+    width: auto;
+  }
+}

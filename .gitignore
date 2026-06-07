@@ -221,3 +221,4 @@ venv/
 *.deb
 *.zip
 get-docker.sh
+*.gguf

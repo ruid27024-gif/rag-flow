@@ -11,3 +11,11 @@
 *storybook.log
 storybook-static
 temp_pdf/
+
+# 忽略所有 gguf 模型文件
+*.gguf
+
+# 或者忽略 docker/models 整个目录
+docker/models/
+
+

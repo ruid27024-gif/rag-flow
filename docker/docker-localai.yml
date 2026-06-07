@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  xinference:
+    image: xprobe/xinference:v1.17.1-cu121  # 换成了对驱动友好的兼容版本
+    container_name: xinference
+    restart: always
+    ports:
+      - "9997:9997"
+    volumes:
+      - D:/xinference_data:/root/.xinference  # 建议直接用绝对路径，防止Windows下挂载出错
+      - ./logs:/var/log/xinference
+    environment:
+      - XINFERENCE_MODEL_SRC=modelscope
+      - TZ=Asia/Shanghai
+      - XINFERENCE_API_KEY=your_strong_api_key_here  # 记得换成你自己的真实API密钥
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: '128g'
+    command: xinference-local -H 0.0.0.0 --port 9997 --log-level info
