@@ -29,6 +29,9 @@ from flask import Response
 # ... 其他已有的 import
 @manager.route('/user_dialogs_export_excel', methods=['POST'])
 async def export_user_dialogs_excel():
+    import time
+
+    t = time.time()
     req = await get_request_json()
     tenant_id = req.get("tenant_id")
     dialog_id = req.get("dialog_id")
@@ -42,18 +45,46 @@ async def export_user_dialogs_excel():
     try:
         import io
         import json
+        from peewee import fn
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
         from openpyxl.utils import get_column_letter
 
-        # 1. 查询用户昵称
-        user = User.select().where(User.id == tenant_id).first()
+        # 1. 查询 Token 和对话次数统计
+        token_stat = (
+            APIToken.select(
+                fn.SUM(APIToken.token).alias("total_tokens"),
+                fn.COUNT(APIToken.dialog_id).alias("dialog_count")
+            )
+            .where(APIToken.dialog_id == dialog_id)
+            .dicts()
+            .first()
+        )
+
+        total_tokens = (
+            int(token_stat["total_tokens"])
+            if token_stat and token_stat["total_tokens"]
+            else 0
+        )
+        dialog_count = (
+            int(token_stat["dialog_count"])
+            if token_stat and token_stat["dialog_count"]
+            else 0
+        )
+
+        # 2. 查询用户昵称
+        user = (
+            User
+            .select(User.id, User.nickname)
+            .where(User.id == tenant_id)
+            .first()
+        )
         user_name = user.nickname if user else tenant_id
 
-        # 2. 查询智能体
+        # 3. 查询智能体
         dialog = (
             Dialog
-            .select()
+            .select(Dialog.id, Dialog.name, Dialog.tenant_id)
             .where(
                 (Dialog.id == dialog_id) &
                 (Dialog.tenant_id == tenant_id)
@@ -64,10 +95,10 @@ async def export_user_dialogs_excel():
         if not dialog:
             return get_data_error_result(message="Dialog not found!")
 
-        # 3. 查询 conversation
-        conversations = (
+        # 4. 查询 conversation，只查需要字段
+        conversations = list(
             Conversation
-            .select()
+            .select(Conversation.id, Conversation.message)
             .where(
                 (Conversation.dialog_id == dialog_id) &
                 (Conversation.user_id == tenant_id)
@@ -75,7 +106,7 @@ async def export_user_dialogs_excel():
             .order_by(Conversation.id)
         )
 
-        # 4. 创建 Excel
+        # 5. 创建 Excel
         wb = Workbook()
         ws = wb.active
         ws.title = "对话记录"
@@ -86,7 +117,9 @@ async def export_user_dialogs_excel():
             "Conversation ID",
             "消息序号",
             "发送者",
-            "消息详情"
+            "消息详情",
+            "总 Token 消耗",
+            "对话次数"
         ]
 
         ws.append(headers)
@@ -113,8 +146,6 @@ async def export_user_dialogs_excel():
             cell.border = border
 
         current_row = 2
-
-        # 记录整个智能体名称、用户名称的合并范围
         data_start_row = current_row
 
         for c in conversations:
@@ -140,7 +171,6 @@ async def export_user_dialogs_excel():
             if not messages:
                 messages = [{"role": "", "content": ""}]
 
-            # 写入当前 conversation 的消息
             for index, msg in enumerate(messages, start=1):
                 role = msg.get("role", "unknown")
                 content = msg.get("content", "")
@@ -148,14 +178,24 @@ async def export_user_dialogs_excel():
                 if isinstance(content, (dict, list)):
                     content = json.dumps(content, ensure_ascii=False)
 
-                safe_content = str(content).replace("\r", "").replace("\n", "\n")
+                safe_content = str(content).replace("\r", "")
 
-                ws.cell(row=current_row, column=1, value=dialog.name)
-                ws.cell(row=current_row, column=2, value=user_name)
-                ws.cell(row=current_row, column=3, value=c.id)
-                ws.cell(row=current_row, column=4, value=index)
-                ws.cell(row=current_row, column=5, value=role)
-                ws.cell(row=current_row, column=6, value=safe_content)
+                ws.append([
+                    dialog.name,
+                    user_name,
+                    c.id,
+                    index,
+                    role,
+                    safe_content,
+                    total_tokens,
+                    dialog_count
+                ])
+
+                # 直接给当前行设置样式，避免后面再全表遍历
+                for col_idx in range(1, 9):
+                    cell = ws.cell(row=current_row, column=col_idx)
+                    cell.border = border
+                    cell.alignment = left_alignment if col_idx == 6 else center_alignment
 
                 current_row += 1
 
@@ -170,79 +210,77 @@ async def export_user_dialogs_excel():
                     end_column=3
                 )
 
-            # 设置 conversation_id 居中
             ws.cell(row=conversation_start_row, column=3).alignment = center_alignment
+            ws.cell(row=conversation_start_row, column=3).border = border
 
         data_end_row = current_row - 1
 
-        # 5. 合并智能体名称、用户名称
+        # 6. 合并智能体名称、用户名称、Token、对话次数
         if data_start_row <= data_end_row:
             if data_start_row < data_end_row:
-                # 合并智能体名称
                 ws.merge_cells(
                     start_row=data_start_row,
                     start_column=1,
                     end_row=data_end_row,
                     end_column=1
                 )
-
-                # 合并用户名称
                 ws.merge_cells(
                     start_row=data_start_row,
                     start_column=2,
                     end_row=data_end_row,
                     end_column=2
                 )
+                ws.merge_cells(
+                    start_row=data_start_row,
+                    start_column=7,
+                    end_row=data_end_row,
+                    end_column=7
+                )
+                ws.merge_cells(
+                    start_row=data_start_row,
+                    start_column=8,
+                    end_row=data_end_row,
+                    end_column=8
+                )
 
-            ws.cell(row=data_start_row, column=1).alignment = center_alignment
-            ws.cell(row=data_start_row, column=2).alignment = center_alignment
-
-        # 6. 设置所有单元格样式
-        for row in ws.iter_rows(
-            min_row=2,
-            max_row=data_end_row,
-            min_col=1,
-            max_col=6
-        ):
-            for cell in row:
+            for col_idx in [1, 2, 7, 8]:
+                cell = ws.cell(row=data_start_row, column=col_idx)
+                cell.alignment = center_alignment
                 cell.border = border
-
-                if cell.column in [1, 2, 3, 4, 5]:
-                    cell.alignment = center_alignment
-                else:
-                    cell.alignment = left_alignment
 
         # 7. 设置列宽
         column_widths = {
-            1: 20,   # 智能体名称
-            2: 20,   # 用户名称
-            3: 36,   # Conversation ID
-            4: 10,   # 消息序号
-            5: 15,   # 发送者
-            6: 80    # 消息详情
+            1: 20,
+            2: 20,
+            3: 36,
+            4: 10,
+            5: 15,
+            6: 80,
+            7: 18,
+            8: 12
         }
 
         for col_idx, width in column_widths.items():
             ws.column_dimensions[get_column_letter(col_idx)].width = width
 
-        # 8. 冻结表头
         ws.freeze_panes = "A2"
 
-        # 9. 导出 Excel
+        # 8. 导出 Excel
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
 
-        excel_bytes = output.getvalue()
-        output.close()
-
         response = Response(
-            excel_bytes,
+            output.getvalue(),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
                 "Content-Disposition": f"attachment; filename=dialog_logs_{dialog_id}.xlsx"
             }
         )
+
+        print(response)
+        print("后端:", time.time() - t)
+        output.close()
 
         return response
 
@@ -291,7 +329,6 @@ async def get_user_dialogs_and_conversations():
 
     except Exception as e:
         return server_error_response(e)
-
 @manager.route('/group_member_stats', methods=['POST'])
 # @login_required
 async def group_member_stats():
@@ -309,26 +346,20 @@ async def group_member_stats():
         from api.db.db_models import Group, UserGroup, User
         from peewee import fn
 
-        # 1. 接收 POST JSON 参数
         req = await get_request_json()
         req = req or {}
 
         period = req.get("period", "all")
 
-        # 防止非法参数
         if period not in ["all", "day", "week", "month", "year"]:
             period = "all"
 
-        # 2. 根据 period 计算时间范围
         now = datetime.now()
 
         start_time = None
         end_time = None
-
         start_time_ts = None
         end_time_ts = None
-
-        print("group_member_stats period:", period)
 
         if period == "day":
             start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -348,28 +379,53 @@ async def group_member_stats():
             end_time = now
 
         elif period == "all":
-            # 全部数据，不加时间过滤
             start_time = None
             end_time = None
 
-        # 3. datetime 转 create_time 使用的时间戳
-        # RAGFlow 里 create_time 通常是毫秒时间戳，所以乘 1000
         if start_time and end_time:
             start_time_ts = int(start_time.timestamp() * 1000)
             end_time_ts = int(end_time.timestamp() * 1000)
 
-        print("start_time:", start_time)
-        print("end_time:", end_time)
-        print("start_time_ts:", start_time_ts)
-        print("end_time_ts:", end_time_ts)
+        def ms_to_date(ms):
+            return datetime.fromtimestamp(int(ms) / 1000).strftime("%Y-%m-%d")
 
-        # 4. 查出所有组
+        def ms_to_datetime(ms):
+            return datetime.fromtimestamp(int(ms) / 1000)
+
+        def build_day_items_by_range(range_start, range_end):
+            if not range_start or not range_end:
+                return []
+
+            current_day = range_start.replace(hour=0, minute=0, second=0, microsecond=0)
+            last_day = range_end.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            days = []
+
+            while current_day <= last_day:
+                days.append({
+                    "date": current_day.strftime("%Y-%m-%d"),
+                    "tokens": 0
+                })
+                current_day += timedelta(days=1)
+
+            return days
+
+        def build_week_day_items(week_start):
+            days = []
+
+            for i in range(7):
+                day = week_start + timedelta(days=i)
+                days.append({
+                    "date": day.strftime("%Y-%m-%d"),
+                    "tokens": 0
+                })
+
+            return days
+
         groups = Group.select()
         final_result = []
 
-        # 5. 遍历每个组
         for group in groups:
-            # 5.1 查出该组下所有人员，并联查 User 获取 nickname
             members = list(
                 UserGroup
                 .select(
@@ -386,13 +442,13 @@ async def group_member_stats():
             member_list = []
             total_tokens = 0
             total_dialogs = 0
+            daily_tokens = []
 
             if tenant_ids:
                 conditions = [
                     APIToken.tenant_id.in_(tenant_ids)
                 ]
 
-                # period != all 时才加时间过滤
                 if period != "all":
                     conditions.extend([
                         APIToken.create_time >= start_time_ts,
@@ -415,6 +471,56 @@ async def group_member_stats():
                     stat["tenant_id"]: stat
                     for stat in member_stats_list
                 }
+
+                group_token_rows = list(
+                    APIToken
+                    .select(
+                        APIToken.create_time,
+                        APIToken.token
+                    )
+                    .where(*conditions)
+                    .dicts()
+                )
+
+                if period == "week" and start_time:
+                    daily_tokens = build_week_day_items(start_time)
+
+                elif period != "all":
+                    daily_tokens = build_day_items_by_range(start_time, end_time)
+
+                else:
+                    create_times = [
+                        int(row["create_time"])
+                        for row in group_token_rows
+                        if row.get("create_time")
+                    ]
+
+                    if create_times:
+                        group_start_time = ms_to_datetime(min(create_times))
+                        group_end_time = ms_to_datetime(max(create_times))
+                        daily_tokens = build_day_items_by_range(
+                            group_start_time,
+                            group_end_time
+                        )
+                    else:
+                        daily_tokens = []
+
+                daily_token_map = {
+                    item["date"]: item
+                    for item in daily_tokens
+                }
+
+                for row in group_token_rows:
+                    create_time = row.get("create_time")
+                    token = int(row.get("token") or 0)
+
+                    if not create_time:
+                        continue
+
+                    day_key = ms_to_date(create_time)
+
+                    if day_key in daily_token_map:
+                        daily_token_map[day_key]["tokens"] += token
 
                 for m in members:
                     user_id = m["user_id"]
@@ -446,28 +552,31 @@ async def group_member_stats():
                 "group_name": group.group_name,
                 "period": period,
 
-                # 给前端/调试看的可读时间
                 "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S") if start_time else None,
                 "end_time": end_time.strftime("%Y-%m-%d %H:%M:%S") if end_time else None,
 
-                # 如果你想调试，也可以返回时间戳
                 "start_time_ts": start_time_ts,
                 "end_time_ts": end_time_ts,
 
                 "total_tokens": total_tokens,
                 "total_dialogs": total_dialogs,
+                "daily_tokens": daily_tokens,
                 "members": member_list
             })
+
         group_order = {
             "工艺研究一室": 0,
             "工艺研究二室": 1,
             "工艺研究三室": 2,
             "新品事业部研发部": 3,
-        }   
+        }
+
+
         final_result.sort(
             key=lambda item: group_order.get(item.get("group_name"), 999)
         )
 
+        print(final_result)
         return get_json_result(data=final_result)
 
     except Exception as e:

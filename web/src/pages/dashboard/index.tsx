@@ -10,6 +10,7 @@ import { Box, MessagesSquare, UserCheck, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 // 使用相对路径向上找一层到 pages，再进入 dialog
+import { LineChartOutlined } from '@ant-design/icons';
 import '../dialog/GroupMemberStatsPage.css';
 
 /**
@@ -710,7 +711,8 @@ const GroupCombinedCharts = ({ groups, isDark }) => {
             groups={groups}
             isDark={isDark}
             metricType="token"
-            chartType="line"
+            // chartType="line"
+            chartType="bar"
             className="h-[480px] w-full"
           />
         </div>
@@ -744,6 +746,282 @@ const GroupCombinedCharts = ({ groups, isDark }) => {
             className="h-[480px] w-full"
           />
         </div>
+      </div>
+    </div>
+  );
+};
+
+const GroupDailyTokenLineChart = ({
+  groups,
+  isDark,
+  className = 'h-[460px] w-full',
+}) => {
+  const chartRef = useRef(null);
+  const chartInstance = useRef(null);
+
+  const groupColors = [
+    '#00BEB4',
+    '#F87171',
+    '#FB923C',
+    '#A78BFA',
+    '#60A5FA',
+    '#FBBF24',
+    '#34D399',
+    '#22D3EE',
+    '#C084FC',
+    '#F472B6',
+  ];
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    if (!chartInstance.current) {
+      chartInstance.current = echarts.init(chartRef.current);
+    }
+
+    const safeGroups = Array.isArray(groups) ? groups : [];
+
+    const dateSet = new Set();
+
+    safeGroups.forEach((group) => {
+      const dailyTokens = Array.isArray(group.daily_tokens)
+        ? group.daily_tokens
+        : [];
+
+      dailyTokens.forEach((item) => {
+        if (item.date) {
+          dateSet.add(item.date);
+        }
+      });
+    });
+
+    const dates = Array.from(dateSet).sort();
+
+    const hasData = safeGroups.some((group) => {
+      return (
+        Array.isArray(group.daily_tokens) &&
+        group.daily_tokens.some((item) => Number(item.tokens || 0) > 0)
+      );
+    });
+
+    const series = safeGroups.map((group, index) => {
+      const groupName = group.group_name || group.group_id;
+      const groupColor = groupColors[index % groupColors.length];
+
+      const tokenMap = new Map(
+        (group.daily_tokens || []).map((item) => [
+          item.date,
+          Number(item.tokens || 0),
+        ]),
+      );
+
+      return {
+        name: groupName,
+        type: 'line',
+        smooth: true,
+        symbolSize: 7,
+        data: dates.map((date) => tokenMap.get(date) || 0),
+        itemStyle: {
+          color: groupColor,
+        },
+        lineStyle: {
+          color: groupColor,
+          width: 3,
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              {
+                offset: 0,
+                color: `${groupColor}44`,
+              },
+              {
+                offset: 1,
+                color: `${groupColor}00`,
+              },
+            ],
+          },
+        },
+      };
+    });
+
+    const option = {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: isDark ? '#1b1b1d' : '#ffffff',
+        borderColor: isDark ? 'rgba(0,190,180,0.35)' : '#dddddd',
+        textStyle: {
+          color: isDark ? '#f8fafc' : '#333333',
+        },
+        formatter: (params) => {
+          if (!params?.length) return '';
+
+          let html = `<div style="margin-bottom: 6px;">${params[0].axisValue}</div>`;
+
+          params.forEach((item) => {
+            html += `
+              <div>
+                <span style="
+                  display:inline-block;
+                  width:8px;
+                  height:8px;
+                  border-radius:50%;
+                  background:${item.color};
+                  margin-right:6px;
+                "></span>
+                ${item.seriesName}：${Number(item.value || 0).toLocaleString()}
+              </div>
+            `;
+          });
+
+          return html;
+        },
+      },
+      legend: {
+        top: 0,
+        type: 'scroll',
+        textStyle: {
+          color: isDark ? '#cbd5e1' : '#666666',
+        },
+        pageTextStyle: {
+          color: isDark ? '#cbd5e1' : '#666666',
+        },
+      },
+      grid: {
+        left: 70,
+        right: 40,
+        top: 70,
+        bottom: dates.length > 8 ? 90 : 50,
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        axisLabel: {
+          interval: 0,
+          rotate: dates.length > 8 ? 35 : 0,
+          color: isDark ? '#cbd5e1' : '#666666',
+        },
+        axisLine: {
+          lineStyle: {
+            color: isDark ? 'rgba(255,255,255,0.18)' : '#dddddd',
+          },
+        },
+        axisTick: {
+          show: false,
+        },
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Token',
+        nameTextStyle: {
+          color: isDark ? '#cbd5e1' : '#666666',
+        },
+        axisLabel: {
+          color: isDark ? '#cbd5e1' : '#666666',
+          formatter: (value) => Number(value || 0).toLocaleString(),
+        },
+        splitLine: {
+          lineStyle: {
+            color: isDark ? 'rgba(255,255,255,0.08)' : '#eeeeee',
+          },
+        },
+      },
+      dataZoom:
+        dates.length > 14
+          ? [
+              {
+                type: 'slider',
+                start: 0,
+                end: Math.min(100, Math.floor((14 / dates.length) * 100)),
+                bottom: 12,
+                height: 24,
+                borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#dddddd',
+                textStyle: {
+                  color: isDark ? '#cbd5e1' : '#666666',
+                },
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#f5f5f5',
+                fillerColor: isDark
+                  ? 'rgba(0,190,180,0.25)'
+                  : 'rgba(0,190,180,0.18)',
+              },
+            ]
+          : [],
+      graphic: !hasData
+        ? {
+            type: 'text',
+            left: 'center',
+            top: 'middle',
+            style: {
+              text: '暂无每日 Token 数据',
+              fontSize: 15,
+              fill: isDark ? '#94a3b8' : '#999999',
+            },
+          }
+        : null,
+      series,
+    };
+
+    chartInstance.current.setOption(option, true);
+
+    const handleResize = () => {
+      chartInstance.current?.resize();
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [groups, isDark]);
+
+  useEffect(() => {
+    return () => {
+      chartInstance.current?.dispose();
+      chartInstance.current = null;
+    };
+  }, []);
+
+  return <div ref={chartRef} className={className} />;
+};
+
+const GroupDailyTokenChartCard = ({ groups, isDark }) => {
+  return (
+    <div className="mt-[22px]">
+      <div className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+        <LineChartOutlined className="text-[#fa8c16]" />
+        各组tokens使用趋势图
+      </div>
+      <div
+        className="
+        mt-[22px]
+        rounded-xl
+        p-5
+        bg-white
+        border
+        border-slate-200
+        shadow-[0_4px_14px_rgba(0,0,0,0.06)]
+        dark:bg-white/[0.035]
+        dark:border-white/[0.08]
+        dark:shadow-[0_8px_30px_rgba(0,0,0,0.35)]
+        dark:backdrop-blur-sm
+      "
+      >
+        <div className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
+          <ThunderboltOutlined className="text-[#00BEB4]" />
+          各组每日 Token 消耗趋势
+        </div>
+
+        <GroupDailyTokenLineChart
+          groups={groups}
+          isDark={isDark}
+          className="h-[460px] w-full"
+        />
       </div>
     </div>
   );
@@ -1090,15 +1368,33 @@ const GroupStatsDashboard = () => {
           </button>
 
           <div
-            className={`page-switch ${
-              switchSide === 'left' ? 'page-switch-left' : 'page-switch-right'
-            }`}
+            className={`
+                relative
+                flex
+                h-9
+                w-[160px]
+                items-center
+                rounded-full
+                border
+                border-slate-200
+                bg-slate-100
+                p-1
+                transition-colors
+                dark:border-white/[0.08]
+                dark:bg-white/[0.06]
+                ${switchSide === 'left' ? 'page-switch-left' : 'page-switch-right'}
+            `}
           >
             <button
               type="button"
-              className={`page-switch-item ${
-                switchSide === 'left' ? 'page-switch-item-active' : ''
-              }`}
+              className={`
+                relative z-10 flex-1 rounded-full text-sm transition-colors
+                ${
+                  switchSide === 'left'
+                    ? 'text-slate-900 dark:text-white'
+                    : 'text-slate-500 dark:text-slate-400'
+                }
+                `}
               onClick={(event) => {
                 event.preventDefault();
               }}
@@ -1108,15 +1404,38 @@ const GroupStatsDashboard = () => {
 
             <button
               type="button"
-              className={`page-switch-item ${
-                switchSide === 'right' ? 'page-switch-item-active' : ''
-              }`}
+              className={`
+                relative z-10 flex-1 rounded-full text-sm transition-colors
+                ${
+                  switchSide === 'right'
+                    ? 'text-slate-900 dark:text-white'
+                    : 'text-slate-500 dark:text-slate-400'
+                }
+                `}
               onClick={handleGoLog}
             >
               日志
             </button>
 
-            <div className="page-switch-slider" />
+            <div
+              className={`
+                absolute
+                top-1
+                h-7
+                w-[calc(50%-4px)]
+                rounded-full
+                bg-white
+                shadow-sm
+                transition-transform
+                duration-300
+                dark:bg-[#00BEB4]
+                ${
+                  switchSide === 'left'
+                    ? 'left-1 translate-x-0'
+                    : 'left-1 translate-x-full'
+                }
+                `}
+            />
           </div>
         </div>
       </div>
@@ -1183,10 +1502,16 @@ const GroupStatsDashboard = () => {
         </ChartCard>
       </div>
 
-      <GroupCombinedCharts groups={backendData} isDark={isDark} />
+      <GroupDailyTokenChartCard groups={backendData} isDark={isDark} />
 
-      <div
-        className="
+      <GroupCombinedCharts groups={backendData} isDark={isDark} />
+      <div className="mt-[22px]">
+        <div className="mb-4 flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
+          <TableOutlined className="text-[#1890ff]" />
+          组统计明细
+        </div>
+        <div
+          className="
           mt-[22px]
           rounded-xl
           p-5
@@ -1199,9 +1524,9 @@ const GroupStatsDashboard = () => {
           dark:shadow-[0_8px_30px_rgba(0,0,0,0.35)]
           dark:backdrop-blur-sm
         "
-      >
-        <h2
-          className="
+        >
+          <h2
+            className="
             mb-4
             flex
             items-center
@@ -1211,71 +1536,74 @@ const GroupStatsDashboard = () => {
             text-slate-900
             dark:text-white
           "
-        >
-          <TableOutlined className="text-[#00BEB4]" />
-          组统计明细
-        </h2>
+          >
+            <TableOutlined className="text-[#00BEB4]" />
+            明细表
+          </h2>
 
-        <div className="w-full overflow-x-auto">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead>
-              <tr className="bg-slate-100 dark:bg-white/[0.04]">
-                <th className={thClassName}>组 ID</th>
-                <th className={thClassName}>组名称</th>
-                <th className={thClassName}>
-                  <ThunderboltOutlined className="mr-1.5 text-[#fa8c16]" />
-                  Token 消耗
-                </th>
-                <th className={thClassName}>
-                  <MessageOutlined className="mr-1.5 text-[#00BEB4]" />
-                  问答次数
-                </th>
-                <th className={thClassName}>
-                  <TeamOutlined className="mr-1.5 text-[#34D399]" />
-                  成员数
-                </th>
-              </tr>
-            </thead>
+          <div className="w-full overflow-x-auto">
+            <table className="w-full border-collapse text-left text-sm text-center">
+              <thead>
+                <tr className="bg-slate-100 dark:bg-white/[0.04]">
+                  {/* <th className={thClassName}>组 ID</th> */}
+                  <th className={thClassName}>组名称</th>
+                  <th className={thClassName}>
+                    <ThunderboltOutlined className="mr-1.5 text-[#fa8c16]" />
+                    Token 消耗
+                  </th>
+                  <th className={thClassName}>
+                    <MessageOutlined className="mr-1.5 text-[#00BEB4]" />
+                    问答次数
+                  </th>
+                  <th className={thClassName}>
+                    <TeamOutlined className="mr-1.5 text-[#34D399]" />
+                    成员数
+                  </th>
+                </tr>
+              </thead>
 
-            <tbody>
-              {backendData.length > 0 ? (
-                backendData.map((item) => (
-                  <tr
-                    key={item.group_id}
-                    className="
+              <tbody>
+                {backendData.length > 0 ? (
+                  backendData.map((item) => (
+                    <tr
+                      key={item.group_id}
+                      className="
                       transition-colors
                       hover:bg-slate-50
                       dark:hover:bg-white/[0.04]
                     "
-                  >
-                    <td className={tdClassName}>{item.group_id}</td>
-                    <td className={tdClassName}>{item.group_name}</td>
-                    <td className={tdClassName}>
-                      {Number(item.total_tokens || 0).toLocaleString()}
-                    </td>
-                    <td className={tdClassName}>
-                      {Number(item.total_dialogs || 0).toLocaleString()}
-                    </td>
-                    <td className={tdClassName}>{item.members?.length || 0}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="
+                    >
+                      {/* <td className={tdClassName}>{item.group_id}</td> */}
+                      <td className={tdClassName}>{item.group_name}</td>
+                      <td className={tdClassName}>
+                        {Number(item.total_tokens || 0).toLocaleString()}
+                      </td>
+                      <td className={tdClassName}>
+                        {Number(item.total_dialogs || 0).toLocaleString()}
+                      </td>
+                      <td className={tdClassName}>
+                        {item.members?.length || 0}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="
                       p-[30px]
                       text-center
                       text-slate-400
                       dark:text-slate-500
                     "
-                  >
-                    暂无数据
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    >
+                      暂无数据
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </DashboardShell>

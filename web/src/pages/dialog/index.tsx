@@ -99,6 +99,9 @@ const GroupMemberStatsPage: React.FC = () => {
   // 定义导出函数
   const handleExportExcel = async (tenantId: string, dialogId: string) => {
     try {
+      console.time('export_excel_total');
+      console.time('export_excel_request');
+
       message.loading({ content: '正在生成日志文件...', key: 'exporting' });
 
       const response = await axios.post(
@@ -112,12 +115,55 @@ const GroupMemberStatsPage: React.FC = () => {
         },
       );
 
+      console.timeEnd('export_excel_request');
+
+      console.log('导出接口已返回:', response);
+      console.log('导出接口状态码:', response.status);
+      console.log('导出接口 headers:', response.headers);
+      console.log('导出接口 content-type:', response.headers['content-type']);
+      console.log('导出文件 blob:', response.data);
+      console.log('导出文件大小 bytes:', response.data?.size);
+
+      const contentType = response.headers['content-type'];
+
+      if (
+        !contentType?.includes(
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+      ) {
+        const errorText = await response.data.text();
+
+        console.log('导出接口返回非 Excel 内容:', errorText);
+
+        let errorMessage = '导出失败，请重试';
+
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage =
+            errorJson.message ||
+            errorJson.retmsg ||
+            errorJson.error ||
+            errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      console.time('export_excel_blob_download');
+
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
+      console.log('构造后的下载 blob:', blob);
+      console.log('构造后的下载 blob size:', blob.size);
+
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
+
+      console.log('生成的 blob url:', url);
 
       link.href = url;
       link.download = `dialog_logs_${dialogId}.xlsx`;
@@ -127,12 +173,26 @@ const GroupMemberStatsPage: React.FC = () => {
       link.click();
       document.body.removeChild(link);
 
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        console.log('blob url 已释放:', url);
+      }, 5000);
 
-      message.success({ content: '导出成功！', key: 'exporting' });
+      console.timeEnd('export_excel_blob_download');
+      console.timeEnd('export_excel_total');
+
+      message.success({
+        content: '导出请求已完成，文件已开始下载',
+        key: 'exporting',
+      });
     } catch (error) {
+      console.timeEnd('export_excel_total');
       console.error('Export failed:', error);
-      message.error({ content: '导出失败，请重试', key: 'exporting' });
+
+      message.error({
+        content: error instanceof Error ? error.message : '导出失败，请重试',
+        key: 'exporting',
+      });
     }
   };
 
@@ -423,15 +483,61 @@ const GroupMemberStatsPage: React.FC = () => {
             团队数据仪表盘
           </h1>
           <div
-            className={`page-switch ${
-              switchSide === 'left' ? 'page-switch-left' : 'page-switch-right'
-            }`}
+            className="
+    relative
+    flex
+    h-9
+    w-[160px]
+    items-center
+    rounded-full
+    border
+    border-slate-200
+    bg-slate-100
+    p-1
+    transition-colors
+    dark:border-white/[0.08]
+    dark:bg-white/[0.06]
+  "
           >
+            <div
+              className={`
+      absolute
+      left-1
+      top-1
+      h-7
+      w-[76px]
+      rounded-full
+      bg-white
+      shadow-sm
+      transition-transform
+      duration-300
+      ease-out
+      dark:bg-[#00BEB4]
+      ${switchSide === 'left' ? 'translate-x-0' : 'translate-x-[76px]'}
+    `}
+            />
+
             <button
               type="button"
-              className={`page-switch-item ${
-                switchSide === 'left' ? 'page-switch-item-active' : ''
-              }`}
+              className={`
+      relative
+      z-10
+      flex
+      h-7
+      flex-1
+      items-center
+      justify-center
+      rounded-full
+      p-0
+      text-sm
+      leading-none
+      transition-colors
+      ${
+        switchSide === 'left'
+          ? 'text-slate-900 dark:text-white'
+          : 'text-slate-500 dark:text-slate-400'
+      }
+    `}
               onClick={handleGoBoard}
             >
               看板
@@ -439,17 +545,31 @@ const GroupMemberStatsPage: React.FC = () => {
 
             <button
               type="button"
-              className={`page-switch-item ${
-                switchSide === 'right' ? 'page-switch-item-active' : ''
-              }`}
+              className={`
+      relative
+      z-10
+      flex
+      h-7
+      flex-1
+      items-center
+      justify-center
+      rounded-full
+      p-0
+      text-sm
+      leading-none
+      transition-colors
+      ${
+        switchSide === 'right'
+          ? 'text-slate-900 dark:text-white'
+          : 'text-slate-500 dark:text-slate-400'
+      }
+    `}
               onClick={(event) => {
                 event.preventDefault();
               }}
             >
               日志
             </button>
-
-            <div className="page-switch-slider" />
           </div>
         </div>
 
@@ -612,7 +732,7 @@ const GroupMemberStatsPage: React.FC = () => {
                       <Card className="stat-card token-card">
                         <Statistic
                           title="当前组消耗 Token"
-                          value={selectedMember.total_tokens || 0}
+                          value={selectedMember.token_usage || 0}
                           prefix={<ThunderboltOutlined />}
                         />
                       </Card>

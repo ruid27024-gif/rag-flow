@@ -217,6 +217,14 @@ export function Header() {
     navigate(Routes.Root);
   }, [navigate]);
 
+  const activePath = useMemo(() => {
+    if (pathname === '/dashboard' || pathname.startsWith('/dialog')) {
+      return '/dashboard';
+    }
+
+    return pathname;
+  }, [pathname]);
+
   return (
     <section className="py-5 px-10 flex justify-between items-center ">
       <div className="flex items-center gap-4">
@@ -228,13 +236,24 @@ export function Header() {
           onClick={handleLogoClick}
         />
       </div>
-      <Segmented
+      {/* <Segmented
         className="flex-1 max-w-[800px] mx-auto justify-between gap-0"
         rounded="xxxl"
         sizeType="xl"
         buttonSize="xl"
         options={options}
         value={pathname}
+        onChange={handleChange}
+        activeClassName="text-bg-base bg-metallic-gradient border-b-[#00BEB4] border-b-2"
+      ></Segmented> */}
+
+      <Segmented
+        className="flex-1 max-w-[800px] mx-auto justify-between gap-0"
+        rounded="xxxl"
+        sizeType="xl"
+        buttonSize="xl"
+        options={options}
+        value={activePath}
         onChange={handleChange}
         activeClassName="text-bg-base bg-metallic-gradient border-b-[#00BEB4] border-b-2"
       ></Segmented>
