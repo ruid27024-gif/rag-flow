@@ -432,57 +432,180 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             
             #Todo 对知识库进行分类 动态提示词语
             # print(dialog.kb_ids)
+            # if embd_mdl:
+            #     query = " ".join(questions)
+            #     selected_kbs = list(kbs)
+            #     total_top_n = max(1, int(dialog.top_n or 1))
+            #     # 每个知识库都按 top_n 取召回片段；例如 top_n=8 时，每个选中的知识库最多取 8 条。
+            #     per_kb_top_n = total_top_n
+            #     doc_aggs_by_id = {}
+
+            #     # 逐库检索：让前端选中的每个知识库都有机会进入回答来源。
+            #     # 这里只改变普通 RAG 的召回组织方式，不改变 answer/reference 的返回结构。
+            #     kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
+            #     for kb in selected_kbs:
+            #         kb_tenant_ids = [kb.tenant_id]
+            #         kb_result = retriever.retrieval(
+            #             query,
+            #             embd_mdl,
+            #             kb_tenant_ids,
+            #             [kb.id],
+            #             1,
+            #             per_kb_top_n,
+            #             dialog.similarity_threshold,
+            #             dialog.vector_similarity_weight,
+            #             doc_ids=attachments,
+            #             top=dialog.top_k,
+            #             aggs=False,
+            #             rerank_mdl=rerank_mdl,
+            #             rank_feature=label_question(query, [kb]),
+            #         )
+            #         kb_chunks = kb_result.get("chunks", [])
+            #         if prompt_config.get("toc_enhance"):
+            #             cks = retriever.retrieval_by_toc(query, kb_chunks, kb_tenant_ids, chat_mdl, per_kb_top_n)
+            #             if cks:
+            #                 kb_chunks = cks
+            #         kb_chunks = retriever.retrieval_by_children(kb_chunks, kb_tenant_ids)
+            #         for chunk in kb_chunks:
+            #             if not chunk.get("kb_id"):
+            #                 chunk["kb_id"] = kb.id
+            #             kbinfos["chunks"].append(chunk)
+            #         kbinfos["total"] += kb_result.get("total", len(kb_chunks))
+            #         for doc_agg in kb_result.get("doc_aggs", []):
+            #             doc_id = doc_agg.get("doc_id")
+            #             if not doc_id:
+            #                 continue
+            #             if doc_id not in doc_aggs_by_id:
+            #                 doc_aggs_by_id[doc_id] = dict(doc_agg)
+            #             else:
+            #                 doc_aggs_by_id[doc_id]["count"] = doc_aggs_by_id[doc_id].get("count", 0) + doc_agg.get("count", 0)
+
+            #     kbinfos["doc_aggs"] = list(doc_aggs_by_id.values())
+            #     print("改写后的问题为：")
+            #     print(questions)
+
+            import asyncio
+            import traceback
+
+
             if embd_mdl:
                 query = " ".join(questions)
                 selected_kbs = list(kbs)
                 total_top_n = max(1, int(dialog.top_n or 1))
-                # 每个知识库都按 top_n 取召回片段；例如 top_n=8 时，每个选中的知识库最多取 8 条。
                 per_kb_top_n = total_top_n
+
                 doc_aggs_by_id = {}
 
-                # 逐库检索：让前端选中的每个知识库都有机会进入回答来源。
-                # 这里只改变普通 RAG 的召回组织方式，不改变 answer/reference 的返回结构。
-                kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
-                for kb in selected_kbs:
-                    kb_tenant_ids = [kb.tenant_id]
-                    kb_result = retriever.retrieval(
-                        query,
-                        embd_mdl,
-                        kb_tenant_ids,
-                        [kb.id],
-                        1,
-                        per_kb_top_n,
-                        dialog.similarity_threshold,
-                        dialog.vector_similarity_weight,
-                        doc_ids=attachments,
-                        top=dialog.top_k,
-                        aggs=False,
-                        rerank_mdl=rerank_mdl,
-                        rank_feature=label_question(query, [kb]),
-                    )
-                    kb_chunks = kb_result.get("chunks", [])
-                    if prompt_config.get("toc_enhance"):
-                        cks = retriever.retrieval_by_toc(query, kb_chunks, kb_tenant_ids, chat_mdl, per_kb_top_n)
-                        if cks:
-                            kb_chunks = cks
-                    kb_chunks = retriever.retrieval_by_children(kb_chunks, kb_tenant_ids)
-                    for chunk in kb_chunks:
-                        if not chunk.get("kb_id"):
-                            chunk["kb_id"] = kb.id
-                        kbinfos["chunks"].append(chunk)
-                    kbinfos["total"] += kb_result.get("total", len(kb_chunks))
-                    for doc_agg in kb_result.get("doc_aggs", []):
+                kbinfos = {
+                    "total": 0,
+                    "chunks": [],
+                    "doc_aggs": []
+                }
+
+                # 最多同时检索 8 个知识库
+                sem = asyncio.Semaphore(8)
+
+                async def retrieve_one_kb(kb):
+                    async with sem:
+                        kb_tenant_ids = [kb.tenant_id]
+
+                        try:
+                            kb_result = await asyncio.to_thread(
+                                retriever.retrieval,
+                                query,
+                                embd_mdl,
+                                kb_tenant_ids,
+                                [kb.id],
+                                1,
+                                per_kb_top_n,
+                                dialog.similarity_threshold,
+                                dialog.vector_similarity_weight,
+                                doc_ids=attachments,
+                                top=dialog.top_k,
+                                aggs=False,
+                                rerank_mdl=rerank_mdl,
+                                rank_feature=label_question(query, [kb]),
+                            )
+
+                            kb_chunks = kb_result.get("chunks", [])
+
+                            if prompt_config.get("toc_enhance"):
+                                cks = await asyncio.to_thread(
+                                    retriever.retrieval_by_toc,
+                                    query,
+                                    kb_chunks,
+                                    kb_tenant_ids,
+                                    chat_mdl,
+                                    per_kb_top_n
+                                )
+                                if cks:
+                                    kb_chunks = cks
+
+                            kb_chunks = await asyncio.to_thread(
+                                retriever.retrieval_by_children,
+                                kb_chunks,
+                                kb_tenant_ids
+                            )
+
+                            for chunk in kb_chunks:
+                                if not chunk.get("kb_id"):
+                                    chunk["kb_id"] = kb.id
+
+                            return {
+                                "kb_id": kb.id,
+                                "total": kb_result.get("total", len(kb_chunks)),
+                                "chunks": kb_chunks,
+                                "doc_aggs": kb_result.get("doc_aggs", []),
+                                "error": None
+                            }
+
+                        except Exception as e:
+                            return {
+                                "kb_id": kb.id,
+                                "total": 0,
+                                "chunks": [],
+                                "doc_aggs": [],
+                                "error": e
+                            }
+
+                tasks = [
+                    asyncio.create_task(retrieve_one_kb(kb))
+                    for kb in selected_kbs
+                ]
+
+                results = await asyncio.gather(*tasks)
+
+                for kb_data in results:
+                    if kb_data["error"]:
+                        print(f"知识库检索失败，kb_id={kb_data['kb_id']}, error={kb_data['error']}")
+                        traceback.print_exception(
+                            type(kb_data["error"]),
+                            kb_data["error"],
+                            kb_data["error"].__traceback__
+                        )
+                        continue
+
+                    kbinfos["chunks"].extend(kb_data["chunks"])
+                    kbinfos["total"] += kb_data["total"]
+
+                    for doc_agg in kb_data["doc_aggs"]:
                         doc_id = doc_agg.get("doc_id")
                         if not doc_id:
                             continue
+
                         if doc_id not in doc_aggs_by_id:
                             doc_aggs_by_id[doc_id] = dict(doc_agg)
                         else:
-                            doc_aggs_by_id[doc_id]["count"] = doc_aggs_by_id[doc_id].get("count", 0) + doc_agg.get("count", 0)
+                            doc_aggs_by_id[doc_id]["count"] = (
+                                doc_aggs_by_id[doc_id].get("count", 0)
+                                + doc_agg.get("count", 0)
+                            )
 
                 kbinfos["doc_aggs"] = list(doc_aggs_by_id.values())
+
                 print("改写后的问题为：")
                 print(questions)
+
             if prompt_config.get("tavily_api_key"):
                 tav = Tavily(prompt_config["tavily_api_key"])
                 tav_res = tav.retrieve_chunks(" ".join(questions))
