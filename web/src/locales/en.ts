@@ -103,6 +103,7 @@ export default {
       dataset: 'Dataset',
       Memories: 'Memory',
       admin: 'admin',
+      dashboard: 'dashboard',
     },
     memories: {
       llmTooltip:

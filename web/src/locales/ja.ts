@@ -73,6 +73,7 @@ export default {
       flow: 'エージェント',
       search: '検索',
       admin: 'アドミン',
+      dashboard: 'ダッシュボード',
     },
     knowledgeList: {
       welcome: 'お帰りなさい',

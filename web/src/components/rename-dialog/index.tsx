@@ -25,7 +25,8 @@ export function RenameDialog({
     <Dialog open onOpenChange={hideModal}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{title || t('common.rename')}</DialogTitle>
+          {/* <DialogTitle>{title || t('common.rename')}</DialogTitle> */}
+          <DialogTitle>重命名</DialogTitle>
         </DialogHeader>
         <RenameForm
           initialName={initialName}

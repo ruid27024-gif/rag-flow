@@ -75,6 +75,7 @@ export default {
       search: '檢索',
       welcome: '歡迎來到',
       admin: '管理員',
+      dashboard: '儀表板',
     },
     knowledgeList: {
       welcome: '歡迎回來',

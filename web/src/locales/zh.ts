@@ -99,6 +99,7 @@ export default {
       dataset: '知识库',
       Memories: '记忆',
       admin: '管理员',
+      dashboard: '仪表盘',
     },
     knowledgeList: {
       welcome: '欢迎回来',

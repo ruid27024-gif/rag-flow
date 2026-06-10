@@ -36,7 +36,7 @@ export function BulkOperateBar({
     <Card className={cn('mb-4', className)}>
       <CardContent className="p-1 pl-5 flex items-center gap-6">
         <section className="text-text-sub-title-invert flex items-center gap-2">
-          <span>Selected: {count} Files</span>
+          <span>已选: {count} 个文件</span>
           <BrushCleaning className="size-3" />
         </section>
         <Separator orientation={'vertical'} className="h-3"></Separator>

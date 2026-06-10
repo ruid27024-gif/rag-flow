@@ -90,7 +90,7 @@ export function Header() {
 
       list.push({
         path: '/dashboard',
-        name: '仪表盘',
+        name: t('header.dashboard'),
         icon: Shield,
       });
 

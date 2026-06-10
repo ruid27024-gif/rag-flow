@@ -107,7 +107,7 @@ export const getFileLogsTableColumns = (
       cell: ({ row }) => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex gap-2 cursor-pointer">
+            <div className="flex gap-2 cursor-pointer text-center">
               <FileIcon name={row.original.document_name}></FileIcon>
               <span className={cn('truncate')}>
                 {row.original.document_name}
@@ -125,7 +125,7 @@ export const getFileLogsTableColumns = (
       header: t('source'),
       meta: { cellClassName: 'max-w-[10vw]' },
       cell: ({ row }) => (
-        <div className="text-text-primary">
+        <div className="text-text-primary text-center">
           {row.original.source_from === 'local' ||
           row.original.source_from === '' ? (
             <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
@@ -150,7 +150,7 @@ export const getFileLogsTableColumns = (
         const title = row.original.pipeline_title;
         const pipelineTitle = title === 'naive' ? 'general' : title;
         return (
-          <div className="flex items-center gap-2 text-text-primary">
+          <div className="flex items-center gap-2 text-text-primary text-center">
             <RAGFlowAvatar
               avatar={row.original.avatar}
               name={pipelineTitle}
@@ -176,7 +176,7 @@ export const getFileLogsTableColumns = (
         );
       },
       cell: ({ row }) => (
-        <div className="text-text-primary text-center">
+        <div className="text-text-primary text-center text-center">
           {formatDate(row.original.process_begin_at)}
           {/* {row.original.process_begin_at} */}
         </div>
@@ -187,7 +187,8 @@ export const getFileLogsTableColumns = (
       header: t('task'),
       cell: ({ row }) => (
         <div className="text-text-primary text-center">
-          {row.original.task_type}
+          {/* {row.original.task_type} */}
+          解析
         </div>
       ),
     },
@@ -205,7 +206,11 @@ export const getFileLogsTableColumns = (
     },
     {
       accessorKey: 'document_id_count',
-      header: '文档解析次数',
+      header: () => <div className="text-center w-full">文档解析次数</div>,
+      meta: {
+        align: 'center',
+        className: 'text-center',
+      },
       cell: ({ row }) => {
         const count = row.original.document_id_count || 0;
 
@@ -230,7 +235,7 @@ export const getFileLogsTableColumns = (
             : colorMap[normalizedCount];
 
         return (
-          <div className="flex items-center">
+          <div className="flex w-full items-center justify-center">
             <span
               className={`
             inline-flex items-center justify-center
@@ -263,23 +268,29 @@ export const getFileLogsTableColumns = (
     },
     {
       accessorKey: 'is_latest_parse',
-      header: '是否最新',
+      header: () => <div className="text-center w-full">是否最新</div>,
+      meta: {
+        align: 'center',
+        className: 'text-center',
+      },
       cell: ({ row }) => {
         const isLatest = row.original.is_latest_parse === 1;
 
         return (
-          <span
-            className={`
-          inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
-          ${
-            isLatest
-              ? 'bg-green-50 text-green-700 ring-green-200'
-              : 'bg-gray-50 text-gray-500 ring-gray-200'
-          }
-        `}
-          >
-            {isLatest ? '最新' : '历史'}
-          </span>
+          <div className="flex w-full items-center justify-center">
+            <span
+              className={`
+            inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
+            ${
+              isLatest
+                ? 'bg-green-50 text-blue-700 ring-blue-200'
+                : 'bg-gray-50 text-gray-500 ring-gray-200'
+            }
+          `}
+            >
+              {isLatest ? '最新' : '历史'}
+            </span>
+          </div>
         );
       },
     },
@@ -287,7 +298,7 @@ export const getFileLogsTableColumns = (
       id: 'operations',
       header: t('operations'),
       cell: ({ row }) => (
-        <div className="flex justify-start space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex justify-start space-x-2 opacity-0 group-hover:opacity-100 transition-opacity text-center">
           <Button
             variant="ghost"
             size="sm"
