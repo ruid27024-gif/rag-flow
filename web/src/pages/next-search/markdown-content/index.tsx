@@ -2,7 +2,6 @@ import Image from '@/components/image';
 import SvgIcon from '@/components/svg-icon';
 import { IReference, IReferenceChunk } from '@/interfaces/database/chat';
 import { getExtension } from '@/utils/document-util';
-import { InfoCircleOutlined } from '@ant-design/icons';
 import DOMPurify from 'dompurify';
 import { memo, useCallback, useEffect, useMemo } from 'react';
 import Markdown from 'react-markdown';
@@ -61,21 +60,112 @@ const MarkdownContent = ({
   reference: IReference;
   clickDocumentButton?: (documentId: string, chunk: IReferenceChunk) => void;
 }) => {
+  console.log(content);
+  const normalizeCitationFormat = useCallback(
+    (text: string) => {
+      if (!text) return text;
+
+      const chunks = reference?.chunks ?? [];
+
+      const isValidId = (idText: string) => {
+        const index = Number(idText);
+        return Number.isInteger(index) && index >= 0 && index < chunks.length;
+      };
+
+      const convertIds = (idGroup: string) => {
+        const ids = idGroup
+          .split(/[、,，\s和与及]+/)
+          .map((x) => x.trim())
+          .filter(Boolean);
+
+        const validIds = ids.filter(isValidId);
+
+        if (!validIds.length) {
+          return idGroup;
+        }
+
+        return validIds.map((id) => `[ID:${id}]`).join('');
+      };
+
+      let next = text;
+
+      /**
+       * 1. 把 [11] / [3, 4, 5] 转成 [ID:11] / [ID:3][ID:4][ID:5]
+       */
+      next = next.replace(
+        /\[((?:\d+\s*[,，、]\s*)*\d+)\]/g,
+        (fullMatch, idGroup) => {
+          const converted = convertIds(idGroup);
+
+          if (converted === idGroup) {
+            return fullMatch;
+          }
+
+          return converted;
+        },
+      );
+
+      /**
+       * 2. 把 ID:11 / ID 11 / ID为11 / ID 3、4、5 转成 [ID:n]
+       */
+      next = next.replace(
+        /ID\s*(?:[:：]|为)?\s*((?:\d+\s*(?:[、,，]|和|与|及)?\s*)+)/gi,
+        (fullMatch, idGroup, offset, fullText) => {
+          // 防止已经是 [ID:11] 时重复替换
+          const prevChar = fullText[offset - 1];
+          if (prevChar === '[') {
+            return fullMatch;
+          }
+
+          const converted = convertIds(idGroup);
+
+          if (converted === idGroup) {
+            return fullMatch;
+          }
+
+          return converted;
+        },
+      );
+
+      return next;
+    },
+    [reference],
+  );
   const { t } = useTranslation();
   const { setDocumentIds, data: fileThumbnails } =
     useFetchDocumentThumbnailsByIds();
+  // const contentWithCursor = useMemo(() => {
+  //   let text = DOMPurify.sanitize(content, {
+  //     ADD_TAGS: ['think', 'section'],
+  //     ADD_ATTR: ['class'],
+  //   });
+  //   // let text = content;
+  //   if (text === '') {
+  //     text = t('chat.searching');
+  //   }
+  //   const nextText = replaceTextByOldReg(text);
+  //   return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
+  // }, [content, t]);
   const contentWithCursor = useMemo(() => {
-    let text = DOMPurify.sanitize(content, {
-      ADD_TAGS: ['think', 'section'],
-      ADD_ATTR: ['class'],
-    });
-    // let text = content;
+    let text = content || '';
+
     if (text === '') {
       text = t('chat.searching');
     }
-    const nextText = replaceTextByOldReg(text);
-    return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
-  }, [content, t]);
+
+    // 旧格式 ##11$$ -> [ID:11]
+    text = replaceTextByOldReg(text);
+
+    // 新增：ID:11 / ID 11 / [11] / ID为11 / ID 3、4、5 -> [ID:n]
+    text = normalizeCitationFormat(text);
+
+    text = DOMPurify.sanitize(text, {
+      ADD_TAGS: ['think', 'section'],
+      ADD_ATTR: ['class'],
+    });
+
+    return pipe(replaceThinkToSection, preprocessLaTeX)(text);
+  }, [content, t, normalizeCitationFormat]);
 
   useEffect(() => {
     const docAggs = reference?.doc_aggs;
@@ -242,8 +332,13 @@ const MarkdownContent = ({
           ></Image>
         ) : (
           <Popover>
-            <PopoverTrigger>
+            {/* <PopoverTrigger>
               <InfoCircleOutlined className={styles.referenceIcon} />
+            </PopoverTrigger> */}
+            <PopoverTrigger>
+              <span className="inline-flex items-center justify-center px-1 text-xs font-medium text-blue-600 cursor-pointer hover:underline">
+                [{chunkIndex + 1}]
+              </span>
             </PopoverTrigger>
             <PopoverContent className="!w-fit">
               {getPopoverContent(chunkIndex)}

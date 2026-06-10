@@ -145,6 +145,7 @@ def kb_prompt(kbinfos, max_tokens, hash_id=False, source_kbs=None):
         knowledge = KnowledgebaseService.get_detail(kb_id)
         return knowledge["name"] if knowledge else kb_id
 
+    # ID 就是知识库检索回来的第几块索引
     def format_chunk(global_idx, ck):
         cnt = "\nID: {}".format(global_idx if not hash_id else hash_str2int(get_value(ck, "id", "chunk_id"), 500))
         cnt += draw_node("Title", get_value(ck, "docnm_kwd", "document_name"))

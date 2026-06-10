@@ -54,8 +54,13 @@ const RetrievalDocuments = ({
     documents:
       documentsAll?.length > documents?.length ? documentsAll : documents,
   };
+
   const [selectedValues, setSelectedValues] =
     useState<string[]>(selectedDocumentIds);
+
+  useEffect(() => {
+    setSelectedValues(selectedDocumentIds);
+  }, [selectedDocumentIds]);
 
   const multiOptions = useMemo(() => {
     if (!useDocuments || !useDocuments.length) {
@@ -93,6 +98,16 @@ const RetrievalDocuments = ({
     onValueChange([]);
   };
 
+  // const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  //   if (event.key === 'Enter') {
+  //     setIsPopoverOpen(true);
+  //   } else if (event.key === 'Backspace' && !event.currentTarget.value) {
+  //     const newSelectedValues = [...selectedValues];
+  //     newSelectedValues.pop();
+  //     setSelectedValues(newSelectedValues);
+  //     onValueChange(newSelectedValues);
+  //   }
+  // };
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       setIsPopoverOpen(true);
@@ -100,64 +115,84 @@ const RetrievalDocuments = ({
       const newSelectedValues = [...selectedValues];
       newSelectedValues.pop();
       setSelectedValues(newSelectedValues);
-      onValueChange(newSelectedValues);
     }
   };
+
   const toggleOption = (option: string) => {
     const newSelectedValues = selectedValues.includes(option)
       ? selectedValues.filter((value) => value !== option)
       : [...selectedValues, option];
     setSelectedValues(newSelectedValues);
-    onValueChange(newSelectedValues);
+    // onValueChange(newSelectedValues);
+  };
+  // 新增确认函数
+  const handleConfirm = () => {
+    onValueChange(selectedValues);
+    setIsPopoverOpen(false);
   };
   return (
     <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-      <PopoverTrigger asChild>
-        {useDocuments?.length && (
-          <Button
-            onClick={handleTogglePopover}
-            className={cn(
-              'flex w-full p-1 rounded-md text-base text-text-primary border min-h-10 h-auto items-center justify-between bg-inherit hover:bg-inherit [&_svg]:pointer-events-auto',
-            )}
-          >
-            <div className="flex justify-between items-center w-full">
-              <div className="flex flex-wrap items-center gap-2">
-                <Files />
-                <span>
+      {useDocuments?.length > 0 && (
+        <PopoverTrigger asChild>
+          {useDocuments?.length && (
+            <Button
+              onClick={handleTogglePopover}
+              className={cn(
+                'flex w-full p-1 rounded-md text-base text-text-primary border min-h-10 h-auto items-center justify-between bg-inherit hover:bg-inherit [&_svg]:pointer-events-auto',
+              )}
+            >
+              <div className="flex justify-between items-center w-full">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Files />
+                  {/* <span>
                   {selectedDocumentIds?.length ?? 0}/{useDocuments?.length ?? 0}
                 </span>
-                Files
+                文件 */}
+                  <span>
+                    {selectedDocumentIds?.length
+                      ? `已选 ${selectedDocumentIds.length}/${useDocuments?.length ?? 0}`
+                      : `全部 ${useDocuments?.length ?? 0}`}
+                  </span>
+                  文件
+                </div>
+                <div className="flex items-center justify-between">
+                  <XIcon
+                    className="h-4 mx-2 cursor-pointer text-muted-foreground"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleClear();
+                    }}
+                  />
+                  <Separator
+                    orientation="vertical"
+                    className="flex min-h-6 h-full"
+                  />
+                  <ChevronDown className="h-4 mx-2 cursor-pointer text-muted-foreground" />
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <XIcon
-                  className="h-4 mx-2 cursor-pointer text-muted-foreground"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleClear();
-                  }}
-                />
-                <Separator
-                  orientation="vertical"
-                  className="flex min-h-6 h-full"
-                />
-                <ChevronDown className="h-4 mx-2 cursor-pointer text-muted-foreground" />
-              </div>
-            </div>
-          </Button>
-        )}
-      </PopoverTrigger>
-      <PopoverContent
+            </Button>
+          )}
+        </PopoverTrigger>
+      )}
+      {/* <PopoverContent
         className="w-auto p-0"
         align="start"
         onEscapeKeyDown={() => setIsPopoverOpen(false)}
+      > */}
+      <PopoverContent
+        side="bottom"
+        align="start"
+        sideOffset={6}
+        className="z-50 w-[320px] p-0"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+        onEscapeKeyDown={() => setIsPopoverOpen(false)}
       >
         <Command>
-          <CommandInput
-            placeholder="Search..."
-            onKeyDown={handleInputKeyDown}
-          />
+          <CommandInput placeholder="搜索..." onKeyDown={handleInputKeyDown} />
           <CommandList>
-            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandEmpty>未找到结果.</CommandEmpty>
             <CommandGroup>
               {!multiOptions.some((x) => 'options' in x) &&
                 (multiOptions as unknown as MultiSelectOptionType[]).map(
@@ -218,7 +253,7 @@ const RetrievalDocuments = ({
                 )}
             </CommandGroup>
             <CommandSeparator />
-            <CommandGroup>
+            {/* <CommandGroup>
               <div className="flex items-center justify-between">
                 {selectedValues.length > 0 && (
                   <>
@@ -226,7 +261,7 @@ const RetrievalDocuments = ({
                       onSelect={handleClear}
                       className="flex-1 justify-center cursor-pointer"
                     >
-                      Clear
+                      清空
                     </CommandItem>
                     <Separator
                       orientation="vertical"
@@ -238,7 +273,47 @@ const RetrievalDocuments = ({
                   onSelect={() => setIsPopoverOpen(false)}
                   className="flex-1 justify-center cursor-pointer max-w-full"
                 >
-                  Close
+                  关闭
+                </CommandItem>
+              </div>
+            </CommandGroup> */}
+            <CommandGroup>
+              <div className="flex items-center justify-between">
+                <CommandItem
+                  onSelect={handleClear}
+                  className="flex-1 justify-center cursor-pointer"
+                >
+                  清空
+                </CommandItem>
+
+                <Separator
+                  orientation="vertical"
+                  className="flex min-h-6 h-full"
+                />
+
+                <CommandItem
+                  onSelect={() => {
+                    handleConfirm();
+                    return false; // 👈 关键：阻止 cmdk 默认的关闭行为，防止闪烁
+                  }}
+                  className="flex-1 justify-center cursor-pointer text-primary"
+                >
+                  确认
+                </CommandItem>
+
+                <Separator
+                  orientation="vertical"
+                  className="flex min-h-6 h-full"
+                />
+
+                <CommandItem
+                  onSelect={() => {
+                    setSelectedValues(selectedDocumentIds);
+                    setIsPopoverOpen(false);
+                  }}
+                  className="flex-1 justify-center cursor-pointer max-w-full"
+                >
+                  关闭
                 </CommandItem>
               </div>
             </CommandGroup>

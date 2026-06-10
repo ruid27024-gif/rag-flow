@@ -11,7 +11,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { IReference } from '@/interfaces/database/chat';
 import { cn } from '@/lib/utils';
 import DOMPurify from 'dompurify';
@@ -26,6 +25,193 @@ import './index.less';
 import MarkdownContent from './markdown-content';
 import MindMapDrawer from './mindmap-drawer';
 import RetrievalDocuments from './retrieval-documents';
+
+type SimplePaginationProps = {
+  current: number;
+  pageSize: number;
+  total: number;
+  onChange: (page: number, pageSize: number) => void;
+  showSizeChanger?: boolean;
+};
+
+const pageSizeOptions = [10, 20, 50, 100];
+
+export function SimplePagination({
+  current = 1,
+  pageSize = 10,
+  total = 0,
+  onChange,
+  showSizeChanger = true,
+}: SimplePaginationProps) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const isFirstPage = current <= 1;
+  const isLastPage = current >= totalPages;
+
+  const getDisplayedPages = () => {
+    const maxDisplayedPages = 5;
+
+    if (totalPages <= maxDisplayedPages) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages: number[] = [];
+    const left = Math.max(2, current - 2);
+    const right = Math.min(totalPages - 1, current + 2);
+
+    pages.push(1);
+
+    if (left > 2) {
+      pages.push(-1);
+    }
+
+    for (let page = left; page <= right; page += 1) {
+      pages.push(page);
+    }
+
+    if (right < totalPages - 1) {
+      pages.push(-2);
+    }
+
+    pages.push(totalPages);
+
+    return pages;
+  };
+
+  const displayedPages = getDisplayedPages();
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages || page === current) {
+      return;
+    }
+
+    onChange(page, pageSize);
+  };
+
+  const handlePageSizeChange = (
+    event: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
+    const nextPageSize = Number(event.target.value);
+
+    onChange(1, nextPageSize);
+  };
+
+  if (total <= 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-4 text-sm text-text-primary">
+      <span>共 {total} 条</span>
+
+      <div className="flex items-center gap-1">
+        {!isFirstPage && (
+          <button
+            type="button"
+            onClick={() => handlePageChange(current - 1)}
+            className="
+              h-8
+              px-3
+              rounded-md
+              border
+              border-border-default
+              bg-bg-card
+              text-text-primary
+              hover:bg-bg-base
+              transition-colors
+            "
+          >
+            上一页
+          </button>
+        )}
+
+        {displayedPages.map((page, index) => {
+          if (page < 0) {
+            return (
+              <span
+                key={`ellipsis-${index}`}
+                className="flex h-8 min-w-8 items-center justify-center text-text-secondary"
+              >
+                ...
+              </span>
+            );
+          }
+
+          const active = page === current;
+
+          return (
+            <button
+              key={page}
+              type="button"
+              onClick={() => handlePageChange(page)}
+              className={cn(
+                `
+                  flex
+                  h-8
+                  min-w-8
+                  items-center
+                  justify-center
+                  rounded-md
+                  px-2
+                  transition-colors
+                `,
+                active
+                  ? 'bg-bg-card text-text-primary font-semibold'
+                  : 'text-text-secondary hover:bg-bg-card hover:text-text-primary',
+              )}
+            >
+              {page}
+            </button>
+          );
+        })}
+
+        {!isLastPage && (
+          <button
+            type="button"
+            onClick={() => handlePageChange(current + 1)}
+            className="
+              h-8
+              px-3
+              rounded-md
+              border
+              border-border-default
+              bg-bg-card
+              text-text-primary
+              hover:bg-bg-base
+              transition-colors
+            "
+          >
+            下一页
+          </button>
+        )}
+      </div>
+
+      {showSizeChanger && (
+        <select
+          value={pageSize}
+          onChange={handlePageSizeChange}
+          className="
+            h-8
+            rounded-md
+            border
+            border-border-default
+            bg-bg-card
+            px-2
+            text-text-primary
+            outline-none
+          "
+        >
+          {pageSizeOptions.map((size) => (
+            <option key={size} value={size}>
+              {size} 条/页
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 export default function SearchingView({
   setIsSearching,
   searchData,
@@ -68,6 +254,7 @@ export default function SearchingView({
   // }, [i18n]);
   const [searchtext, setSearchtext] = useState<string>('');
   const [retrievalLoading, setRetrievalLoading] = useState(false);
+  const [previewImageId, setPreviewImageId] = useState<string>();
 
   useEffect(() => {
     setSearchtext(searchStr);
@@ -180,7 +367,7 @@ export default function SearchingView({
             {/* retrieval documents */}
             {!isSearchStrEmpty && !sendingLoading && (
               <>
-                <div className=" mt-3 w-44 ">
+                <div className=" mt-3 w-80 ">
                   <RetrievalDocuments
                     selectedDocumentIds={selectedDocumentIds}
                     setSelectedDocumentIds={setSelectedDocumentIds}
@@ -197,64 +384,157 @@ export default function SearchingView({
               {chunks?.length > 0 && (
                 <>
                   {chunks.map((chunk, index) => {
+                    const serialNumber = index + 1;
                     return (
+                      // <div key={index}>
+                      //   <div className="w-full flex flex-col">
+                      //     <div className="w-full highlightContent">
+
+                      //       {/* <ImageWithPopover
+                      //         id={chunk.image_id || chunk.img_id}
+                      //       ></ImageWithPopover> */}
+                      //       <ImageWithPopover
+                      //         id={chunk.image_id || chunk.img_id}
+                      //         previewImageId={previewImageId}
+                      //         setPreviewImageId={setPreviewImageId}
+                      //       />
+                      //       <Popover>
+                      //         <PopoverTrigger asChild>
+                      //           <div
+                      //             dangerouslySetInnerHTML={{
+                      //               __html: DOMPurify.sanitize(
+                      //                 `${
+                      //                   chunk.highlight ??
+                      //                   chunk.content_with_weight ??
+                      //                   ''
+                      //                 }...`,
+                      //               ),
+                      //             }}
+                      //             className="text-sm text-text-primary mb-1"
+                      //           ></div>
+                      //         </PopoverTrigger>
+                      //         <PopoverContent className="text-text-primary !w-full max-w-lg ">
+                      //           <div className="max-h-96 overflow-auto scrollbar-thin">
+                      //             <HighLightMarkdown>
+                      //               {chunk.content_with_weight}
+                      //             </HighLightMarkdown>
+                      //           </div>
+                      //         </PopoverContent>
+                      //       </Popover>
+                      //     </div>
+                      //     <div className="flex gap-2 items-center text-xs text-text-secondary border p-1 rounded-lg w-fit mt-3">
+                      //       {/* 原有的可点击文档按钮 */}
+                      //       {/* 1. 新增序号显示区域 */}
+                      //       <div className="bg-blue-50 text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full border border-blue-100">
+                      //         文档切片 {index + 1}
+                      //       </div>
+                      //       <div
+                      //         className="flex gap-2 items-center cursor-pointer"
+                      //         onClick={() =>
+                      //           clickDocumentButton(chunk.doc_id, chunk as any)
+                      //         }
+                      //       >
+                      //         <FileIcon name={chunk.docnm_kwd}></FileIcon>
+                      //         {chunk.docnm_kwd}
+                      //       </div>
+
+                      //       {/* 新增的橙色 kb_name 展示区域 */}
+                      //       <div className="text-pink-300 font-medium pointer-events-none">
+                      //         {chunk.kb_name || '未知知识库'}
+                      //       </div>
+                      //     </div>
+                      //   </div>
+                      //   {index < chunks.length - 1 && (
+                      //     <div className="w-full border-b border-border-default/80 mt-6"></div>
+                      //   )}
+                      // </div>
+
                       <div key={index}>
-                        <div className="w-full flex flex-col">
-                          <div className="w-full highlightContent">
-                            <ImageWithPopover
-                              id={chunk.image_id || chunk.img_id}
-                            ></ImageWithPopover>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <div
-                                  dangerouslySetInnerHTML={{
-                                    __html: DOMPurify.sanitize(
-                                      `${
-                                        chunk.highlight ??
-                                        chunk.content_with_weight ??
-                                        ''
-                                      }...`,
-                                    ),
-                                  }}
-                                  className="text-sm text-text-primary mb-1"
-                                ></div>
-                              </PopoverTrigger>
-                              <PopoverContent className="text-text-primary !w-full max-w-lg ">
-                                <div className="max-h-96 overflow-auto scrollbar-thin">
-                                  <HighLightMarkdown>
-                                    {chunk.content_with_weight}
-                                  </HighLightMarkdown>
-                                </div>
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                          {/* <div
-                            className="flex gap-2 items-center text-xs text-text-secondary border p-1 rounded-lg w-fit mt-3"
-                            onClick={() =>
-                              clickDocumentButton(chunk.doc_id, chunk as any)
-                            }
+                        <div className="w-full flex items-start gap-3">
+                          {/* 左侧序号 */}
+                          <div
+                            className="
+                              mt-1
+                              shrink-0
+                              inline-flex
+                              items-center
+                              justify-center
+                              rounded-full
+                              bg-blue-50
+                              px-2.5
+                              py-1
+                              text-xs
+                              font-bold
+                              text-blue-600
+                              border
+                              border-blue-100
+                              dark:bg-blue-500/10
+                              dark:text-blue-400
+                              dark:border-blue-500/20
+                            "
                           >
-                            <FileIcon name={chunk.docnm_kwd}></FileIcon>
-                            {chunk.docnm_kwd}
-                          </div> */}
-                          <div className="flex gap-2 items-center text-xs text-text-secondary border p-1 rounded-lg w-fit mt-3">
-                            {/* 原有的可点击文档按钮 */}
-                            <div
-                              className="flex gap-2 items-center cursor-pointer"
-                              onClick={() =>
-                                clickDocumentButton(chunk.doc_id, chunk as any)
-                              }
-                            >
-                              <FileIcon name={chunk.docnm_kwd}></FileIcon>
-                              {chunk.docnm_kwd}
+                            切片{index + 1}
+                          </div>
+
+                          {/* 右侧内容：图片 + 文字 + 文件信息 */}
+                          <div className="flex-1 min-w-0">
+                            <div className="w-full highlightContent">
+                              {/* 图片 */}
+                              <ImageWithPopover
+                                id={chunk.image_id || chunk.img_id}
+                                previewImageId={previewImageId}
+                                setPreviewImageId={setPreviewImageId}
+                              />
+
+                              {/* 文字内容 */}
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <div
+                                    dangerouslySetInnerHTML={{
+                                      __html: DOMPurify.sanitize(
+                                        `${
+                                          chunk.highlight ??
+                                          chunk.content_with_weight ??
+                                          ''
+                                        }...`,
+                                      ),
+                                    }}
+                                    className="text-sm text-text-primary mb-1"
+                                  ></div>
+                                </PopoverTrigger>
+
+                                <PopoverContent className="text-text-primary !w-full max-w-lg ">
+                                  <div className="max-h-96 overflow-auto scrollbar-thin">
+                                    <HighLightMarkdown>
+                                      {chunk.content_with_weight}
+                                    </HighLightMarkdown>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
                             </div>
 
-                            {/* 新增的橙色 kb_name 展示区域 */}
-                            <div className="text-pink-300 font-medium pointer-events-none">
-                              {chunk.kb_name || '未知知识库'}
+                            {/* 文档信息 */}
+                            <div className="flex gap-2 items-center text-xs text-text-secondary border p-1 rounded-lg w-fit mt-3">
+                              <div
+                                className="flex gap-2 items-center cursor-pointer"
+                                onClick={() =>
+                                  clickDocumentButton(
+                                    chunk.doc_id,
+                                    chunk as any,
+                                  )
+                                }
+                              >
+                                <FileIcon name={chunk.docnm_kwd}></FileIcon>
+                                {chunk.docnm_kwd}
+                              </div>
+
+                              <div className="text-pink-300 font-medium pointer-events-none">
+                                {chunk.kb_name || '未知知识库'}
+                              </div>
                             </div>
                           </div>
                         </div>
+
                         {index < chunks.length - 1 && (
                           <div className="w-full border-b border-border-default/80 mt-6"></div>
                         )}
@@ -304,7 +584,7 @@ export default function SearchingView({
               )}
           </div>
 
-          {total > 0 && (
+          {/* {total > 0 && (
             <div className="mt-8 px-8 pb-8 text-base">
               <RAGFlowPagination
                 current={pagination.current}
@@ -312,6 +592,17 @@ export default function SearchingView({
                 total={total}
                 onChange={onChange}
               ></RAGFlowPagination>
+            </div>
+          )} */}
+
+          {total > 0 && (
+            <div className="mt-8 px-8 pb-8 text-base">
+              <SimplePagination
+                current={pagination.current}
+                pageSize={pagination.pageSize}
+                total={total}
+                onChange={onChange}
+              />
             </div>
           )}
         </div>

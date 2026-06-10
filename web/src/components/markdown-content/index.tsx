@@ -15,6 +15,7 @@ import { visitParents } from 'unist-util-visit-parents';
 
 import { useTranslation } from 'react-i18next';
 
+import { HomeIcon } from '@/components/svg-icon';
 import 'katex/dist/katex.min.css'; // `rehype-katex` does not import the CSS for you
 
 import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-request';
@@ -68,22 +69,143 @@ const MarkdownContent = ({
   // console.log("------------------MarkdownContent-----------------------")
   // console.log(content)
   // console.log(reference)
+
   const { t } = useTranslation();
   const { setDocumentIds, data: fileThumbnails } =
     useFetchDocumentThumbnailsByIds();
-  const contentWithCursor = useMemo(() => {
-    let text = DOMPurify.sanitize(content, {
-      ADD_TAGS: ['think', 'section'],
-      ADD_ATTR: ['class'],
-    });
+  // const contentWithCursor = useMemo(() => {
+  //   let text = DOMPurify.sanitize(content, {
+  //     ADD_TAGS: ['think', 'section'],
+  //     ADD_ATTR: ['class'],
+  //   });
 
-    // let text = content;
+  //   // let text = content;
+  //   if (text === '') {
+  //     text = t('chat.searching');
+  //   }
+  //   const nextText = replaceTextByOldReg(text);
+  //   return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
+  // }, [content, t]);
+
+  //   const replaceSourceHeading = useCallback((text: string) => {
+  //   return text
+  //     .replace(
+  //       /(【(?:从[^】]+来说|综合总结)】)/g,
+  //       (_match, heading) => {
+  //         return `\n\n<source-heading>${heading}</source-heading>\n\n`;
+  //       },
+  //     )
+  //     .replace(/^\n+/, '');
+  // }, []);
+
+  // const replaceSourceHeading = useCallback((text: string) => {
+  //   return text
+  //     .replace(
+  //       /(【(?:从[^】]+来说|综合总结)】)/g,
+  //       (_match, heading) => {
+  //         const displayHeading = heading
+  //           .replace(/^【从(.+?)来说】$/, '$1')
+  //           .replace(/^【(.+?)】$/, '$1');
+
+  //         return `\n\n<source-heading>${displayHeading}</source-heading>\n\n`;
+  //       },
+  //     )
+  //     .replace(/^\n+/, '');
+  // }, []);
+
+  const replaceSourceHeading = useCallback((text: string) => {
+    const replaceHeadingOutsideThink = (segment: string) => {
+      return segment.replace(
+        /(【(?:从[^】]+来说|综合总结)】)/g,
+        (_match, heading) => {
+          const displayHeading = heading
+            .replace(/^【从(.+?)来说】$/, '$1')
+            .replace(/^【(.+?)】$/, '$1');
+
+          return `\n\n<source-heading>${displayHeading}</source-heading>\n\n`;
+        },
+      );
+    };
+
+    let result = '';
+    let cursor = 0;
+    const lowerText = text.toLowerCase();
+
+    while (cursor < text.length) {
+      const thinkStart = lowerText.indexOf('<think', cursor);
+
+      // 后面没有 think，剩余内容全部是正文，正常替换
+      if (thinkStart === -1) {
+        result += replaceHeadingOutsideThink(text.slice(cursor));
+        break;
+      }
+
+      // think 前面的正文，正常替换
+      result += replaceHeadingOutsideThink(text.slice(cursor, thinkStart));
+
+      const openTagEnd = text.indexOf('>', thinkStart);
+
+      // 流式场景：<think 标签还没完整，后面都按 think 原样保留
+      if (openTagEnd === -1) {
+        result += text.slice(thinkStart);
+        break;
+      }
+
+      const closeTagStart = lowerText.indexOf('</think>', openTagEnd + 1);
+
+      // 流式场景：think 还没闭合，think 到结尾都原样保留
+      if (closeTagStart === -1) {
+        result += text.slice(thinkStart);
+        break;
+      }
+
+      // 完整 think 块，原样保留，不替换里面的标题
+      result += text.slice(thinkStart, closeTagStart + '</think>'.length);
+
+      cursor = closeTagStart + '</think>'.length;
+    }
+
+    return result.replace(/^\n+/, '');
+  }, []);
+
+  // const contentWithCursor = useMemo(() => {
+  //   let text = content || '';
+
+  //   if (text === '') {
+  //     text = t('chat.searching');
+  //   }
+
+  //   text = replaceSourceHeading(text);
+
+  //   text = DOMPurify.sanitize(text, {
+  //     ADD_TAGS: ['think', 'section', 'source-heading'],
+  //     ADD_ATTR: ['class'],
+  //   });
+
+  //   const nextText = replaceTextByOldReg(text);
+
+  //   return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
+  // }, [content, t, replaceSourceHeading]);
+
+  const contentWithCursor = useMemo(() => {
+    let text = content || '';
+
     if (text === '') {
       text = t('chat.searching');
     }
+
+    // 只替换 think 外面的来源标题
+    text = replaceSourceHeading(text);
+
+    text = DOMPurify.sanitize(text, {
+      ADD_TAGS: ['think', 'section', 'source-heading'],
+      ADD_ATTR: ['class'],
+    });
+
     const nextText = replaceTextByOldReg(text);
+
     return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
-  }, [content, t]);
+  }, [content, t, replaceSourceHeading]);
 
   useEffect(() => {
     const docAggs = reference?.doc_aggs;
@@ -299,31 +421,101 @@ const MarkdownContent = ({
   );
 
   return (
+    // <Markdown
+    //   rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
+    //   remarkPlugins={[remarkGfm, remarkMath]}
+    //   className={styles.markdownContentWrapper}
+    //   components={
+    //     {
+    //       'custom-typography': ({ children }: { children: string }) =>
+    //         renderReference(children),
+    //       code(props: any) {
+    //         const { children, className, ...rest } = props;
+    //         const restProps = omit(rest, 'node');
+    //         const match = /language-(\w+)/.exec(className || '');
+    //         return match ? (
+    //           <SyntaxHighlighter
+    //             {...restProps}
+    //             PreTag="div"
+    //             language={match[1]}
+    //             wrapLongLines
+    //           >
+    //             {String(children).replace(/\n$/, '')}
+    //           </SyntaxHighlighter>
+    //         ) : (
+    //           <code
+    //             {...restProps}
+    //             className={classNames(className, 'text-wrap')}
+    //           >
+    //             {children}
+    //           </code>
+    //         );
+    //       },
+    //     } as any
+    //   }
+    // >
+    //   {contentWithCursor}
+    // </Markdown>
+
     <Markdown
       rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
       remarkPlugins={[remarkGfm, remarkMath]}
       className={styles.markdownContentWrapper}
       components={
         {
-          'custom-typography': ({ children }: { children: string }) =>
-            renderReference(children),
+          // 1. 优化【来源标题】的样式，并加入图标
+          'source-heading': ({ children }: { children: React.ReactNode }) => (
+            <div
+              className="
+        mt-8 mb-4 
+        flex items-center gap-3
+        text-lg font-extrabold 
+        text-green-900 dark:text-green-500
+      "
+            >
+              {/* 👇 在这里插入你的知识库图标 */}
+              <HomeIcon
+                name="datasets"
+                width="24" // 标题里的图标建议稍微小一点，比如 24px
+              />
+
+              {/* 标题文字 */}
+              <span>{children}</span>
+            </div>
+          ),
+
+          // 2. 优化【自定义排版/引用包裹】的渲染逻辑
+          'custom-typography': ({ children }: { children: string }) => {
+            return renderReference(children);
+          },
+
+          // 3. 优化【代码块】的样式
           code(props: any) {
             const { children, className, ...rest } = props;
             const restProps = omit(rest, 'node');
             const match = /language-(\w+)/.exec(className || '');
+
             return match ? (
               <SyntaxHighlighter
                 {...restProps}
                 PreTag="div"
                 language={match[1]}
                 wrapLongLines
+                className="rounded-md my-2"
               >
                 {String(children).replace(/\n$/, '')}
               </SyntaxHighlighter>
             ) : (
               <code
                 {...restProps}
-                className={classNames(className, 'text-wrap')}
+                className={classNames(
+                  className,
+                  'text-wrap',
+                  'px-1.5 py-0.5',
+                  'bg-gray-100 dark:bg-gray-800',
+                  'rounded',
+                  'text-sm',
+                )}
               >
                 {children}
               </code>

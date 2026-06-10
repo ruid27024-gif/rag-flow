@@ -98,7 +98,7 @@ async def export_user_dialogs_excel():
         # 4. 查询 conversation，只查需要字段
         conversations = list(
             Conversation
-            .select(Conversation.id, Conversation.message)
+            .select(Conversation.id, Conversation.name, Conversation.message)  # 👈 增加了 name
             .where(
                 (Conversation.dialog_id == dialog_id) &
                 (Conversation.user_id == tenant_id)
@@ -111,10 +111,12 @@ async def export_user_dialogs_excel():
         ws = wb.active
         ws.title = "对话记录"
 
+        # 👈 表头增加 "对话名称"
         headers = [
             "智能体名称",
             "用户名称",
             "Conversation ID",
+            "对话名称",       # 👈 新增列
             "消息序号",
             "发送者",
             "消息详情",
@@ -172,7 +174,19 @@ async def export_user_dialogs_excel():
                 messages = [{"role": "", "content": ""}]
 
             for index, msg in enumerate(messages, start=1):
-                role = msg.get("role", "unknown")
+                # 1. 定义角色映射字典，并设置默认值为 "未知"
+                role_map = {
+                    "assistant": "助手",
+                    "user": "用户",
+                    "system": "系统"  # 可选：如果存在系统提示词也可以加上
+                }
+                
+                # 2. 获取原始角色并转换为小写，防止大小写不一致导致匹配失败
+                raw_role = str(msg.get("role", "unknown")).lower()
+                
+                # 3. 从字典中获取中文角色，如果没匹配到则保留原值或显示"未知"
+                role = role_map.get(raw_role, raw_role) 
+                
                 content = msg.get("content", "")
 
                 if isinstance(content, (dict, list)):
@@ -184,6 +198,7 @@ async def export_user_dialogs_excel():
                     dialog.name,
                     user_name,
                     c.id,
+                    c.name or "",
                     index,
                     role,
                     safe_content,
@@ -192,10 +207,12 @@ async def export_user_dialogs_excel():
                 ])
 
                 # 直接给当前行设置样式，避免后面再全表遍历
-                for col_idx in range(1, 9):
+                for col_idx in range(1, 10):
                     cell = ws.cell(row=current_row, column=col_idx)
                     cell.border = border
-                    cell.alignment = left_alignment if col_idx == 6 else center_alignment
+                    # 消息详情是第 7 列，左对齐；其余居中
+                    cell.alignment = left_alignment if col_idx == 7 else center_alignment
+
 
                 current_row += 1
 
@@ -208,6 +225,12 @@ async def export_user_dialogs_excel():
                     start_column=3,
                     end_row=conversation_end_row,
                     end_column=3
+                )
+                ws.merge_cells(
+                    start_row=conversation_start_row,
+                    start_column=4,
+                    end_row=conversation_end_row,
+                    end_column=4
                 )
 
             ws.cell(row=conversation_start_row, column=3).alignment = center_alignment
@@ -232,18 +255,18 @@ async def export_user_dialogs_excel():
                 )
                 ws.merge_cells(
                     start_row=data_start_row,
-                    start_column=7,
-                    end_row=data_end_row,
-                    end_column=7
-                )
-                ws.merge_cells(
-                    start_row=data_start_row,
                     start_column=8,
                     end_row=data_end_row,
                     end_column=8
                 )
+                ws.merge_cells(
+                    start_row=data_start_row,
+                    start_column=9,
+                    end_row=data_end_row,
+                    end_column=9
+                )
 
-            for col_idx in [1, 2, 7, 8]:
+            for col_idx in [1, 2, 8, 9]:
                 cell = ws.cell(row=data_start_row, column=col_idx)
                 cell.alignment = center_alignment
                 cell.border = border
@@ -253,11 +276,12 @@ async def export_user_dialogs_excel():
             1: 20,
             2: 20,
             3: 36,
-            4: 10,
-            5: 15,
-            6: 80,
-            7: 18,
-            8: 12
+            4: 25,  # 👈 新增：对话名称
+            5: 10,
+            6: 15,
+            7: 80,
+            8: 18,
+            9: 12
         }
 
         for col_idx, width in column_widths.items():

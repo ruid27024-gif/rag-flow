@@ -302,7 +302,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     check_llm_ts = timer()
 
     # Langfuse 追踪初始化
-    langfuse_tracer = None
+    langfuse_tracer = None  
     trace_context = {}
     langfuse_keys = TenantLangfuseService.filter_by_tenant(tenant_id=dialog.tenant_id)
     if langfuse_keys:
@@ -529,16 +529,16 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         source_headings = "\n".join([f"【从{name}来说】" for name in selected_kb_names])
         source_group_answer_prompt = f"""
 
-# 来源分组回答要求
-你必须严格按下面的标签结构输出，不要先写总述，不要合并不同来源，也不要使用 Markdown 标题符号 #：
-{source_headings}
-【综合总结】
+        # 来源分组回答要求
+        你必须严格按下面的标签结构输出，不要先写总述，不要合并不同来源，也不要使用 Markdown 标题符号 #：
+        {source_headings}
+        【综合总结】
 
-规则：
-1. 每个“【从...来说】”标签都必须出现，标签下换行后用要点回答。
-2. 每个来源只能使用对应“【来源：...】”上下文里的内容；如果该来源未检索到相关内容，直接写“未检索到相关内容”，不要编造。
-3. “【综合总结】”必须放在最后，总结各来源的共同结论、差异点和总体判断。
-"""
+        规则：
+        1. 每个“【从...来说】”标签都必须出现，标签下换行后用要点回答。
+        2. 每个来源只能使用对应“【来源：...】”上下文里的内容；如果该来源未检索到相关内容，则直接略过该来源，不要编造。
+        3. “【综合总结】”必须放在最后，总结各来源的共同结论、差异点和总体判断。
+        """
 
     print("相关的召回信息为----------------------------------------------------------------------")
     print(kwargs)
@@ -701,37 +701,327 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             trace_context=trace_context, name="chat", model=llm_model_config["llm_name"],
             input={"prompt": prompt, "prompt4citation": prompt4citation, "messages": msg}
         )
+    def build_id_doc_name_map(kbinfos):
+        """
+        构造：
+        {
+            "0": "文件A.pdf",
+            "1": "文件B.pdf",
+            "chunk_id_xxx": "文件A.pdf"
+        }
 
+        ID 数字优先对应 kbinfos["chunks"] 的下标。
+        """
+        chunks = kbinfos.get("chunks", []) or []
+        doc_aggs = kbinfos.get("doc_aggs", []) or []
+
+        doc_name_by_id = {}
+
+        for doc in doc_aggs:
+            doc_id = doc.get("doc_id")
+            doc_name = (
+                doc.get("doc_name")
+                or doc.get("name")
+                or doc.get("filename")
+                or doc.get("file_name")
+            )
+
+            if doc_id and doc_name:
+                doc_name_by_id[str(doc_id)] = str(doc_name)
+
+        id_doc_name_map = {}
+
+        for index, chunk in enumerate(chunks):
+            doc_id = (
+                chunk.get("doc_id")
+                or chunk.get("document_id")
+            )
+
+            doc_name = (
+                doc_name_by_id.get(str(doc_id))
+                or chunk.get("doc_name")
+                or chunk.get("document_name")
+                or chunk.get("filename")
+                or chunk.get("file_name")
+            )
+
+            if not doc_name:
+                continue
+
+            # 支持 THINK 里的 ID 0、ID 1、ID 12
+            id_doc_name_map[str(index)] = str(doc_name)
+
+            # 兜底：如果模型输出的是 chunk.id
+            chunk_id = chunk.get("id")
+            if chunk_id:
+                id_doc_name_map[str(chunk_id)] = str(doc_name)
+
+        return id_doc_name_map
+    
+    def replace_think_ids_with_doc_names(text, id_doc_name_map):
+        """
+        只替换 <think>...</think> 内部的 ID。
+        支持流式场景：<think> 未闭合时也能替换。
+        """
+        if not text or not id_doc_name_map:
+            return text
+
+        def replace_id_group(full_match, id_group):
+            ids = [
+                x.strip()
+                for x in re.split(r"[、,，\s]+", id_group)
+                if x.strip()
+            ]
+
+            doc_names = []
+
+            for id_text in ids:
+                doc_name = id_doc_name_map.get(str(id_text))
+                if doc_name:
+                    doc_names.append(doc_name)
+
+            if not doc_names:
+                return full_match
+
+            # 去重，避免多个 chunk 来自同一个文档时重复显示
+            unique_doc_names = []
+            seen = set()
+
+            for name in doc_names:
+                if name not in seen:
+                    unique_doc_names.append(name)
+                    seen.add(name)
+
+            return "、".join(f"《{name}》" for name in unique_doc_names)
+
+        def replace_in_think_body(think_body):
+            next_text = think_body
+
+            # 1. 支持：
+            # ID 12
+            # ID:12
+            # ID：12
+            # ID为12
+            # ID为1、2、3
+            # ID为0的
+            next_text = re.sub(
+                r"ID\s*(?:[:：]|为)?\s*((?:[A-Za-z0-9_-]+\s*[、,，\s]*)+)",
+                lambda m: replace_id_group(m.group(0), m.group(1)),
+                next_text,
+                flags=re.IGNORECASE,
+            )
+
+            # 2. 支持连接词后面的单个 ID：
+            # 和17
+            # 及17
+            # 与17
+            # 、17
+            # 到5
+            # 至5
+            next_text = re.sub(
+                r"([和及与、到至])\s*([A-Za-z0-9_-]+)(?=(的|则|提到|涉及|介绍|讨论|分析|说明|指出|研究|讲|描述|认为|文件|以及|等|[，。,；;：:\)\]）】\s]|$))",
+                lambda m: (
+                    # “到/至5” 替换成 “和《文件名》”，语义更自然
+                    f"和《{id_doc_name_map.get(str(m.group(2)))}》"
+                    if m.group(1) in ["到", "至"] and id_doc_name_map.get(str(m.group(2)))
+                    else (
+                        f"{m.group(1)}《{id_doc_name_map.get(str(m.group(2)))}》"
+                        if id_doc_name_map.get(str(m.group(2)))
+                        else m.group(0)
+                    )
+                ),
+                next_text,
+            )
+
+            # 3. 支持：
+            # 以及17
+            next_text = re.sub(
+                r"(以及)\s*([A-Za-z0-9_-]+)(?=(的|则|提到|涉及|介绍|讨论|分析|说明|指出|研究|讲|描述|认为|文件|等|[，。,；;：:\)\]）】\s]|$))",
+                lambda m: (
+                    f"{m.group(1)}《{id_doc_name_map.get(str(m.group(2)))}》"
+                    if id_doc_name_map.get(str(m.group(2)))
+                    else m.group(0)
+                ),
+                next_text,
+            )
+
+            # 4. 支持：
+            # 文献ID 17
+            # 文献ID为17
+            # 文献ID：17
+            next_text = re.sub(
+                r"文献\s*ID\s*(?:[:：]|为)?\s*([A-Za-z0-9_-]+)(?=(的|则|提到|涉及|介绍|讨论|分析|说明|指出|研究|讲|描述|认为|文件|以及|等|[，。,；;：:\)\]）】\s]|$))",
+                lambda m: (
+                    f"文献《{id_doc_name_map.get(str(m.group(1)))}》"
+                    if id_doc_name_map.get(str(m.group(1)))
+                    else m.group(0)
+                ),
+                next_text,
+                flags=re.IGNORECASE,
+            )
+
+            # 5. 优化语义，避免 “《xxx.pdf》的文件”
+            next_text = next_text.replace("》的文件", "》")
+
+            return next_text
+
+        lower_text = text.lower()
+        result = []
+        cursor = 0
+
+        while cursor < len(text):
+            think_start = lower_text.find("<think", cursor)
+
+            # 没有 think，后面正文原样返回
+            if think_start == -1:
+                result.append(text[cursor:])
+                break
+
+            # think 前面的正文不替换
+            result.append(text[cursor:think_start])
+
+            open_tag_end = text.find(">", think_start)
+
+            # 流式标签还没完整，例如 <thi 或 <think
+            if open_tag_end == -1:
+                result.append(text[think_start:])
+                break
+
+            # 保留 <think> 开始标签
+            result.append(text[think_start:open_tag_end + 1])
+
+            close_tag_start = lower_text.find("</think>", open_tag_end + 1)
+
+            # 没有 </think>，说明正在流式输出 THINK 内容
+            if close_tag_start == -1:
+                think_body = text[open_tag_end + 1:]
+                result.append(replace_in_think_body(think_body))
+                break
+
+            # 有完整闭合 THINK
+            think_body = text[open_tag_end + 1:close_tag_start]
+            result.append(replace_in_think_body(think_body))
+            result.append(text[close_tag_start:close_tag_start + len("</think>")])
+
+            cursor = close_tag_start + len("</think>")
+
+        return "".join(result)
+    
     # 流式 / 非流式输出
+    id_doc_name_map = build_id_doc_name_map(kbinfos)
+    print("id_doc_name_map:", id_doc_name_map)
+
     if stream:
         last_ans = ""
         answer = ""
-        async for ans in chat_mdl.async_chat_streamly(prompt + prompt4citation, msg[1:], gen_conf,dialog_id=dialog.id):
+
+        async for ans in chat_mdl.async_chat_streamly(
+            prompt + prompt4citation,
+            msg[1:],
+            gen_conf,
+            dialog_id=dialog.id
+        ):
             if thought:
                 ans = re.sub(r"^.*</think>", "", ans, flags=re.DOTALL)
+
             answer = ans
             delta_ans = ans[len(last_ans):]
+
             if num_tokens_from_string(delta_ans) < 16:
                 continue
+
             last_ans = answer
+
+            # 只替换 THINK 里的 ID，正文不动
+            display_answer = replace_think_ids_with_doc_names(
+                thought + answer,
+                id_doc_name_map
+            )
+
             # 实时的页面展示
-            yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans), "suggestions":[]}
+            yield {
+                "answer": display_answer,
+                "reference": {},
+                "audio_binary": tts(tts_mdl, delta_ans),
+                "suggestions": []
+            }
+
         delta_ans = answer[len(last_ans):]
+
         if delta_ans:
-            yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans), "suggestions":[]}
-        # 最终的交付
+            display_answer = replace_think_ids_with_doc_names(
+                thought + answer,
+                id_doc_name_map
+            )
+
+            yield {
+                "answer": display_answer,
+                "reference": {},
+                "audio_binary": tts(tts_mdl, delta_ans),
+                "suggestions": []
+            }
+
+        # 最终交付仍然用原始 answer 做 decorate，避免影响引用解析
         final_package = await decorate_answer(thought + answer)
+
+        # 最终展示也替换一下 THINK 里的 ID
+        final_package["answer"] = replace_think_ids_with_doc_names(
+            final_package.get("answer", thought + answer),
+            id_doc_name_map
+        )
+
         yield final_package
-        # yield decorate_answer(thought + answer)
+
     else:
         answer = await chat_mdl.async_chat(prompt + prompt4citation, msg[1:], gen_conf)
+
         user_content = msg[-1].get("content", "[content not available]")
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))
-        res = decorate_answer(answer)
+
+        res = await decorate_answer(answer)
+
+        res["answer"] = replace_think_ids_with_doc_names(
+            res.get("answer", answer),
+            id_doc_name_map
+        )
+
         res["audio_binary"] = tts(tts_mdl, answer)
+
         yield res
 
-    return
+
+    # # 流式 / 非流式输出
+    # if stream:
+    #     id_doc_name_map = build_id_doc_name_map(kbinfos)
+    #     print("id_doc_name_map:", id_doc_name_map)
+    #     last_ans = ""
+    #     answer = ""
+    #     async for ans in chat_mdl.async_chat_streamly(prompt + prompt4citation, msg[1:], gen_conf,dialog_id=dialog.id):
+    #         if thought:
+    #             ans = re.sub(r"^.*</think>", "", ans, flags=re.DOTALL)
+    #         answer = ans
+    #         delta_ans = ans[len(last_ans):]
+    #         if num_tokens_from_string(delta_ans) < 16:
+    #             continue
+    #         last_ans = answer
+    #         # 实时的页面展示
+    #         yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans), "suggestions":[]}
+    #     delta_ans = answer[len(last_ans):]
+    #     if delta_ans:
+    #         yield {"answer": thought + answer, "reference": {}, "audio_binary": tts(tts_mdl, delta_ans), "suggestions":[]}
+    #     # 最终的交付
+    #     final_package = await decorate_answer(thought + answer)
+    #     yield final_package
+    #     # yield decorate_answer(thought + answer)
+    # else:
+    #     answer = await chat_mdl.async_chat(prompt + prompt4citation, msg[1:], gen_conf)
+    #     user_content = msg[-1].get("content", "[content not available]")
+    #     logging.debug("User: {}|Assistant: {}".format(user_content, answer))
+    #     res = decorate_answer(answer)
+    #     res["audio_binary"] = tts(tts_mdl, answer)
+    #     yield res
+
+    # return
 
 
 async def use_sql(question, field_map, tenant_id, chat_mdl, quota=True, kb_ids=None):

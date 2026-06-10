@@ -86,6 +86,8 @@ export function setChatVariableEnabledFieldValuePage() {
 
 const oldReg = /(#{2}\d+\${2})/g;
 export const currentReg = /\[ID:(\d+)\]/g;
+// 匹配: [ID:0], ID 0, ID 1和5, （ID:0, ID:3）, (ID:1, ID:2)
+// export const currentReg = /\[ID:(\d+)\]|(?:（|\()?(?:ID[:\s]?(\d+)(?:[和,，、]\s*ID[:\s]?(\d+))?)(?:）|\))?/g;
 
 // To be compatible with the old index matching mode
 export const replaceTextByOldReg = (text: string) => {

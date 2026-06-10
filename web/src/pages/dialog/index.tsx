@@ -97,7 +97,11 @@ const DashboardShell = ({ children }) => {
 
 const GroupMemberStatsPage: React.FC = () => {
   // 定义导出函数
-  const handleExportExcel = async (tenantId: string, dialogId: string) => {
+  const handleExportExcel = async (
+    tenantId: string,
+    dialogId: string,
+    dialogName: string,
+  ) => {
     try {
       console.time('export_excel_total');
       console.time('export_excel_request');
@@ -152,6 +156,18 @@ const GroupMemberStatsPage: React.FC = () => {
       }
 
       console.time('export_excel_blob_download');
+      // 1. 生成精确到时分秒的日期字符串 (格式: YYYYMMDD_HHmmss)
+
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+      // 2. 处理对话名称（防止包含特殊字符导致下载失败或文件名异常）
+      const safeDialogName =
+        dialogName?.replace(/[\\/:*?"<>|]/g, '_') || 'unknown_dialog';
+
+      // 3. 拼接最终文件名
+      const fileName = `${safeDialogName}_${dateStr}.xlsx`;
 
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -166,7 +182,7 @@ const GroupMemberStatsPage: React.FC = () => {
       console.log('生成的 blob url:', url);
 
       link.href = url;
-      link.download = `dialog_logs_${dialogId}.xlsx`;
+      link.download = fileName;
       link.style.visibility = 'hidden';
 
       document.body.appendChild(link);
@@ -701,7 +717,7 @@ const GroupMemberStatsPage: React.FC = () => {
                     <Col xs={24} sm={12} lg={8} xl={8}>
                       <Card className="stat-card app-card">
                         <Statistic
-                          title="应用数量"
+                          title="主题数量"
                           value={appTotal}
                           prefix={<AppstoreOutlined />}
                         />
@@ -757,12 +773,12 @@ const GroupMemberStatsPage: React.FC = () => {
                         bordered
                         columns={[
                           {
-                            title: '应用名称 (Dialog)',
+                            title: '主题名称',
                             dataIndex: 'name',
                             key: 'name',
                             render: (text) => (
                               <Text strong style={{ color: '#1890ff' }}>
-                                {text || '未命名应用'}
+                                {text || '未命名主题'}
                               </Text>
                             ),
                           },
@@ -782,6 +798,7 @@ const GroupMemberStatsPage: React.FC = () => {
                                   handleExportExcel(
                                     selectedMember.user_id,
                                     record.id,
+                                    record.name,
                                   )
                                 }
                               >
@@ -944,7 +961,7 @@ const GroupMemberStatsPage: React.FC = () => {
                                     })}
                                     columns={[
                                       {
-                                        dataIndex: 'id',
+                                        dataIndex: 'name',
                                         key: 'name',
                                         render: (text) => (
                                           <span

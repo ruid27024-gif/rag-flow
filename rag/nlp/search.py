@@ -377,7 +377,7 @@ class Dealer:
         ranks = {"total": 0, "chunks": [], "doc_aggs": {}}
         if not question:
             return ranks
-        print("heloo")
+
         # Ensure RERANK_LIMIT is multiple of page_size
         RERANK_LIMIT = math.ceil(64 / page_size) * page_size if page_size > 1 else 1
         # 构建一个请求字典 req，其中包含了调用底层搜索引擎所需的所有参数

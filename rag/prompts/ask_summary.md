@@ -9,6 +9,12 @@ Requirements and restriction:
 
 ### Information from knowledge bases
 
+Citation format requirement:
+You must cite sources ONLY in the exact format [ID:n].
+Never use ID:n, ID n, [n], (ID:n), or any other citation format.
+For multiple citations, use [ID:1][ID:2][ID:3].
+
 {{ knowledge }}
+Remember: use ONLY [ID:n] for citations.
 
 The above is information from knowledge bases.
