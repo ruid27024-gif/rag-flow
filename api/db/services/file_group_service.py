@@ -93,6 +93,55 @@ class FileGroupService(CommonService):
         print(res_files)
         print(count)
         return res_files, count
+    
+    @classmethod
+    @DB.connection_context()
+    def get_by_pf_id2(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
+        # Get files by parent folder ID with pagination and filtering
+        # Args:
+        #     tenant_id: ID of the tenant
+        #     pf_id: Parent folder ID
+        #     page_number: Page number for pagination
+        #     items_per_page: Number of items per page
+        #     orderby: Field to order by
+        #     desc: Boolean indicating descending order
+        #     keywords: Search keywords
+        # Returns:
+        #     Tuple of (file_list, total_count)
+        if keywords:
+            files = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == pf_id), (fn.LOWER(cls.model.name).contains(keywords.lower())))
+        else:
+            files = cls.model.select().where((cls.model.parent_id == pf_id))
+        count = files.count()
+        if desc:
+            files = files.order_by(cls.model.getter_by(orderby).desc())
+        else:
+            files = files.order_by(cls.model.getter_by(orderby).asc())
+
+        files = files.paginate(page_number, items_per_page)
+
+        res_files = list(files.dicts())
+        for file in res_files:
+            if file["type"] == FileType.FOLDER.value:
+                file["size"] = cls.get_folder_size(file["id"])
+                file["kbs_info"] = []
+                children = list(
+                    cls.model.select()
+                    .where(
+                        (cls.model.tenant_id == tenant_id),
+                        (cls.model.parent_id == file["id"]),
+                        ~(cls.model.id == file["id"]),
+                    )
+                    .dicts()
+                )
+                file["has_child_folder"] = any(value["type"] == FileType.FOLDER.value for value in children)
+                continue
+            kbs_info = cls.get_kb_id_by_file_id(file["id"])
+            file["kbs_info"] = kbs_info
+
+        print(res_files)
+        print(count)
+        return res_files, count
 
     @classmethod
     @DB.connection_context()
@@ -706,3 +755,14 @@ class FileGroupService(CommonService):
             threads.append(exe.submit(FileService.parse, file["name"], FileService.get_blob(file["created_by"], file["id"]), True, file["created_by"]))
         return [th.result() for th in threads]
 
+    
+    @classmethod
+    @DB.connection_context()
+    def get_parent_id(cls, file_id):
+        try:
+            # 直接获取当前文件对象
+            current_file = cls.model.get(cls.model.id == file_id)
+            # 直接返回它的 parent_id 属性
+            return current_file.parent_id
+        except cls.model.DoesNotExist:
+            return None

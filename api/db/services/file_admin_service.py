@@ -116,6 +116,78 @@ class FileAdminService(CommonService):
             file["kbs_info"] = kbs_info
 
         return res_files, count
+    
+    @classmethod
+    @DB.connection_context()
+    def get_by_pf_id2(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
+        # Get files by parent folder ID with pagination and filtering
+        # Args:
+        #     tenant_id: ID of the tenant
+        #     pf_id: Parent folder ID
+        #     page_number: Page number for pagination
+        #     items_per_page: Number of items per page
+        #     orderby: Field to order by
+        #     desc: Boolean indicating descending order
+        #     keywords: Search keywords
+        # Returns:
+        #     Tuple of (file_list, total_count)
+        if keywords:
+            files = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == pf_id), (fn.LOWER(cls.model.name).contains(keywords.lower())))
+        else:
+            files = cls.model.select().where((cls.model.parent_id == pf_id))
+        count = files.count()
+
+        if desc:
+            files = files.order_by(cls.model.getter_by(orderby).desc())
+        else:
+            files = files.order_by(cls.model.getter_by(orderby).asc())
+
+        # file = cls.model.select().where((cls.model.tenant_id == tenant_id)&(cls.model.id == cls.model.parent_id)).first()
+        root_id = files[0].parent_id if files else None
+
+        from peewee import Case
+        if pf_id == root_id:
+            sort_logic = Case(
+            cls.model.name,
+            [
+                (".knowledgebase", 0),
+                ("全局参考库", 1),
+                ("工艺研究一室", 2),
+                ("工艺研究二室", 3),
+                ("工艺研究三室", 4),
+                ("新品事业部研发部", 5)
+            ],
+            6
+            )
+
+            files = files.order_by(sort_logic)
+
+        files = files.paginate(page_number, items_per_page)
+
+        res_files = list(files.dicts())
+
+        print(res_files)
+        for file in res_files:
+            if file["type"] == FileType.FOLDER.value:
+                # 获取每个文件夹的大小
+                file["size"] = cls.get_folder_size(file["id"])
+
+                file["kbs_info"] = []
+                children = list(
+                    cls.model.select()
+                    .where(
+                        (cls.model.tenant_id == tenant_id),
+                        (cls.model.parent_id == file["id"]),
+                        ~(cls.model.id == file["id"]),
+                    )
+                    .dicts()
+                )
+                file["has_child_folder"] = any(value["type"] == FileType.FOLDER.value for value in children)
+                continue
+            kbs_info = cls.get_kb_id_by_file_id(file["id"])
+            file["kbs_info"] = kbs_info
+
+        return res_files, count
 
     @classmethod
     @DB.connection_context()

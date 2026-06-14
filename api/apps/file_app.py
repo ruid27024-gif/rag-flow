@@ -738,6 +738,185 @@ def list_files():
         return server_error_response(e)
     
 
+@manager.route('/listp', methods=['GET'])  # noqa: F821
+@login_required
+def list_filesq():
+    pf_id = request.args.get("parent_id")
+
+    keywords = request.args.get("keywords", "")
+
+    page_number = int(request.args.get("page", 1))
+    items_per_page = int(request.args.get("page_size", 15))
+    orderby = request.args.get("orderby", "create_time")
+    desc = request.args.get("desc", True)
+    # 如果没有传入pid 获取根目录的id(再通过这个id 子id) 来获取谁挂在上面
+    if not pf_id:
+        # 获取根的这条数据
+        # 如果是超级管理员 获取全部根id
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            print("当前用户是管理员，正在执行管理员逻辑...")
+            # 管理员：查根目录
+            root_folder = FileAdminService.get_root_folder(current_user.id)
+            # 根id的子id还是本身
+            pf_id = root_folder["id"]
+            print(f"parent_id为 {pf_id}")
+            FileService.init_knowledgebase_docs(pf_id, current_user.id)
+
+
+
+        elif AdminUser.query(user_id=current_user.id, role_level=2):
+            # 管理员：查询所有根目录
+            root_folder = FileGroupService.get_root_folder(current_user.id)
+            # 根id的子id还是本身
+            pf_id = root_folder["id"]
+            print(f"parent_id为 {pf_id}")
+            FileService.init_knowledgebase_docs(pf_id, current_user.id)
+
+        else:
+            lis = []
+            # 获取组id下的公共tenant_id
+            group_id = UserGroupService.get_group_id_by_id(current_user.id)
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            if group_id and group_id in cfg_map and cfg_map[group_id]:
+                group_public_tenant_id = cfg_map[group_id]
+                lis.append(group_public_tenant_id)
+
+            if settings.REFERENCE_TENANT_ID:
+                public_tenant_id = settings.REFERENCE_TENANT_ID
+                lis.append(public_tenant_id)
+
+            lis.append(current_user.id)
+            
+            lis = list(set(lis))  # 可以看到的租户id
+
+            # 获取二级管理员的根目录
+            root_id_current = FileService.get_team_root_id(lis)
+
+            # 处理每一个根id 获取下面的目录/文件
+            all_files = []
+            total = 0
+
+            for r_id in root_id_current:
+                try:
+
+                    # 2. 获取该目录下的文件
+                    files, count = FileService.get_by_pf_id_new(
+                        current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                    )
+
+                    # 3. 累加结果
+                    all_files.extend(files)
+                    total += count
+
+                except Exception as e:
+                    # 某个用户的目录查错了不要中断整体
+                    print(f"Error fetching folder {r_id}: {e}")
+                    continue
+
+            print(all_files)
+            # 4. 返回汇总结果
+            root_folder = FileService.get_root_folder(current_user.id)
+            pf_id = root_folder["id"]
+            parent_folder = FileService.get_parent_folder(pf_id)
+            return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
+
+    try:
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            print("当前用户是管理员，正在执行管理员逻辑2...")
+            
+            # 获取id下面的子文件
+            files, total = FileAdminService.get_by_pf_id2(
+                current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+
+            parent_folder = FileAdminService.get_parent_folder(pf_id)
+            if not parent_folder:
+                return get_json_result(message="File not found!")
+
+            return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+
+        elif AdminUser.query(user_id=current_user.id, role_level=2):
+            print("当前用户组的管理员，正在执行管理员逻辑*******...")
+            print(f"id : {pf_id}")
+            # e, file = FileGroupService.get_by_id(pf_id)
+            # if not e:
+            #     return get_data_error_result(message="Folder not found!")
+            # FileService.init_knowledgebase_docs(pf_id, current_user.id)
+            files, total = FileGroupService.get_by_pf_id2(
+                current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+
+            parent_folder = FileGroupService.get_parent_folder(pf_id)
+            if not parent_folder:
+                return get_json_result(message="File not found!")
+
+            return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+        else:
+            # e, file = FileService.get_by_id(pf_id)
+            # if not e:
+            #     return get_data_error_result(message="Folder not found!")
+            # 判断是不是根pf_id
+
+            is_root_folder = FileService.is_root_node(pf_id)
+            if is_root_folder:
+                lis = []
+                # 获取组id下的公共tenant_id
+                group_id = UserGroupService.get_group_id_by_id(current_user.id)
+                cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+                if group_id and group_id in cfg_map and cfg_map[group_id]:
+                    group_public_tenant_id = cfg_map[group_id]
+                    lis.append(group_public_tenant_id)
+
+                if settings.REFERENCE_TENANT_ID:
+                    public_tenant_id = settings.REFERENCE_TENANT_ID
+                    lis.append(public_tenant_id)
+
+                lis.append(current_user.id)
+                
+                lis = list(set(lis))  # 可以看到的租户id
+
+                # 获取二级管理员的根目录
+                root_id_current = FileService.get_team_root_id(lis)
+
+                # 处理每一个根id 获取下面的目录/文件
+                all_files = []
+                total = 0
+
+                for r_id in root_id_current:
+                    try:
+
+                        # 2. 获取该目录下的文件
+                        files, count = FileService.get_by_pf_id_new(
+                            current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+                        )
+
+                        # 3. 累加结果
+                        all_files.extend(files)
+                        total += count
+
+                    except Exception as e:
+                        # 某个用户的目录查错了不要中断整体
+                        print(f"Error fetching folder {r_id}: {e}")
+                        continue
+
+                print(all_files)
+                # 4. 返回汇总结果
+                root_folder = FileService.get_root_folder(current_user.id)
+                pf_id = root_folder["id"]
+                parent_folder = FileService.get_parent_folder(pf_id)
+                return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
+
+            else:
+                files, total = FileService.get_by_pf_id_new(
+                    current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+
+                parent_folder = FileService.get_parent_folder(pf_id)
+                if not parent_folder:
+                    return get_json_result(message="File not found!")
+
+                return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+    except Exception as e:
+        return server_error_response(e)
+    
+
 @manager.route('/listup', methods=['GET'])  # noqa: F821
 @login_required
 def list_filesUP():

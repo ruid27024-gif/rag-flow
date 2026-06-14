@@ -32,6 +32,7 @@ export interface IDocumentInfo {
   author?: string;
   school?: string;
   publish_time?: string;
+  process_scene?: string;
 }
 
 export interface IParserConfig {

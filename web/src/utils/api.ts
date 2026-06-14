@@ -190,6 +190,7 @@ export default {
 
   // file manager
   listFile: `${api_host}/file/list`,
+  listFile1: `${api_host}/file/listp`,
   listFileUP: `${api_host}/file/listup`,
   uploadFile: `${api_host}/file/upload`,
   removeFile: `${api_host}/file/rm`,

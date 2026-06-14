@@ -4,6 +4,7 @@ import request from '@/utils/request';
 
 const {
   listFile,
+  listFile1,
   removeFile,
   uploadFile,
   renameFile,

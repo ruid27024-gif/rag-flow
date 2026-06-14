@@ -591,6 +591,27 @@ async def list_docs():
     try:
         docs, tol = DocumentService.get_by_kb_id(kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix, doc_ids_filter)
 
+        from collections import defaultdict
+        from api.db.db_models import Task
+
+        doc_ids = [doc["id"] for doc in docs]
+        doc_tasks = defaultdict(list)
+
+        if doc_ids:
+            task_rows = (
+                Task.select(Task.doc_id, Task.task_type, Task.progress, Task.progress_msg, Task.begin_at)
+                .where(Task.doc_id.in_(doc_ids))
+                .order_by(Task.begin_at)
+            )
+
+            for task in task_rows:
+                task_type = (task.task_type or "").lower().strip()
+                doc_tasks[task.doc_id].append({
+                    "task_type": task_type,
+                    "progress": task.progress,
+                    "progress_msg": task.progress_msg,
+                    "begin_at": task.begin_at,
+                })
         if create_time_from or create_time_to:
             filtered_docs = []
             for doc in docs:
@@ -599,6 +620,26 @@ async def list_docs():
                     filtered_docs.append(doc)
             docs = filtered_docs
         for doc_item in docs:
+            tasks = doc_tasks.get(doc_item["id"], [])
+
+            has_author_task = any(t["task_type"] == "parse_author_info" for t in tasks)
+            has_parse_task = any(t["task_type"] == "" for t in tasks)
+
+            doc_item["has_author_task"] = has_author_task
+            doc_item["has_parse_task"] = has_parse_task
+
+            if has_author_task and has_parse_task:
+                doc_item["process_scene"] = "author_with_parse"
+            elif has_author_task:
+                doc_item["process_scene"] = "author_only"
+            elif has_parse_task:
+                doc_item["process_scene"] = "parse_only"
+            else:
+                doc_item["process_scene"] = "unknown"
+
+            latest_task = tasks[-1] if tasks else None
+            doc_item["latest_task_type"] = latest_task["task_type"] if latest_task else ""
+
             if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
                 doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
             if doc_item.get("source_type"):
@@ -621,7 +662,29 @@ async def list_docs():
                     doc_item["author"] = ""
                     doc_item["school"] = ""
                     doc_item["publish_time"] = ""
-        return get_json_result(data={"total": tol, "docs": docs})
+
+        # 新增显示本周文件占比
+        from datetime import datetime, timedelta, time
+        from api.db.db_models import Document
+
+        now = datetime.now()
+        this_week_start = datetime.combine(
+            now.date() - timedelta(days=now.weekday()),
+            time.min,
+        )
+
+        this_week_start_ts = int(this_week_start.timestamp() * 1000)
+
+        this_week_count = Document.select().where(
+            Document.kb_id == kb_id,
+            Document.create_time >= this_week_start_ts,
+        ).count()
+
+        week_file_ratio = 0 if tol == 0 else round(this_week_count / tol * 100, 2)
+
+        return get_json_result(data={"total": tol, "docs": docs,
+                                     "week_growth_rate": week_file_ratio,
+                                        "this_week_count": this_week_count,})
     except Exception as e:
         return server_error_response(e)
 

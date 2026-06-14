@@ -827,6 +827,8 @@ class Document(DataBaseModel):
     run = CharField(max_length=1, null=True, help_text="start to run processing or cancel.(1: run it; 2: cancel)", default="0", index=True)
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
 
+
+
     class Meta:
         db_table = "document"
 
@@ -1102,6 +1104,7 @@ class PipelineOperationLog(DataBaseModel):
     dsl = JSONField(null=True, default=dict)
     task_type = CharField(max_length=32, null=False, default="")
     operation_status = CharField(max_length=32, null=False, help_text="Operation status")
+
     avatar = TextField(null=True, help_text="avatar base64 string")
     status = CharField(max_length=1, null=True, help_text="is it validate(0: wasted, 1: validate)", default="1", index=True)
 

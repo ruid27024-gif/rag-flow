@@ -94,20 +94,26 @@ export const getFileLogsTableColumns = (
     // },
     {
       accessorKey: 'id',
-      // header: t('taskId'),
       header: 'ID',
+      meta: {
+        cellClassName: 'max-w-[20vw] text-left',
+        headerClassName: 'text-left',
+      },
       cell: ({ row }) => (
-        <div className="text-text-primary text-center">{row.original.id}</div>
+        <div className="text-text-primary text-left">{row.original.id}</div>
       ),
     },
     {
       accessorKey: 'fileName',
       header: t('fileName'),
-      meta: { cellClassName: 'max-w-[20vw]' },
+      meta: {
+        cellClassName: 'max-w-[20vw] text-left',
+        headerClassName: 'text-left',
+      },
       cell: ({ row }) => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex gap-2 cursor-pointer text-center">
+            <div className="flex items-center gap-2 cursor-pointer text-left">
               <FileIcon name={row.original.document_name}></FileIcon>
               <span className={cn('truncate')}>
                 {row.original.document_name}
@@ -123,9 +129,12 @@ export const getFileLogsTableColumns = (
     {
       accessorKey: 'source_from',
       header: t('source'),
-      meta: { cellClassName: 'max-w-[10vw]' },
+      meta: {
+        cellClassName: 'max-w-[20vw] text-left',
+        headerClassName: 'text-left',
+      },
       cell: ({ row }) => (
-        <div className="text-text-primary text-center">
+        <div className="text-text-primary flex justify-start">
           {row.original.source_from === 'local' ||
           row.original.source_from === '' ? (
             <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
@@ -146,11 +155,15 @@ export const getFileLogsTableColumns = (
     {
       accessorKey: 'pipeline_title',
       header: t('dataPipeline'),
+      meta: {
+        cellClassName: 'max-w-[20vw] text-left',
+        headerClassName: 'text-left',
+      },
       cell: ({ row }) => {
         const title = row.original.pipeline_title;
         const pipelineTitle = title === 'naive' ? 'general' : title;
         return (
-          <div className="flex items-center gap-2 text-text-primary text-center">
+          <div className="flex items-center justify-start gap-2 text-text-primary">
             <RAGFlowAvatar
               avatar={row.original.avatar}
               name={pipelineTitle}
@@ -167,7 +180,7 @@ export const getFileLogsTableColumns = (
         return (
           <Button
             variant="transparent"
-            className="border-none"
+            className="border-none justify-start px-0"
             onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             {t('startDate')}
@@ -175,157 +188,219 @@ export const getFileLogsTableColumns = (
           </Button>
         );
       },
+      meta: {
+        cellClassName: 'max-w-[20vw] text-left',
+        headerClassName: 'text-left',
+      },
       cell: ({ row }) => (
-        <div className="text-text-primary text-center text-center">
+        <div className="text-text-primary text-left">
           {formatDate(row.original.process_begin_at)}
-          {/* {row.original.process_begin_at} */}
         </div>
       ),
     },
     {
       accessorKey: 'task_type',
       header: t('task'),
+      meta: {
+        cellClassName: 'max-w-[20vw] text-left',
+        headerClassName: 'text-left',
+      },
       cell: ({ row }) => (
-        <div className="text-text-primary text-center">
-          {/* {row.original.task_type} */}
-          解析
+        <div className="text-text-primary text-left">
+          {row.original.task_type}
         </div>
       ),
     },
     {
+      accessorKey: 'latest_task_scene_text',
+      header: '具体任务',
+      meta: {
+        cellClassName: 'max-w-[20vw] text-left',
+        headerClassName: 'text-left',
+      },
+      cell: ({ row }) => {
+        const scene = row.original.process_scene;
+        const taskText = row.original.process_scene_text || '-';
+
+        const sceneStyleMap = {
+          author_extract: 'bg-blue-50 text-blue-700 border-blue-200',
+          full_parse: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          graph_parse: 'bg-purple-50 text-purple-700 border-purple-200',
+          raptor: 'bg-orange-50 text-orange-700 border-orange-200',
+          unknown: 'bg-slate-50 text-slate-600 border-slate-200',
+
+          // 兼容旧字段
+          author_only: 'bg-blue-50 text-blue-700 border-blue-200',
+          parse_only: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          author_with_parse:
+            'bg-emerald-50 text-emerald-700 border-emerald-200',
+        } as const;
+
+        const tagClassName =
+          sceneStyleMap[scene as keyof typeof sceneStyleMap] ||
+          sceneStyleMap.unknown;
+
+        return (
+          <span
+            className={[
+              'inline-flex items-center w-fit rounded-md border px-2 py-0.5',
+              'text-xs font-medium leading-5 truncate max-w-full',
+              tagClassName,
+            ].join(' ')}
+            title={taskText}
+          >
+            {taskText}
+          </span>
+        );
+      },
+    },
+    {
       accessorKey: 'operation_status',
       header: t('status'),
+      meta: {
+        headerClassName: 'text-center',
+        cellClassName: 'text-center',
+      },
       cell: ({ row }) => (
-        <FileStatusBadge
-          status={row.original.operation_status as RunningStatus}
-          name={
-            RunningStatusMap[row.original.operation_status as RunningStatus]
-          }
-        />
+        <div className="flex justify-center">
+          <FileStatusBadge
+            status={row.original.operation_status as RunningStatus}
+            name={
+              RunningStatusMap[row.original.operation_status as RunningStatus]
+            }
+          />
+        </div>
       ),
     },
-    {
-      accessorKey: 'document_id_count',
-      header: () => <div className="text-center w-full">文档解析次数</div>,
-      meta: {
-        align: 'center',
-        className: 'text-center',
-      },
-      cell: ({ row }) => {
-        const count = row.original.document_id_count || 0;
 
-        const colorMap: Record<number, string> = {
-          1: 'bg-gradient-to-r from-green-50 to-green-100 text-green-700 ring-green-200',
-          2: 'bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 ring-emerald-200',
-          3: 'bg-gradient-to-r from-teal-50 to-teal-100 text-teal-700 ring-teal-200',
-          4: 'bg-gradient-to-r from-cyan-50 to-cyan-100 text-cyan-700 ring-cyan-200',
-          5: 'bg-gradient-to-r from-sky-50 to-sky-100 text-sky-700 ring-sky-200',
-          6: 'bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 ring-blue-200',
-          7: 'bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 ring-indigo-200',
-          8: 'bg-gradient-to-r from-violet-50 to-violet-100 text-violet-700 ring-violet-200',
-          9: 'bg-gradient-to-r from-orange-50 to-orange-100 text-orange-700 ring-orange-200',
-          10: 'bg-gradient-to-r from-red-50 to-red-100 text-red-700 ring-red-200',
-        };
+    // {
+    //   accessorKey: 'document_id_count',
+    //   header: () => <div className="text-center w-full">文档解析次数</div>,
+    //   meta: {
+    //     align: 'center',
+    //     className: 'text-center',
+    //   },
+    //   cell: ({ row }) => {
+    //     const count = row.original.document_id_count || 0;
 
-        const normalizedCount = Math.min(Math.max(count, 1), 10);
+    //     const colorMap: Record<number, string> = {
+    //       1: 'bg-gradient-to-r from-green-50 to-green-100 text-green-700 ring-green-200',
+    //       2: 'bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 ring-emerald-200',
+    //       3: 'bg-gradient-to-r from-teal-50 to-teal-100 text-teal-700 ring-teal-200',
+    //       4: 'bg-gradient-to-r from-cyan-50 to-cyan-100 text-cyan-700 ring-cyan-200',
+    //       5: 'bg-gradient-to-r from-sky-50 to-sky-100 text-sky-700 ring-sky-200',
+    //       6: 'bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 ring-blue-200',
+    //       7: 'bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 ring-indigo-200',
+    //       8: 'bg-gradient-to-r from-violet-50 to-violet-100 text-violet-700 ring-violet-200',
+    //       9: 'bg-gradient-to-r from-orange-50 to-orange-100 text-orange-700 ring-orange-200',
+    //       10: 'bg-gradient-to-r from-red-50 to-red-100 text-red-700 ring-red-200',
+    //     };
 
-        const className =
-          count <= 0
-            ? 'bg-gray-50 text-gray-500 ring-gray-200'
-            : colorMap[normalizedCount];
+    //     const normalizedCount = Math.min(Math.max(count, 1), 10);
 
-        return (
-          <div className="flex w-full items-center justify-center">
-            <span
-              className={`
-            inline-flex items-center justify-center
-            min-w-[54px] px-2.5 py-1
-            text-xs font-semibold tracking-wide
-            rounded-full ring-1 ring-inset
-            transition-all duration-200
-            ${className}
-          `}
-              title={`该文档共解析 ${count} 次`}
-            >
-              <svg
-                className="mr-1 h-3 w-3 opacity-80"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M21.015 4.356v4.992"
-                />
-              </svg>
-              {count} 次
-            </span>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: 'is_latest_parse',
-      header: () => <div className="text-center w-full">是否最新</div>,
-      meta: {
-        align: 'center',
-        className: 'text-center',
-      },
-      cell: ({ row }) => {
-        const isLatest = row.original.is_latest_parse === 1;
+    //     const className =
+    //       count <= 0
+    //         ? 'bg-gray-50 text-gray-500 ring-gray-200'
+    //         : colorMap[normalizedCount];
 
-        return (
-          <div className="flex w-full items-center justify-center">
-            <span
-              className={`
-            inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
-            ${
-              isLatest
-                ? 'bg-green-50 text-blue-700 ring-blue-200'
-                : 'bg-gray-50 text-gray-500 ring-gray-200'
-            }
-          `}
-            >
-              {isLatest ? '最新' : '历史'}
-            </span>
-          </div>
-        );
-      },
-    },
+    //     return (
+    //       <div className="flex w-full items-center justify-center">
+    //         <span
+    //           className={`
+    //         inline-flex items-center justify-center
+    //         min-w-[54px] px-2.5 py-1
+    //         text-xs font-semibold tracking-wide
+    //         rounded-full ring-1 ring-inset
+    //         transition-all duration-200
+    //         ${className}
+    //       `}
+    //           title={`该文档共解析 ${count} 次`}
+    //         >
+    //           <svg
+    //             className="mr-1 h-3 w-3 opacity-80"
+    //             fill="none"
+    //             viewBox="0 0 24 24"
+    //             strokeWidth={2}
+    //             stroke="currentColor"
+    //           >
+    //             <path
+    //               strokeLinecap="round"
+    //               strokeLinejoin="round"
+    //               d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M21.015 4.356v4.992"
+    //             />
+    //           </svg>
+    //           {count} 次
+    //         </span>
+    //       </div>
+    //     );
+    //   },
+    // },
+    // {
+    //   accessorKey: 'is_latest_parse',
+    //   header: () => <div className="text-center w-full">是否最新</div>,
+    //   meta: {
+    //     align: 'center',
+    //     className: 'text-center',
+    //   },
+    //   cell: ({ row }) => {
+    //     const isLatest = row.original.is_latest_parse === 1;
+
+    //     return (
+    //       <div className="flex w-full items-center justify-center">
+    //         <span
+    //           className={`
+    //         inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
+    //         ${
+    //           isLatest
+    //             ? 'bg-green-50 text-blue-700 ring-blue-200'
+    //             : 'bg-gray-50 text-gray-500 ring-gray-200'
+    //         }
+    //       `}
+    //         >
+    //           {isLatest ? '最新' : '历史'}
+    //         </span>
+    //       </div>
+    //     );
+    //   },
+    // },
     {
       id: 'operations',
       header: t('operations'),
+      meta: {
+        cellClassName: 'max-w-[20vw] text-center',
+        headerClassName: 'text-center',
+      },
       cell: ({ row }) => (
-        <div className="flex justify-start space-x-2 opacity-0 group-hover:opacity-100 transition-opacity text-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-1"
-            onClick={() => {
-              showLog(row, LogTabs.FILE_LOGS);
-            }}
-          >
-            <Eye />
-          </Button>
-          {row.original.pipeline_id && (
+        <div className="flex justify-center">
+          <div className="flex min-w-[72px] justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
               variant="ghost"
               size="sm"
               className="p-1"
-              onClick={navigateToDataflowResult({
-                id: row.original.id,
-                [PipelineResultSearchParams.KnowledgeId]: kowledgeId,
-                [PipelineResultSearchParams.DocumentId]:
-                  row.original.document_id,
-                [PipelineResultSearchParams.IsReadOnly]: 'false',
-                [PipelineResultSearchParams.Type]: 'dataflow',
-              })}
+              onClick={() => {
+                showLog(row, LogTabs.FILE_LOGS);
+              }}
             >
-              <ClipboardList />
+              <Eye />
             </Button>
-          )}
+            {row.original.pipeline_id && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-1"
+                onClick={navigateToDataflowResult({
+                  id: row.original.id,
+                  [PipelineResultSearchParams.KnowledgeId]: kowledgeId,
+                  [PipelineResultSearchParams.DocumentId]:
+                    row.original.document_id,
+                  [PipelineResultSearchParams.IsReadOnly]: 'false',
+                  [PipelineResultSearchParams.Type]: 'dataflow',
+                })}
+              >
+                <ClipboardList />
+              </Button>
+            )}
+          </div>
         </div>
       ),
     },
@@ -529,7 +604,19 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} className="text-center">
+                // <TableHead key={header.id} className={cn('text-center', header.column.columnDef.meta?.headerClassName)}>
+                //   {flexRender(
+                //     header.column.columnDef.header,
+                //     header.getContext(),
+                //   )}
+                // </TableHead>
+                <TableHead
+                  key={header.id}
+                  className={cn(
+                    'text-left',
+                    header.column.columnDef.meta?.headerClassName,
+                  )}
+                >
                   {flexRender(
                     header.column.columnDef.header,
                     header.getContext(),

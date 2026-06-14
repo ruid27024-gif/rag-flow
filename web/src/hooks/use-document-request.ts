@@ -103,6 +103,8 @@ export const useFetchDocumentList = () => {
   const { data, isFetching: loading } = useQuery<{
     docs: IDocumentInfo[];
     total: number;
+    week_growth_rate?: number;
+    this_week_count?: number;
   }>({
     queryKey: [
       DocumentApiAction.FetchDocumentList,
@@ -110,7 +112,12 @@ export const useFetchDocumentList = () => {
       pagination,
       filterValue,
     ],
-    initialData: { docs: [], total: 0 },
+    initialData: {
+      docs: [],
+      total: 0,
+      week_growth_rate: 0,
+      this_week_count: 0,
+    },
     refetchInterval: isLoop ? 5000 : false,
     enabled: !!knowledgeId || !!id,
     queryFn: async () => {
@@ -133,6 +140,8 @@ export const useFetchDocumentList = () => {
       return {
         docs: [],
         total: 0,
+        week_growth_rate: 0,
+        this_week_count: 0,
       };
     },
   });
@@ -147,6 +156,7 @@ export const useFetchDocumentList = () => {
     [handleInputChange, setPagination],
   );
 
+  console.log(data.week_growth_rate);
   return {
     loading,
     searchString,
@@ -156,6 +166,8 @@ export const useFetchDocumentList = () => {
     setPagination,
     filterValue,
     handleFilterSubmit,
+    weekGrowthRate: data?.week_growth_rate || 0,
+    thisWeekCount: data?.this_week_count || 0,
   };
 };
 

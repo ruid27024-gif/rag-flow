@@ -961,6 +961,112 @@ class DocumentService(CommonService):
                 if str(e).find("'0'") < 0:
                     logging.exception("fetch task exception")
 
+    # @classmethod
+    # @DB.connection_context()
+    # def _sync_progress(cls, docs: list[dict]):
+    #     from api.db.services.task_service import TaskService
+
+    #     for d in docs:
+    #         try:
+    #             tsks = TaskService.query(doc_id=d["id"], order_by=Task.create_time)
+    #             if not tsks:
+    #                 continue
+
+    #             tasks_len = len(tsks)
+    #             effective_task_count = 0
+
+    #             msg = []
+    #             prg = 0
+    #             finished = True
+    #             bad = 0
+    #             e, doc = DocumentService.get_by_id(d["id"])
+    #             status = doc.run
+    #             doc_progress = doc.progress if doc and doc.progress else 0.0
+    #             special_task_running = False
+    #             priority = 0
+
+    #             status2 = TaskStatus.DONE.value
+    #             force_progress_done = False
+
+    #             for idx, t in enumerate(tsks):
+    #                 task_type_lower = (t.task_type or "").lower()
+    #                 print(task_type_lower)
+    #                 if task_type_lower == "parse_author_info":
+    #                     print(t.progress)
+    #                     if t.progress == -1:
+    #                         status2 = TaskStatus.FAIL.value
+    #                         print(status2)
+
+    #                     if tasks_len == 1 or idx == tasks_len - 1:
+    #                         force_progress_done = True
+
+    #                     continue
+
+    #                 effective_task_count += 1
+
+    #                 if task_type_lower in PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES:
+    #                     special_task_running = True
+
+    #                 if 0 <= t.progress < 1:
+    #                     finished = False
+
+    #                 if t.progress == -1:
+    #                     bad += 1
+
+    #                 prg += t.progress if t.progress >= 0 else 0
+
+    #                 if t.progress_msg and t.progress_msg.strip():
+    #                     msg.append(t.progress_msg)
+
+    #                 priority = max(priority, t.priority)
+
+    #             if effective_task_count > 0:
+    #                 prg /= effective_task_count
+
+    #             if force_progress_done:
+    #                 prg = 1
+
+    #             if finished and bad:
+    #                 prg = -1
+    #                 status = TaskStatus.FAIL.value
+    #             elif finished:
+    #                 prg = 1
+    #                 status = TaskStatus.DONE.value
+
+    #             freeze_progress = special_task_running and doc_progress >= 1 and not finished
+    #             msg = "\n".join(sorted(msg))
+
+    #             begin_at = d.get("process_begin_at")
+    #             if not begin_at:
+    #                 begin_at = datetime.now()
+    #                 cls.update_by_id(d["id"], {"process_begin_at": begin_at})
+
+    #             info = {
+    #                 "process_duration": max(datetime.timestamp(datetime.now()) - begin_at.timestamp(), 0),
+    #                 "run": status,
+    #                 "status2": status2,
+    #             }
+
+    #             if prg != 0 and not freeze_progress:
+    #                 info["progress"] = prg
+
+    #             if msg:
+    #                 info["progress_msg"] = msg
+    #                 if (
+    #                     msg.endswith("created task graphrag")
+    #                     or msg.endswith("created task raptor")
+    #                     or msg.endswith("created task mindmap")
+    #                 ):
+    #                     info["progress_msg"] += "\n%d tasks are ahead in the queue..." % get_queue_length(priority)
+    #             else:
+    #                 info["progress_msg"] = "%d tasks are ahead in the queue..." % get_queue_length(priority)
+
+    #             print(info)
+    #             cls.update_by_id(d["id"], info)
+    #         except Exception as e:
+    #             if str(e).find("'0'") < 0:
+    #                 logging.exception("fetch task exception")
+
     @classmethod
     @DB.connection_context()
     def get_kb_doc_count(cls, kb_id):
@@ -986,6 +1092,62 @@ class DocumentService(CommonService):
         return False
 
 
+    # @classmethod
+    # @DB.connection_context()
+    # def knowledgebase_basic_info(cls, kb_id: str) -> dict[str, int]:
+    #     # cancelled: run == "2" but progress can vary
+    #     cancelled = (
+    #         cls.model.select(fn.COUNT(1))
+    #         .where((cls.model.kb_id == kb_id) & (cls.model.run == TaskStatus.CANCEL))
+    #         .scalar()
+    #     )
+    #     downloaded = (
+    #         cls.model.select(fn.COUNT(1))
+    #         .where(
+    #             cls.model.kb_id == kb_id,
+    #             cls.model.source_type != "local"
+    #         )
+    #         .scalar()
+    #     )
+
+    #     row = (
+    #         cls.model.select(
+    #             # finished: progress == 1
+    #             fn.COALESCE(fn.SUM(Case(None, [(cls.model.progress == 1, 1)], 0)), 0).alias("finished"),
+
+    #             # failed: progress == -1
+    #             fn.COALESCE(fn.SUM(Case(None, [(cls.model.progress == -1, 1)], 0)), 0).alias("failed"),
+
+    #             # processing: 0 <= progress < 1
+    #             fn.COALESCE(
+    #                 fn.SUM(
+    #                     Case(
+    #                         None,
+    #                         [
+    #                             (((cls.model.progress == 0) | ((cls.model.progress > 0) & (cls.model.progress < 1))), 1),
+    #                         ],
+    #                         0,
+    #                     )
+    #                 ),
+    #                 0,
+    #             ).alias("processing"),
+    #         )
+    #         .where(
+    #             (cls.model.kb_id == kb_id)
+    #             & ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL))
+    #         )
+    #         .dicts()
+    #         .get()
+    #     )
+
+    #     return {
+    #         "processing": int(row["processing"]),
+    #         "finished": int(row["finished"]),
+    #         "failed": int(row["failed"]),
+    #         "cancelled": int(cancelled),
+    #         "downloaded": int(downloaded)
+    #     }
+
     @classmethod
     @DB.connection_context()
     def knowledgebase_basic_info(cls, kb_id: str) -> dict[str, int]:
@@ -995,6 +1157,7 @@ class DocumentService(CommonService):
             .where((cls.model.kb_id == kb_id) & (cls.model.run == TaskStatus.CANCEL))
             .scalar()
         )
+
         downloaded = (
             cls.model.select(fn.COUNT(1))
             .where(
@@ -1007,10 +1170,16 @@ class DocumentService(CommonService):
         row = (
             cls.model.select(
                 # finished: progress == 1
-                fn.COALESCE(fn.SUM(Case(None, [(cls.model.progress == 1, 1)], 0)), 0).alias("finished"),
+                fn.COALESCE(
+                    fn.SUM(Case(None, [(cls.model.progress == 1, 1)], 0)),
+                    0
+                ).alias("finished"),
 
                 # failed: progress == -1
-                fn.COALESCE(fn.SUM(Case(None, [(cls.model.progress == -1, 1)], 0)), 0).alias("failed"),
+                fn.COALESCE(
+                    fn.SUM(Case(None, [(cls.model.progress == -1, 1)], 0)),
+                    0
+                ).alias("failed"),
 
                 # processing: 0 <= progress < 1
                 fn.COALESCE(
@@ -1018,7 +1187,13 @@ class DocumentService(CommonService):
                         Case(
                             None,
                             [
-                                (((cls.model.progress == 0) | ((cls.model.progress > 0) & (cls.model.progress < 1))), 1),
+                                (
+                                    (
+                                        (cls.model.progress == 0)
+                                        | ((cls.model.progress > 0) & (cls.model.progress < 1))
+                                    ),
+                                    1
+                                ),
                             ],
                             0,
                         )
@@ -1034,12 +1209,59 @@ class DocumentService(CommonService):
             .get()
         )
 
+        LatestTaskAlias = cls.model.alias()
+        from api.db.db_models import Task
+
+        LatestTaskAlias = Task.alias()
+
+        latest_task_id = (
+            LatestTaskAlias
+            .select(LatestTaskAlias.id)
+            .where(
+                LatestTaskAlias.doc_id == Task.doc_id,
+                LatestTaskAlias.task_type == Task.task_type,
+            )
+            .order_by(
+                LatestTaskAlias.create_time.desc(),
+                LatestTaskAlias.id.desc(),
+            )
+            .limit(1)
+        )
+
+        parse_failed = (
+            Task
+            .select(fn.COUNT(fn.DISTINCT(Task.doc_id)))
+            .join(cls.model, on=(Task.doc_id == cls.model.id))
+            .where(
+                cls.model.kb_id == kb_id,
+                Task.task_type == "",
+                Task.progress == -1,
+                Task.id == latest_task_id,
+            )
+            .scalar()
+        )
+
+        author_failed = (
+            Task
+            .select(fn.COUNT(fn.DISTINCT(Task.doc_id)))
+            .join(cls.model, on=(Task.doc_id == cls.model.id))
+            .where(
+                cls.model.kb_id == kb_id,
+                Task.task_type == "parse_author_info",
+                Task.progress == -1,
+                Task.id == latest_task_id,
+            )
+            .scalar()
+        )
+
         return {
             "processing": int(row["processing"]),
             "finished": int(row["finished"]),
             "failed": int(row["failed"]),
             "cancelled": int(cancelled),
-            "downloaded": int(downloaded)
+            "downloaded": int(downloaded),
+            "parse_failed": int(parse_failed or 0),
+            "author_failed": int(author_failed or 0),
         }
 
     @classmethod

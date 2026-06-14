@@ -545,6 +545,7 @@ def get_basic_info():
         )
 
     basic_info = DocumentService.knowledgebase_basic_info(kb_id)
+    print(basic_info)
 
     return get_json_result(data=basic_info)
 

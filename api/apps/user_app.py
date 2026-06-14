@@ -783,43 +783,43 @@ async def add_group_admin_all():
         if group_id and group_id in cfg_map and cfg_map[group_id]:
             group_public_id = cfg_map[group_id]
 
-        # 获取当前组参考库的根
-        file_ref = FileService.get_root_folder(group_public_id)
-        pf_id_ref = file_ref['id']
+            # 获取当前组参考库的根
+            file_ref = FileService.get_root_folder(group_public_id)
+            pf_id_ref = file_ref['id']
 
-        # 把当前组参考库挂载到这个根上 根据组id获取参考库的id
-        file2 = FileGroupService.insert({
-            "id": pf_id_ref,  # 昵称的id
-            "parent_id": pf_id,
-            "tenant_id": user_id,
-            "created_by": user_id,
-            "name": "组参考库+文献库",
-            "location": "",
-            "size": 0,
-            "type": FileType.FOLDER.value
-        })
+            # 把当前组参考库挂载到这个根上 根据组id获取参考库的id
+            file2 = FileGroupService.insert({
+                "id": pf_id_ref,  # 昵称的id
+                "parent_id": pf_id,
+                "tenant_id": user_id,
+                "created_by": user_id,
+                "name": "组参考库+文献库",
+                "location": "",
+                "size": 0,
+                "type": FileType.FOLDER.value
+            })
 
-        # 把参考库下的所有非根文件挂载到当前的组参考库下
-        from api.db.db_models import File, File_Group
+            # 把参考库下的所有非根文件挂载到当前的组参考库下
+            from api.db.db_models import File, File_Group
 
-        file_group_ref = File.select().where((File.id != File.parent_id)
-                        & (File.tenant_id == group_public_id )
-                        )
+            file_group_ref = File.select().where((File.id != File.parent_id)
+                            & (File.tenant_id == group_public_id )
+                            )
 
-        file_group2 = File_Group.select().where((File_Group.parent_id == pf_id_ref)
-                                                & (File_Group.tenant_id == group_public_id)
-                                                )
+            file_group2 = File_Group.select().where((File_Group.parent_id == pf_id_ref)
+                                                    & (File_Group.tenant_id == group_public_id)
+                                                    )
 
-        # 如果之前二级表中不存在就写入
-        if not file_group2.exists():
-        # 将文件全部写入到全局参考库下
-            for i in file_group_ref:
-                i.to_dict()
-                print(i.to_dict())
-                try:
-                    File_Group.create(**i.to_dict())
-                except:
-                    pass
+            # 如果之前二级表中不存在就写入
+            if not file_group2.exists():
+            # 将文件全部写入到全局参考库下
+                for i in file_group_ref:
+                    i.to_dict()
+                    print(i.to_dict())
+                    try:
+                        File_Group.create(**i.to_dict())
+                    except:
+                        pass
 
         # 将组内人员全部挂载到当前组长下
         # 根据组id获取组名称

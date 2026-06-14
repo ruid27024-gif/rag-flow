@@ -13,12 +13,15 @@ ragflow:
     # 实验室4
     '1dc3a6243ed711f1a593345a60aae1f7': 'b76923563eb111f1942e345a60aae1f7'
 
+    '72551b94660711f19ddbe8473ae7fab0': '18b80f5c661f11f1bd02e8473ae7fab0'
+
   # 组名 --> 组id
   group_name_id_map:
     '工艺研究一室（100146）': '71196836278011f19ca210ffe02ab235' 
     '工艺研究二室（100147）': 'e013c3d4278611f1a03d10ffe02ab235'
     '工艺研究三室（100148）': '8e865b04278a11f1a03d10ffe02ab235'
     '新品事业部研发部（100051）': '1dc3a6243ed711f1a593345a60aae1f7'
+    '数字化管理中心（100380）': '72551b94660711f19ddbe8473ae7fab0'
 
   
 admin:
@@ -65,11 +68,59 @@ redis:
   host: 'localhost:6379'
 task_executor:
   message_queue_type: 'redis'
+# user_default_llm:
+#   default_models:
+#     embedding_model:
+#       api_key: 'xxx'
+#       base_url: 'http://localhost:6380'
+
 user_default_llm:
+  factory: 'Tongyi-Qianwen'
+  api_key: 'sk-3e6fc7909b4e438cae270fe89a85cc00'
+  base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   default_models:
+    chat_model:
+      model: 'qwen-plus'
+      factory: 'Tongyi-Qianwen'
+      api_key: 'sk-3e6fc7909b4e438cae270fe89a85cc00'
+      max_tokens: 32768
+      base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     embedding_model:
-      api_key: 'xxx'
-      base_url: 'http://localhost:6380'
+      model: 'text-embedding-v2'
+      factory: 'Tongyi-Qianwen'
+      api_key: 'sk-3e6fc7909b4e438cae270fe89a85cc00'
+      max_tokens: 1024
+      base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+
+    # rerank_model:
+    #   model: 'gte-rerank'
+    # asr_model:
+    #   model: 'qwen3-asr-flash'
+    # image2text_model: 
+    #   model: 'qwen-vl-plus'
+
+# user_default_llm:
+#   factory: 'Tongyi-Qianwen'
+
+  
+#   api_key: 'sk-3e6fc7909b4e438cae270fe89a85cc00'
+  # base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  # allowed_factories:
+  #   - 'Tongyi-Qianwen'
+  # default_models:
+  #   chat_model:
+  #     name: 'qwen-plus'
+  #   embedding_model:
+  #     name: 'text-embedding-v2'
+  #   rerank_model:
+  #     name: 'gte-rerank'
+  #   image2text_model:
+  #     name: 'qwen-vl-plus'
+  #   asr_model:
+  #     name: 'qwen3-asr-flash'
+
+
+
 # postgres:
 #   name: 'rag_flow'
 #   user: 'rag_flow'

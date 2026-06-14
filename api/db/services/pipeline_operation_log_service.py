@@ -98,12 +98,16 @@ class PipelineOperationLogService(CommonService):
 
         if referred_document_id == GRAPH_RAPTOR_FAKE_DOC_ID and fake_document_ids:
             referred_document_id = fake_document_ids[0]
+
         ok, document = DocumentService.get_by_id(referred_document_id)
         if not ok:
             logging.warning(f"Document for referred_document_id {referred_document_id} not found")
             return None
+        print("------------------------------------------------")
         DocumentService.update_progress_immediately([document.to_dict()])
         ok, document = DocumentService.get_by_id(referred_document_id)
+        print("------------------------------------------------")
+        print(document.to_dict())
         if not ok:
             logging.warning(f"Document for referred_document_id {referred_document_id} not found")
             return None
@@ -226,6 +230,184 @@ class PipelineOperationLogService(CommonService):
 
     #     return list(logs.dicts()), count
     
+    # @classmethod
+    # @DB.connection_context()
+    # def get_file_logs_by_kb_id(
+    #     cls,
+    #     kb_id,
+    #     page_number,
+    #     items_per_page,
+    #     orderby,
+    #     desc,
+    #     keywords,
+    #     operation_status,
+    #     types,
+    #     suffix,
+    #     create_date_from=None,
+    #     create_date_to=None
+    # ):
+    #     fields = cls.get_file_logs_fields()
+    #     from peewee import fn, Case
+    #     from collections import defaultdict
+    #     from api.db.db_models import Task
+
+    #     # LogCountAlias = cls.model.alias()
+
+    #     # document_id_count = (
+    #     #     LogCountAlias
+    #     #     .select(fn.COUNT(LogCountAlias.id))
+    #     #     .where(
+    #     #         LogCountAlias.kb_id == cls.model.kb_id,
+    #     #         LogCountAlias.document_id == cls.model.document_id,
+    #     #         LogCountAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+    #     #     )
+    #     # ).alias("document_id_count")
+
+    #     LogLatestAlias = cls.model.alias()
+
+    #     latest_log_id = (
+    #         LogLatestAlias
+    #         .select(LogLatestAlias.id)
+    #         .where(
+    #             LogLatestAlias.kb_id == cls.model.kb_id,
+    #             LogLatestAlias.document_id == cls.model.document_id,
+    #             LogLatestAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+    #         )
+    #         .order_by(
+    #             LogLatestAlias.create_date.desc(),
+    #             LogLatestAlias.id.desc()
+    #         )
+    #         .limit(1)
+    #     )
+
+    #     is_latest_parse = Case(
+    #         None,
+    #         [
+    #             (cls.model.id == latest_log_id, 1),
+    #         ],
+    #         0
+    #     ).alias("is_latest_parse")
+
+    #     fields = [
+    #         *fields,
+    #         is_latest_parse,
+    #     ]
+
+    #     if keywords:
+    #         logs = cls.model.select(*fields).where(
+    #             cls.model.kb_id == kb_id,
+    #             fn.LOWER(cls.model.document_name).contains(keywords.lower())
+    #         )
+    #     else:
+    #         logs = cls.model.select(*fields).where(
+    #             cls.model.kb_id == kb_id
+    #         )
+
+    #     logs = logs.where(cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID)
+
+    #     # 只保留每个 document_id 最新一条日志
+    #     logs = logs.where(cls.model.id == latest_log_id)
+
+    #     if operation_status:
+    #         logs = logs.where(cls.model.operation_status.in_(operation_status))
+
+    #     if types:
+    #         logs = logs.where(cls.model.document_type.in_(types))
+
+    #     if suffix:
+    #         logs = logs.where(cls.model.document_suffix.in_(suffix))
+
+    #     if create_date_from:
+    #         logs = logs.where(cls.model.create_date >= create_date_from)
+
+    #     if create_date_to:
+    #         logs = logs.where(cls.model.create_date <= create_date_to)
+
+    #     count = logs.count()
+
+    #     if desc:
+    #         logs = logs.order_by(cls.model.getter_by(orderby).desc())
+    #     else:
+    #         logs = logs.order_by(cls.model.getter_by(orderby).asc())
+
+    #     if page_number and items_per_page:
+    #         logs = logs.paginate(page_number, items_per_page)
+
+    #     log_list = list(logs.dicts())
+
+    #     document_ids = list({log["document_id"] for log in log_list if log.get("document_id")})
+    #     doc_tasks = defaultdict(list)
+
+    #     if document_ids:
+    #         task_rows = (
+    #             Task
+    #             .select(Task.doc_id, Task.task_type, Task.progress, Task.progress_msg, Task.create_time)
+    #             .where(Task.doc_id.in_(document_ids))
+    #             .order_by(Task.doc_id, Task.create_time, Task.id)
+    #         )
+
+    #         for task in task_rows:
+    #             task_type = (task.task_type or "").lower().strip()
+    #             doc_tasks[task.doc_id].append({
+    #                 "task_type": task_type,
+    #                 "progress": task.progress,
+    #                 "progress_msg": task.progress_msg,
+    #                 "create_time": task.create_time,
+    #             })
+
+    #     for log in log_list:
+            
+    #         tasks = doc_tasks.get(log.get("document_id"), [])
+
+    #         has_author_task = any(task["task_type"] == "parse_author_info" for task in tasks)
+    #         has_parse_task = any(task["task_type"] == "" for task in tasks)
+
+    #         latest_task = tasks[-1] if tasks else None
+    #         latest_task_type = latest_task["task_type"] if latest_task else ""
+
+    #         if has_author_task and has_parse_task:
+    #             process_scene = "author_with_parse"
+    #             process_scene_text = "解析全文"
+    #         elif has_author_task:
+    #             process_scene = "author_only"
+    #             process_scene_text = "提取作者"
+    #         elif has_parse_task:
+    #             process_scene = "parse_only"
+    #             process_scene_text = "解析全文"
+    #         else:
+    #             process_scene = "unknown"
+    #             process_scene_text = "未知"
+
+    #         if latest_task_type == "parse_author_info":
+    #             latest_task_scene = "author_extract"
+    #             latest_task_scene_text = "提取作者"
+    #         elif latest_task_type == "":
+    #             latest_task_scene = "full_parse"
+    #             latest_task_scene_text = "解析全文"
+    #         else:
+    #             latest_task_scene = latest_task_type or "unknown"
+    #             latest_task_scene_text = latest_task_type or "未知"
+    #             if latest_task_type == "graphrag":
+    #                 process_scene = "graph_parse"
+    #                 process_scene_text = "知识图谱"
+    #             else:
+    #                 process_scene == "unknown"
+    #                 process_scene_text = "raptor"
+
+    #         log.update({
+    #             "has_author_task": has_author_task,
+    #             "has_parse_task": has_parse_task,
+    #             "process_scene": process_scene,
+    #             "process_scene_text": process_scene_text,
+    #             "latest_task_type": latest_task_type,
+    #             "latest_task_scene": latest_task_scene,
+    #             "latest_task_scene_text": latest_task_scene_text,
+    #             "latest_task_progress": latest_task["progress"] if latest_task else None,
+    #             "latest_task_progress_msg": latest_task["progress_msg"] if latest_task else "",
+    #         })
+
+    #     return log_list, count
+
     @classmethod
     @DB.connection_context()
     def get_file_logs_by_kb_id(
@@ -243,34 +425,40 @@ class PipelineOperationLogService(CommonService):
         create_date_to=None
     ):
         fields = cls.get_file_logs_fields()
-        from peewee import fn, Case
-        # 用于统计相同 document_id 数量
-        LogCountAlias = cls.model.alias()
 
-        document_id_count = (
-            LogCountAlias
-            .select(fn.COUNT(LogCountAlias.id))
-            .where(
-                LogCountAlias.kb_id == cls.model.kb_id,
-                LogCountAlias.document_id == cls.model.document_id,
-                LogCountAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
-            )
-        ).alias("document_id_count")
-        
-        # 用于判断当前行是否为最新解析
+        from peewee import fn, Case, JOIN
+        from api.db.db_models import Task
+
         LogLatestAlias = cls.model.alias()
 
-        latest_log_id = (
+        latest_log_update_date = (
             LogLatestAlias
-            .select(LogLatestAlias.id)
+            .select(fn.MAX(LogLatestAlias.update_date))
             .where(
                 LogLatestAlias.kb_id == cls.model.kb_id,
                 LogLatestAlias.document_id == cls.model.document_id,
                 LogLatestAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
             )
-            .order_by(
-                LogLatestAlias.create_date.desc(),
-                LogLatestAlias.id.desc()
+        )
+
+        TaskLatestAlias = Task.alias()
+
+        latest_task_update_time = (
+            TaskLatestAlias
+            .select(fn.MAX(TaskLatestAlias.update_time))
+            .where(
+                TaskLatestAlias.doc_id == cls.model.document_id
+            )
+        )
+
+        TaskParseAlias = Task.alias()
+
+        has_parse_task_query = (
+            TaskParseAlias
+            .select(TaskParseAlias.id)
+            .where(
+                TaskParseAlias.doc_id == cls.model.document_id,
+                TaskParseAlias.task_type == "",
             )
             .limit(1)
         )
@@ -278,29 +466,52 @@ class PipelineOperationLogService(CommonService):
         is_latest_parse = Case(
             None,
             [
-                (cls.model.id == latest_log_id, 1),
+                (cls.model.update_date == latest_log_update_date, 1),
             ],
             0
         ).alias("is_latest_parse")
 
-        # 把新增列加入查询字段
+        has_parse_task = Case(
+            None,
+            [
+                (fn.EXISTS(has_parse_task_query), 1),
+            ],
+            0
+        ).alias("has_parse_task")
+
         fields = [
             *fields,
-            document_id_count,
             is_latest_parse,
+            has_parse_task,
+
+            Task.task_type.alias("latest_task_type"),
+            Task.progress.alias("latest_task_progress"),
+            Task.progress_msg.alias("latest_task_progress_msg"),
+            Task.update_time.alias("latest_task_update_time"),
         ]
 
-        if keywords:
-            logs = cls.model.select(*fields).where(
+        logs = (
+            cls.model
+            .select(*fields)
+            .join(
+                Task,
+                JOIN.LEFT_OUTER,
+                on=(
+                    (Task.doc_id == cls.model.document_id) &
+                    (Task.update_time == latest_task_update_time)
+                )
+            )
+            .where(
                 cls.model.kb_id == kb_id,
+                cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+                cls.model.update_date == latest_log_update_date,
+            )
+        )
+
+        if keywords:
+            logs = logs.where(
                 fn.LOWER(cls.model.document_name).contains(keywords.lower())
             )
-        else:
-            logs = cls.model.select(*fields).where(
-                cls.model.kb_id == kb_id
-            )
-
-        logs = logs.where(cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID)
 
         if operation_status:
             logs = logs.where(cls.model.operation_status.in_(operation_status))
@@ -327,9 +538,58 @@ class PipelineOperationLogService(CommonService):
         if page_number and items_per_page:
             logs = logs.paginate(page_number, items_per_page)
 
-        return list(logs.dicts()), count
+        log_list = list(logs.dicts())
 
+        for log in log_list:
+            raw_task_type = log.get("latest_task_type")
+            has_parse_task = bool(log.get("has_parse_task"))
 
+            if raw_task_type is None:
+                latest_task_type = None
+            else:
+                latest_task_type = raw_task_type.lower().strip()
+
+            if latest_task_type == "graphrag":
+                process_scene = "graph_parse"
+                process_scene_text = "知识图谱"
+
+            elif latest_task_type == "raptor":
+                process_scene = "raptor"
+                process_scene_text = "raptor"
+
+            elif has_parse_task:
+                process_scene = "full_parse"
+                process_scene_text = "解析全文"
+
+            elif latest_task_type == "parse_author_info":
+                process_scene = "author_extract"
+                process_scene_text = "提取作者"
+
+            elif latest_task_type:
+                process_scene = latest_task_type
+                process_scene_text = latest_task_type
+
+            else:
+                process_scene = "unknown"
+                process_scene_text = "未知"
+
+            log.update({
+                "latest_task_type": latest_task_type or "",
+                "has_parse_task": has_parse_task,
+
+                "process_scene": process_scene,
+                "process_scene_text": process_scene_text,
+
+                "latest_task_scene": process_scene,
+                "latest_task_scene_text": process_scene_text,
+
+                "latest_task_progress": log.get("latest_task_progress"),
+                "latest_task_progress_msg": log.get("latest_task_progress_msg") or "",
+                "latest_task_update_time": log.get("latest_task_update_time"),
+            })
+
+        return log_list, count
+    
 
     # @classmethod
     # @DB.connection_context()

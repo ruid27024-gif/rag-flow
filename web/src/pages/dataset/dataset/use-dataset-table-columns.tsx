@@ -235,6 +235,95 @@ export function useDatasetTableColumns({
       cell: ({ row }) => {
         const record = row.original;
         const run = record.run;
+        const chunkNum = record.chunk_num || 0; // 👈 获取解析出的 chunk 数量
+        const processScene = record.process_scene;
+
+        // ==========================================
+        // 【核心逻辑】：根据 run 和 chunk_num 联合判断真实状态
+        // ==========================================
+        let statusText = '';
+        let statusColor = '';
+
+        if (processScene === 'author_only') {
+          if (run === RunningStatus.DONE) {
+            statusText = t(
+              'statusAuthorSuccessNoParse',
+              '提取成功<br />未解析',
+            );
+            statusColor = 'text-orange-500';
+          } else if (run === RunningStatus.FAIL) {
+            statusText = t('statusAuthorFailNoParse', '提取失败<br />未解析');
+            statusColor = 'text-yellow-600';
+          }
+        } else if (processScene === 'author_with_parse') {
+          if (run === RunningStatus.DONE) {
+            statusText = t('statusAuthorSuccessParseSuccess', '解析成功');
+            statusColor = 'text-green-600';
+          } else if (run === RunningStatus.FAIL) {
+            statusText = t('statusAuthorSuccessParseFail', '解析失败');
+            statusColor = 'text-red-600';
+          }
+        } else if (processScene === 'parse_only') {
+          if (run === RunningStatus.DONE) {
+            statusText = t('statusParseSuccess', '解析成功');
+            statusColor = 'text-green-600';
+          } else if (run === RunningStatus.FAIL) {
+            statusText = t('statusParseFail', '解析失败');
+            statusColor = 'text-red-600';
+          }
+        }
+
+        if (statusText) {
+          const statusStyles = {
+            'text-orange-500': {
+              wrapper:
+                'bg-orange-50 text-orange-700 border-orange-200 shadow-orange-100',
+              dot: 'bg-orange-400',
+            },
+            'text-yellow-600': {
+              wrapper:
+                'bg-yellow-50 text-yellow-700 border-yellow-200 shadow-yellow-100',
+              dot: 'bg-yellow-400',
+            },
+            'text-green-600': {
+              wrapper:
+                'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-emerald-100',
+              dot: 'bg-emerald-500',
+            },
+            'text-red-600': {
+              wrapper: 'bg-red-50 text-red-700 border-red-200 shadow-red-100',
+              dot: 'bg-red-500',
+            },
+          } as const;
+
+          const currentStyle = statusStyles[
+            statusColor as keyof typeof statusStyles
+          ] ?? {
+            wrapper:
+              'bg-slate-50 text-slate-600 border-slate-200 shadow-slate-100',
+            dot: 'bg-slate-400',
+          };
+
+          return (
+            <div
+              className={[
+                'inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1',
+                'text-xs font-medium leading-tight shadow-sm',
+                'transition-colors duration-200',
+                currentStyle.wrapper,
+              ].join(' ')}
+            >
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${currentStyle.dot}`}
+              />
+              <span
+                className="whitespace-nowrap text-center"
+                dangerouslySetInnerHTML={{ __html: statusText }}
+              />
+            </div>
+          );
+        }
+
         const raw = typeof record.progress === 'number' ? record.progress : 0;
         const percent = Math.max(
           0,

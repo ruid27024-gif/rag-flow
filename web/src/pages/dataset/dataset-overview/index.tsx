@@ -27,6 +27,15 @@ interface CardFooterProcessProps {
   failed: number;
   successTip?: string;
   failedTip?: string;
+  parseFailed?: number;
+  parseFailedTip?: string;
+  authorFailed?: number;
+  authorFailedTip?: string;
+}
+
+interface CardFooterWeekFilesProps {
+  percent: number;
+  thisWeekCount: number;
 }
 
 const StatCard: FC<StatCardProps> = ({
@@ -57,19 +66,110 @@ const StatCard: FC<StatCardProps> = ({
   );
 };
 
+const CardFooterWeekFiles: FC<CardFooterWeekFilesProps> = ({
+  percent = 0,
+  thisWeekCount = 0,
+}) => {
+  return (
+    <div className="w-full flex justify-between gap-4 rounded-lg text-sm font-bold text-text-primary">
+      <div className="flex items-center justify-between rounded-md w-1/2 p-2 bg-accent-primary-5">
+        <div className="flex items-center rounded-lg gap-1">
+          <div className="w-2 h-2 rounded-full bg-accent-primary"></div>
+          <div className="font-normal text-text-secondary text-xs">
+            本周占比
+          </div>
+        </div>
+        <div>{percent || 0}%</div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-md w-1/2 p-2 bg-accent-primary-5">
+        <div className="flex items-center rounded-lg gap-1">
+          <div className="w-2 h-2 rounded-full bg-accent-primary"></div>
+          <div className="font-normal text-text-secondary text-xs">
+            本周新增
+          </div>
+        </div>
+        <div>{thisWeekCount || 0}</div>
+      </div>
+    </div>
+  );
+};
+
+// const CardFooterProcess: FC<CardFooterProcessProps> = ({
+//   success = 0,
+//   successTip,
+//   failed = 0,
+//   failedTip,
+// }) => {
+//   const { t } = useTranslation();
+//   return (
+//     <div className="flex items-center flex-col gap-2">
+//       <div className="w-full flex justify-between gap-4 rounded-lg text-sm font-bold text-text-primary">
+//         <div className="flex items-center justify-between  rounded-md w-1/2 p-2 bg-state-success-5">
+//           <div className="flex items-center rounded-lg gap-1">
+//             <div className="w-2 h-2 rounded-full bg-state-success "></div>
+//             <div className="font-normal text-text-secondary text-xs flex items-center gap-1">
+//               {t('knowledgeDetails.success')}
+//               {successTip && (
+//                 <AntToolTip title={successTip} trigger="hover">
+//                   <CircleQuestionMark size={12} />
+//                 </AntToolTip>
+//               )}
+//             </div>
+//           </div>
+//           <div>{success || 0}</div>
+//         </div>
+//         <div className="flex items-center justify-between rounded-md w-1/2 bg-state-error-5 p-2">
+//           <div className="flex items-center rounded-lg gap-1">
+//             <div className="w-2 h-2 rounded-full bg-state-error"></div>
+//             <div className="font-normal text-text-secondary text-xs flex items-center gap-1">
+//               {t('knowledgeDetails.failed')}
+//               {failedTip && (
+//                 <AntToolTip title={failedTip} trigger="hover">
+//                   <CircleQuestionMark size={12} />
+//                 </AntToolTip>
+//               )}
+//             </div>
+//           </div>
+//           <div>{failed || 0}</div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// };
 const CardFooterProcess: FC<CardFooterProcessProps> = ({
   success = 0,
   successTip,
   failed = 0,
   failedTip,
+  authorFailed,
+  authorFailedTip,
 }) => {
   const { t } = useTranslation();
+
   return (
-    <div className="flex items-center flex-col gap-2">
-      <div className="w-full flex justify-between gap-4 rounded-lg text-sm font-bold text-text-primary">
-        <div className="flex items-center justify-between  rounded-md w-1/2 p-2 bg-state-success-5">
+    <div className="relative flex items-center flex-col gap-2">
+      {authorFailed !== undefined && (
+        <div className="absolute right-0 bottom-full mb-1 w-[calc(50%-0.5rem)] flex items-center justify-between rounded-md bg-blue-50 p-2 text-sm font-bold text-text-primary">
           <div className="flex items-center rounded-lg gap-1">
-            <div className="w-2 h-2 rounded-full bg-state-success "></div>
+            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+            <div className="font-normal text-text-secondary text-xs flex items-center gap-1">
+              提取失败
+              {authorFailedTip && (
+                <AntToolTip title={authorFailedTip} trigger="hover">
+                  <CircleQuestionMark size={12} />
+                </AntToolTip>
+              )}
+            </div>
+          </div>
+          <div>{authorFailed || 0}</div>
+        </div>
+      )}
+
+      <div className="w-full flex justify-between gap-4 rounded-lg text-sm font-bold text-text-primary">
+        <div className="flex items-center justify-between rounded-md w-1/2 p-2 bg-state-success-5">
+          <div className="flex items-center rounded-lg gap-1">
+            <div className="w-2 h-2 rounded-full bg-state-success"></div>
             <div className="font-normal text-text-secondary text-xs flex items-center gap-1">
               {t('knowledgeDetails.success')}
               {successTip && (
@@ -81,6 +181,7 @@ const CardFooterProcess: FC<CardFooterProcessProps> = ({
           </div>
           <div>{success || 0}</div>
         </div>
+
         <div className="flex items-center justify-between rounded-md w-1/2 bg-state-error-5 p-2">
           <div className="flex items-center rounded-lg gap-1">
             <div className="w-2 h-2 rounded-full bg-state-error"></div>
@@ -107,6 +208,7 @@ const FileLogsPage: FC = () => {
     totalFiles: {
       value: 0,
       precent: 0,
+      thisWeekCount: 0,
     },
     downloads: {
       value: 0,
@@ -117,11 +219,15 @@ const FileLogsPage: FC = () => {
       value: 0,
       success: 0,
       failed: 0,
+      parseFailed: 0,
+      authorFailed: 0,
     },
   });
   const { data: topData } = useFetchOverviewTital();
   const {
     pagination: { total: fileTotal },
+    weekGrowthRate,
+    thisWeekCount,
   } = useFetchDocumentList();
 
   useEffect(() => {
@@ -136,6 +242,8 @@ const FileLogsPage: FC = () => {
           value: topData?.processing || 0,
           success: topData?.finished || 0,
           failed: topData?.failed || 0,
+          parseFailed: topData?.parse_failed || 0,
+          authorFailed: topData?.author_failed || 0,
         },
       };
     });
@@ -147,7 +255,9 @@ const FileLogsPage: FC = () => {
         ...prev,
         totalFiles: {
           value: fileTotal || 0,
-          precent: 0,
+          // precent: 0,
+          precent: weekGrowthRate || 0,
+          thisWeekCount: thisWeekCount || 0,
         },
       };
     });
@@ -247,10 +357,10 @@ const FileLogsPage: FC = () => {
   const isDark = useIsDarkTheme();
 
   return (
-    <div className="p-5 min-w-[880px] border-border border rounded-lg mr-5">
+    <div className="p-5 pb-1 min-w-[880px] border-border border rounded-lg mr-5">
       {/* Stats Cards */}
       <div className="grid grid-cols-3 md:grid-cols-3 gap-4 mb-6">
-        <StatCard
+        {/* <StatCard
           title={t('datasetOverview.totalFiles')}
           value={topAllData.totalFiles.value}
           icon={
@@ -267,10 +377,27 @@ const FileLogsPage: FC = () => {
               {topAllData.totalFiles.precent}%{' '}
             </span>
             <span className="font-normal text-text-secondary text-xs">
-              上周占比
+              增长率
             </span>
           </div>
+        </StatCard> */}
+        <StatCard
+          title={t('datasetOverview.totalFiles')}
+          value={topAllData.totalFiles.value}
+          icon={
+            isDark ? (
+              <SvgIcon name="data-flow/total-files-icon" width={40} />
+            ) : (
+              <SvgIcon name="data-flow/total-files-icon-bri" width={40} />
+            )
+          }
+        >
+          <CardFooterWeekFiles
+            percent={topAllData.totalFiles.precent}
+            thisWeekCount={topAllData.totalFiles.thisWeekCount}
+          />
         </StatCard>
+
         <StatCard
           title={t('datasetOverview.downloading')}
           value={topAllData.downloads.value}
@@ -302,11 +429,21 @@ const FileLogsPage: FC = () => {
           }
           tooltip={t('datasetOverview.processingTip')}
         >
+          {/* <CardFooterProcess
+            success={topAllData.processing.success}
+            successTip={t('datasetOverview.processingSuccessTip')}
+            failed={topAllData.processing.failed}
+            failedTip={t('datasetOverview.processingFailedTip')}
+          /> */}
           <CardFooterProcess
             success={topAllData.processing.success}
             successTip={t('datasetOverview.processingSuccessTip')}
             failed={topAllData.processing.failed}
             failedTip={t('datasetOverview.processingFailedTip')}
+            parseFailed={topAllData.processing.parseFailed}
+            parseFailedTip="解析全文失败数量"
+            authorFailed={topAllData.processing.authorFailed}
+            authorFailedTip="提取作者失败数量"
           />
         </StatCard>
       </div>
