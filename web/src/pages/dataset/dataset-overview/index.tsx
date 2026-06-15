@@ -150,10 +150,10 @@ const CardFooterProcess: FC<CardFooterProcessProps> = ({
   return (
     <div className="relative flex items-center flex-col gap-2">
       {authorFailed !== undefined && (
-        <div className="absolute right-0 bottom-full mb-1 w-[calc(50%-0.5rem)] flex items-center justify-between rounded-md bg-blue-50 p-2 text-sm font-bold text-text-primary">
+        <div className="absolute right-0 bottom-full mb-1 w-[calc(50%-0.5rem)] flex items-center justify-between rounded-md bg-blue-50 dark:bg-blue-950/40 p-2 text-sm font-bold text-text-primary border border-blue-100 dark:border-blue-900/60">
           <div className="flex items-center rounded-lg gap-1">
-            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-            <div className="font-normal text-text-secondary text-xs flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400"></div>
+            <div className="font-normal text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
               提取失败
               {authorFailedTip && (
                 <AntToolTip title={authorFailedTip} trigger="hover">
@@ -162,7 +162,9 @@ const CardFooterProcess: FC<CardFooterProcessProps> = ({
               )}
             </div>
           </div>
-          <div>{authorFailed || 0}</div>
+          <div className="text-blue-700 dark:text-blue-300">
+            {authorFailed || 0}
+          </div>
         </div>
       )}
 

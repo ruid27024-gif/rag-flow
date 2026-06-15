@@ -48,6 +48,7 @@ from api.utils.web_utils import CONTENT_TYPE_MAP, html2pdf, is_valid_url
 from deepdoc.parser.html_parser import RAGFlowHtmlParser
 from rag.nlp import search, rag_tokenizer
 from common import settings
+from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
 
 # 新增报告推送接口
 @manager.route("/upload/report", methods=["POST"])  # noqa: F821
@@ -895,6 +896,11 @@ async def rm():
 
     if errors:
         return get_json_result(data=False, message=errors, code=RetCode.SERVER_ERROR)
+    
+    await asyncio.to_thread(
+        PipelineOperationLogService.delete_by_document_ids,
+        doc_ids,
+    )
 
     return get_json_result(data=True)
 

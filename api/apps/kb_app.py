@@ -36,7 +36,7 @@ from api.db import VALID_FILE_TYPES
 from api.db.services.file_admin_service import FileAdminService
 from api.db.services.file_group_service import FileGroupService
 from api.db.services.knowledgebase_service import KnowledgebaseService
-from api.db.db_models import File, AdminUser, File_Admin, File_Group
+from api.db.db_models import File, AdminUser, File_Admin, File_Group, PipelineOperationLog
 from api.utils.api_utils import get_json_result
 from rag.nlp import search
 from api.constants import DATASET_NAME_LIMIT
@@ -638,8 +638,24 @@ async def delete_pipeline_logs():
 
     req = await get_request_json()
     log_ids = req.get("log_ids", [])
+    print(log_ids)
 
     PipelineOperationLogService.delete_by_ids(log_ids)
+
+    return get_json_result(data=True)
+
+@manager.route("/delete_pipeline_logs_bydoc", methods=["POST"])  # noqa: F821
+@login_required
+async def delete_pipeline_logs_bydoc():
+    kb_id = request.args.get("kb_id")
+    if not kb_id:
+        return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+
+    req = await get_request_json()
+    log_ids = req.get("log_ids", [])
+    print(log_ids)
+
+    PipelineOperationLogService.delete_by_document_ids_from_log_ids(log_ids)
 
     return get_json_result(data=True)
 
@@ -656,6 +672,24 @@ def pipeline_log_detail():
         return get_data_error_result(message="Invalid pipeline log ID")
 
     return get_json_result(data=log.to_dict())
+
+@manager.route("/pipeline_log_list", methods=["GET"])  # noqa: F821
+@login_required
+def pipeline_log_list():
+    document_id = request.args.get("document_id")
+    if not document_id:
+        return get_json_result(
+            data=False,
+            message='Lack of "Document ID"',
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    logs = PipelineOperationLogService.query(
+        document_id=document_id,
+        order_by=PipelineOperationLog.create_time.desc(),
+    )
+
+    return get_json_result(data=[log.to_dict() for log in logs])
 
 
 @manager.route("/run_graphrag", methods=["POST"])  # noqa: F821

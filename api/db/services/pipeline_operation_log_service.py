@@ -732,6 +732,44 @@ class PipelineOperationLogService(CommonService):
             )
             .dicts()
         )
+    
+    @classmethod
+    @DB.connection_context()
+    def delete_by_document_ids(cls, document_ids):
+        if isinstance(document_ids, str):
+            document_ids = [document_ids]
+
+        return (
+            cls.model
+            .delete()
+            .where(cls.model.document_id.in_(document_ids))
+            .execute()
+        )
+    
+    @classmethod
+    @DB.connection_context()
+    def delete_by_document_ids_from_log_ids(cls, log_ids):
+        if isinstance(log_ids, str):
+            log_ids = [log_ids]
+
+        document_ids = [
+            item["document_id"]
+            for item in cls.model
+            .select(cls.model.document_id)
+            .where(cls.model.id.in_(log_ids))
+            .dicts()
+            if item.get("document_id")
+        ]
+
+        if not document_ids:
+            return 0
+
+        return (
+            cls.model
+            .delete()
+            .where(cls.model.document_id.in_(document_ids))
+            .execute()
+        )
 
     @classmethod
     @DB.connection_context()

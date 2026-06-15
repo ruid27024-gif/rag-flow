@@ -4,7 +4,9 @@ import FileStatusBadge from '@/components/file-status-badge';
 import { FileIcon, IconFontFill } from '@/components/icon-font';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import { Separator } from '@/components/ui/separator';
 import {
   Table,
   TableBody,
@@ -26,7 +28,9 @@ import { PipelineResultSearchParams } from '@/pages/dataflow-result/constant';
 import { NavigateToDataflowResultProps } from '@/pages/dataflow-result/interface';
 import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
 import { IDataSourceInfoMap } from '@/pages/user-setting/data-source/interface';
+import { getAuthorization } from '@/utils/authorization-util';
 import { formatSecondsToHumanReadable } from '@/utils/date';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -40,8 +44,15 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { TFunction } from 'i18next';
-import { ArrowUpDown, ClipboardList, Eye, MonitorUp } from 'lucide-react';
-import { FC, useMemo, useState } from 'react';
+import {
+  ArrowUpDown,
+  BrushCleaning,
+  ClipboardList,
+  Eye,
+  MonitorUp,
+  Trash2,
+} from 'lucide-react';
+import { FC, useCallback, useMemo, useState } from 'react';
 import { useParams } from 'umi';
 import { RunningStatus } from '../dataset/constant';
 import ProcessLogModal from '../process-log-modal';
@@ -61,6 +72,59 @@ const formatDate = (dateStr: string) => {
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
+export const useRemovePipelineLogs = () => {
+  const queryClient = useQueryClient();
+
+  const { isPending: loading, mutateAsync } = useMutation({
+    mutationFn: async ({
+      kbId,
+      logIds,
+    }: {
+      kbId: string;
+      logIds: string[];
+    }) => {
+      const response = await fetch(
+        `/v1/kb/delete_pipeline_logs_bydoc?kb_id=${kbId}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: getAuthorization() || '',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ log_ids: logIds }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error('删除失败');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['fileLogList'],
+      });
+    },
+  });
+
+  return {
+    loading,
+    deletePipelineLogs: mutateAsync,
+  };
+};
+
+// const deletePipelineLogs = async (kbId: string, logIds: string[]) => {
+//   const response = await fetch(`/v1/kb/delete_pipeline_logs?kb_id=${kbId}`, {
+//     method: 'POST',
+//     headers: {
+//               Authorization: getAuthorization() || '',
+//             },
+//     body: JSON.stringify({ log_ids: logIds }),
+//   });
+//   if (!response.ok) throw new Error('删除失败');
+//   return response.json();
+// };
 
 export const getFileLogsTableColumns = (
   t: TFunction<'translation', string>,
@@ -70,8 +134,12 @@ export const getFileLogsTableColumns = (
     props: NavigateToDataflowResultProps,
   ) => () => void,
   dataSourceInfo: IDataSourceInfoMap,
+  // 【新增】批量删除回调函数，接收选中的 ID 数组
+  onBatchDelete?: (ids: string[]) => void,
+  isDeleting?: boolean,
 ) => {
   // const { t } = useTranslate('knowledgeDetails');
+
   const columns: ColumnDef<IFileLogItem & DocumentLog>[] = [
     // {
     //   id: 'select',
@@ -92,6 +160,31 @@ export const getFileLogsTableColumns = (
     //     />
     //   ),
     // },
+    {
+      id: 'select',
+      header: ({ table }) => (
+        <div className="flex items-center justify-center">
+          <input
+            type="checkbox"
+            checked={table.getIsAllRowsSelected()}
+            onChange={table.getToggleAllRowsSelectedHandler()}
+            className="rounded bg-gray-900 text-blue-500 focus:ring-blue-500"
+          />
+        </div>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center">
+          <input
+            type="checkbox"
+            checked={row.getIsSelected()}
+            onChange={row.getToggleSelectedHandler()}
+            className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+          />
+        </div>
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       accessorKey: 'id',
       header: 'ID',
@@ -272,97 +365,6 @@ export const getFileLogsTableColumns = (
         </div>
       ),
     },
-
-    // {
-    //   accessorKey: 'document_id_count',
-    //   header: () => <div className="text-center w-full">文档解析次数</div>,
-    //   meta: {
-    //     align: 'center',
-    //     className: 'text-center',
-    //   },
-    //   cell: ({ row }) => {
-    //     const count = row.original.document_id_count || 0;
-
-    //     const colorMap: Record<number, string> = {
-    //       1: 'bg-gradient-to-r from-green-50 to-green-100 text-green-700 ring-green-200',
-    //       2: 'bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 ring-emerald-200',
-    //       3: 'bg-gradient-to-r from-teal-50 to-teal-100 text-teal-700 ring-teal-200',
-    //       4: 'bg-gradient-to-r from-cyan-50 to-cyan-100 text-cyan-700 ring-cyan-200',
-    //       5: 'bg-gradient-to-r from-sky-50 to-sky-100 text-sky-700 ring-sky-200',
-    //       6: 'bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 ring-blue-200',
-    //       7: 'bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 ring-indigo-200',
-    //       8: 'bg-gradient-to-r from-violet-50 to-violet-100 text-violet-700 ring-violet-200',
-    //       9: 'bg-gradient-to-r from-orange-50 to-orange-100 text-orange-700 ring-orange-200',
-    //       10: 'bg-gradient-to-r from-red-50 to-red-100 text-red-700 ring-red-200',
-    //     };
-
-    //     const normalizedCount = Math.min(Math.max(count, 1), 10);
-
-    //     const className =
-    //       count <= 0
-    //         ? 'bg-gray-50 text-gray-500 ring-gray-200'
-    //         : colorMap[normalizedCount];
-
-    //     return (
-    //       <div className="flex w-full items-center justify-center">
-    //         <span
-    //           className={`
-    //         inline-flex items-center justify-center
-    //         min-w-[54px] px-2.5 py-1
-    //         text-xs font-semibold tracking-wide
-    //         rounded-full ring-1 ring-inset
-    //         transition-all duration-200
-    //         ${className}
-    //       `}
-    //           title={`该文档共解析 ${count} 次`}
-    //         >
-    //           <svg
-    //             className="mr-1 h-3 w-3 opacity-80"
-    //             fill="none"
-    //             viewBox="0 0 24 24"
-    //             strokeWidth={2}
-    //             stroke="currentColor"
-    //           >
-    //             <path
-    //               strokeLinecap="round"
-    //               strokeLinejoin="round"
-    //               d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M21.015 4.356v4.992"
-    //             />
-    //           </svg>
-    //           {count} 次
-    //         </span>
-    //       </div>
-    //     );
-    //   },
-    // },
-    // {
-    //   accessorKey: 'is_latest_parse',
-    //   header: () => <div className="text-center w-full">是否最新</div>,
-    //   meta: {
-    //     align: 'center',
-    //     className: 'text-center',
-    //   },
-    //   cell: ({ row }) => {
-    //     const isLatest = row.original.is_latest_parse === 1;
-
-    //     return (
-    //       <div className="flex w-full items-center justify-center">
-    //         <span
-    //           className={`
-    //         inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset
-    //         ${
-    //           isLatest
-    //             ? 'bg-green-50 text-blue-700 ring-blue-200'
-    //             : 'bg-gray-50 text-gray-500 ring-gray-200'
-    //         }
-    //       `}
-    //         >
-    //           {isLatest ? '最新' : '历史'}
-    //         </span>
-    //       </div>
-    //     );
-    //   },
-    // },
     {
       id: 'operations',
       header: t('operations'),
@@ -370,9 +372,42 @@ export const getFileLogsTableColumns = (
         cellClassName: 'max-w-[20vw] text-center',
         headerClassName: 'text-center',
       },
+      // cell: ({ row }) => (
+      //   <div className="flex justify-center">
+      //     <div className="flex min-w-[72px] justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      //       <Button
+      //         variant="ghost"
+      //         size="sm"
+      //         className="p-1"
+      //         onClick={() => {
+      //           showLog(row, LogTabs.FILE_LOGS);
+      //         }}
+      //       >
+      //         <Eye />
+      //       </Button>
+      //       {row.original.pipeline_id && (
+      //         <Button
+      //           variant="ghost"
+      //           size="sm"
+      //           className="p-1"
+      //           onClick={navigateToDataflowResult({
+      //             id: row.original.id,
+      //             [PipelineResultSearchParams.KnowledgeId]: kowledgeId,
+      //             [PipelineResultSearchParams.DocumentId]:
+      //               row.original.document_id,
+      //             [PipelineResultSearchParams.IsReadOnly]: 'false',
+      //             [PipelineResultSearchParams.Type]: 'dataflow',
+      //           })}
+      //         >
+      //           <ClipboardList />
+      //         </Button>
+      //       )}
+      //     </div>
+      //   </div>
+      // ),
       cell: ({ row }) => (
         <div className="flex justify-center">
-          <div className="flex min-w-[72px] justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex min-w-[96px] justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
               variant="ghost"
               size="sm"
@@ -380,9 +415,11 @@ export const getFileLogsTableColumns = (
               onClick={() => {
                 showLog(row, LogTabs.FILE_LOGS);
               }}
+              title="任务记录"
             >
               <Eye />
             </Button>
+
             {row.original.pipeline_id && (
               <Button
                 variant="ghost"
@@ -398,6 +435,21 @@ export const getFileLogsTableColumns = (
                 })}
               >
                 <ClipboardList />
+              </Button>
+            )}
+
+            {onBatchDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-1 text-state-error hover:text-state-error"
+                disabled={isDeleting}
+                onClick={() => {
+                  onBatchDelete([row.original.id]);
+                }}
+                title="删除"
+              >
+                <Trash2 />
               </Button>
             )}
           </div>
@@ -531,12 +583,34 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowSelection, setRowSelection] = useState({});
+  const kowledgeId = useParams().id;
+  const { loading: isDeleting, deletePipelineLogs } = useRemovePipelineLogs();
+  const handleBatchDelete = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length || !kowledgeId) return;
+      if (!confirm(`确定要删除这 ${ids.length} 条日志吗？`)) return;
+
+      try {
+        await deletePipelineLogs({
+          kbId: kowledgeId,
+          logIds: ids,
+        });
+
+        setRowSelection({});
+      } catch (error) {
+        console.error(error);
+        alert('删除失败，请稍后重试');
+      }
+    },
+    [kowledgeId, deletePipelineLogs],
+  );
+
   const { t } = useTranslate('knowledgeDetails');
   const { t: tDatasetOverview } = useTranslate('datasetOverview');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const { navigateToDataflowResult } = useNavigatePage();
   const [logInfo, setLogInfo] = useState<IFileLogItem>();
-  const kowledgeId = useParams().id;
+
   const showLog = (row: Row<IFileLogItem & DocumentLog>) => {
     const logDetail = {
       taskId: row.original?.dsl?.task_id,
@@ -563,9 +637,20 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
           kowledgeId || '',
           navigateToDataflowResult,
           dataSourceInfo,
+          handleBatchDelete,
+          isDeleting,
         )
       : getDatasetLogsTableColumns(t, showLog);
-  }, [active, t]);
+  }, [
+    active,
+    t,
+    showLog,
+    kowledgeId,
+    navigateToDataflowResult,
+    dataSourceInfo,
+    handleBatchDelete,
+    isDeleting,
+  ]);
 
   const currentPagination = useMemo(
     () => ({
@@ -599,6 +684,42 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
 
   return (
     <div className="w-full h-[calc(100vh-360px)]">
+      {table.getSelectedRowModel().rows.length > 0 && (
+        <Card className="mb-4">
+          <CardContent className="p-1 pl-5 flex items-center gap-6">
+            <section className="text-text-sub-title-invert flex items-center gap-2">
+              <span>
+                已选: {table.getSelectedRowModel().rows.length} 个文件
+              </span>
+              <BrushCleaning className="size-3" />
+            </section>
+
+            <Separator orientation="vertical" className="h-3" />
+
+            <ul className="flex gap-2">
+              <li className="text-state-error">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1 px-3 text-state-error hover:text-state-error"
+                  disabled={isDeleting}
+                  onClick={() => {
+                    const ids = table
+                      .getSelectedRowModel()
+                      .rows.map((row) => row.original.id)
+                      .filter(Boolean);
+
+                    handleBatchDelete(ids);
+                  }}
+                >
+                  <Trash2 size={15} />
+                  删除
+                </Button>
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+      )}
       <Table rootClassName="max-h-[calc(100vh-380px)]">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (

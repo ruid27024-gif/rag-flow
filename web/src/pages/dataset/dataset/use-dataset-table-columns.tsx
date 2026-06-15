@@ -14,7 +14,7 @@ import { useSetDocumentStatus } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
 import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
-import { formatDate } from '@/utils/date';
+// import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/table-core';
 import { ArrowUpDown, Edit, MonitorUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -53,6 +53,20 @@ export function useDatasetTableColumns({
   const { dataSourceInfo } = useDataSourceInfo();
   const { navigateToChunkParsedResult } = useNavigatePage();
   const { setDocumentStatus } = useSetDocumentStatus();
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+
+    const year = date.getFullYear(); // 获取本地年份
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // 月份从0开始
+    const day = String(date.getDate()).padStart(2, '0'); // 获取本地日期
+    const hours = String(date.getHours()).padStart(2, '0'); // 获取本地小时
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
 
   const columns: ColumnDef<IDocumentInfo>[] = [
     {
@@ -176,6 +190,7 @@ export function useDatasetTableColumns({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6"
+                  title="手动输入"
                   onClick={() => showSetMetaModal(row.original)}
                 >
                   <Edit className="h-4 w-4" />
