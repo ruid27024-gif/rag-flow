@@ -1119,6 +1119,92 @@ def list_filesUP():
     except Exception as e:
         return server_error_response(e)
 
+@manager.route('/listroot', methods=['GET'])  # noqa: F821
+@login_required
+def list_files_root():
+    keywords = request.args.get("keywords", "")
+
+    page_number = int(request.args.get("page", 1))
+    items_per_page = int(request.args.get("page_size", 15))
+    orderby = request.args.get("orderby", "create_time")
+    desc = request.args.get("desc", True)
+    print("开始查询根目录")
+
+    try:
+        if AdminUser.query(user_id=current_user.id, role_level=1):
+            root_folder = FileAdminService.get_root_folder(current_user.id)
+            pf_id = root_folder["id"]
+
+            files, total = FileAdminService.get_root_self(
+                current_user.id,
+                pf_id,
+                page_number,
+                items_per_page,
+                orderby,
+                desc,
+                keywords
+            )
+
+            parent_folder = FileAdminService.get_parent_folder(pf_id)
+            if not parent_folder:
+                return get_json_result(message="根目录不存在！")
+
+            return get_json_result(data={
+                "total": total,
+                "files": files,
+                "parent_folder": parent_folder.to_json()
+            })
+
+        elif AdminUser.query(user_id=current_user.id, role_level=2):
+            root_folder = FileGroupService.get_root_folder(current_user.id)
+            pf_id = root_folder["id"]
+
+            files, total = FileGroupService.get_root_self(
+                current_user.id,
+                pf_id,
+                page_number,
+                items_per_page,
+                orderby,
+                desc,
+                keywords
+            )
+
+            parent_folder = FileGroupService.get_parent_folder(pf_id)
+            if not parent_folder:
+                return get_json_result(message="根目录不存在！")
+
+            return get_json_result(data={
+                "total": total,
+                "files": files,
+                "parent_folder": parent_folder.to_json()
+            })
+
+        else:
+            root_folder = FileService.get_root_folder(current_user.id)
+            pf_id = root_folder["id"]
+
+            files, total = FileService.get_root_self(
+                current_user.id,
+                pf_id,
+                page_number,
+                items_per_page,
+                orderby,
+                desc,
+                keywords
+            )
+
+            parent_folder = FileService.get_parent_folder(pf_id)
+            if not parent_folder:
+                return get_json_result(message="根目录不存在！")
+
+            return get_json_result(data={
+                "total": total,
+                "files": files,
+                "parent_folder": parent_folder.to_json()
+            })
+
+    except Exception as e:
+        return server_error_response(e)
 
 @manager.route('/root_folder', methods=['GET'])  # noqa: F821
 @login_required

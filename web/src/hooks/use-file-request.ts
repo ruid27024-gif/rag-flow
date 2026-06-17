@@ -29,6 +29,7 @@ export const enum FileApiAction {
   RenameFile = 'renameFile',
   ConnectFileToKnowledge = 'connectFileToKnowledge',
   FetchPureFileList = 'fetchPureFileList',
+  FetchPureFileListRoot = 'fetchPureFileListRoot',
 }
 
 export const useGetFolderId = () => {
@@ -333,4 +334,22 @@ export const useFetchPureFileListUP = () => {
   });
 
   return { loading, fetchListUP: mutateAsync };
+};
+
+export const useFetchPureFileListRoot = () => {
+  const { mutateAsync, isPending: loading } = useMutation({
+    mutationKey: [FileApiAction.FetchPureFileListRoot],
+    gcTime: 0,
+
+    mutationFn: async () => {
+      const { data } = await fileManagerService.listFileRoot({});
+
+      return data;
+    },
+  });
+
+  return {
+    loading,
+    fetchListRoot: mutateAsync,
+  };
 };

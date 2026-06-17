@@ -15,6 +15,7 @@ const {
   getFile,
   moveFile,
   listFileUP,
+  listFileRoot,
   get_document_file_download,
 } = api;
 
@@ -25,6 +26,11 @@ const methods = {
   },
   listFileUP: {
     url: listFileUP,
+    method: 'get',
+  },
+
+  listFileRoot: {
+    url: listFileRoot,
     method: 'get',
   },
   removeFile: {

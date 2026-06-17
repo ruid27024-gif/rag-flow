@@ -1115,8 +1115,10 @@ async def list_all_kb_members():
     kb = KnowledgebaseService.get_detail(kb_id)
     tenant_id = kb["created_by"]
     if tenant_id == settings.REFERENCE_TENANT_ID:
+        print("全局参考库权限管理")
     # 👇 优化点：用 list() 显式转换一下，防止后续出现类型问题
         group_ids = list(cfg_map.keys())
+        print(group_ids)
         try:
             rows = list(
                 UserGroup.select(
@@ -1126,8 +1128,8 @@ async def list_all_kb_members():
             ).where(
                 # 👇 核心修改：把 in 改成 .in_()
                 (UserGroup.group_id.in_(group_ids)) &  
-                (UserGroup.user_id != current_user.id) & 
-                (UserGroup.created_by != current_user.id)
+                (UserGroup.user_id != current_user.id)
+                # (UserGroup.created_by != current_user.id)
             )
             )
             

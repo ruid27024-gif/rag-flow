@@ -620,6 +620,7 @@ async def user_profile():
     admin_users = AdminUser.query(user_id=current_user.id)
     data["is_admin_user"] = any(u.role_level == 1 for u in admin_users)
     data["role_level"] = min([u.role_level for u in admin_users]) if admin_users else None
+    print(data)
     return get_json_result(data=data)
 
 

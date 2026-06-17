@@ -192,6 +192,8 @@ export default {
   listFile: `${api_host}/file/list`,
   listFile1: `${api_host}/file/listp`,
   listFileUP: `${api_host}/file/listup`,
+  listFileRoot: `${api_host}/file/listroot`,
+
   uploadFile: `${api_host}/file/upload`,
   removeFile: `${api_host}/file/rm`,
   renameFile: `${api_host}/file/rename`,

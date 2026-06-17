@@ -67,35 +67,69 @@ export function ReferenceDocumentList({ list }: { list: Docagg[] }) {
     //   ))}
     // </section>
 
+    // <section className="flex flex-col gap-3 w-full max-w-full">
+    //   {list.map((item, i) => (
+    //     <Card key={item.doc_id} className="w-[600px]">
+    //       <CardContent className="p-1.5">
+    //         <div className="flex items-center gap-2">
+    //           <span
+    //             className={`
+    //             flex-shrink-0                 /* 关键：禁止压缩 */
+    //             inline-flex items-center justify-center
+    //             w-5 h-5
+    //             text-xs font-medium text-white
+    //             rounded-full
+    //             ${getNumberColor(i + 1)}
+    //           `}
+    //           >
+    //             {i + 1}
+    //           </span>
+
+    //           <FileIcon id={item.doc_id} name={item.doc_name}></FileIcon>
+    //           {/* 核心修改区域 */}
+    //           <NewDocumentLink
+    //             documentId={item.doc_id}
+    //             documentName={item.doc_name}
+    //             prefix="document"
+    //             link={item.url}
+    //             // 关键类名：min-w-0 配合 flex-1
+    //             // min-w-0 允许 flex 项目在内容过长时收缩到 0 宽度
+    //             // flex-1 让它填满剩余空间
+    //             className="flex-1 overflow-hidden truncate text-text-sub-title-invert"
+    //           >
+    //             {item.doc_name}
+    //           </NewDocumentLink>
+    //         </div>
+    //       </CardContent>
+    //     </Card>
+    //   ))}
+    // </section>
     <section className="flex flex-col gap-3 w-full max-w-full">
       {list.map((item, i) => (
-        <Card key={item.doc_id} className="w-[600px]">
+        <Card key={item.doc_id} className="w-full max-w-[600px]">
           <CardContent className="p-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full min-w-0">
               <span
                 className={`
-                flex-shrink-0                 /* 关键：禁止压缩 */
-                inline-flex items-center justify-center 
-                w-5 h-5 
-                text-xs font-medium text-white 
-                rounded-full 
-                ${getNumberColor(i + 1)}
-              `}
+              flex-shrink-0
+              inline-flex items-center justify-center
+              w-5 h-5
+              text-xs font-medium text-white
+              rounded-full
+              ${getNumberColor(i + 1)}
+            `}
               >
                 {i + 1}
               </span>
 
-              <FileIcon id={item.doc_id} name={item.doc_name}></FileIcon>
-              {/* 核心修改区域 */}
+              <FileIcon id={item.doc_id} name={item.doc_name} />
+
               <NewDocumentLink
                 documentId={item.doc_id}
                 documentName={item.doc_name}
                 prefix="document"
                 link={item.url}
-                // 关键类名：min-w-0 配合 flex-1
-                // min-w-0 允许 flex 项目在内容过长时收缩到 0 宽度
-                // flex-1 让它填满剩余空间
-                className="flex-1 overflow-hidden truncate text-text-sub-title-invert"
+                className="text-text-sub-title-invert"
               >
                 {item.doc_name}
               </NewDocumentLink>

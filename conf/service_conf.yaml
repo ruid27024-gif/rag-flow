@@ -76,20 +76,34 @@ task_executor:
 
 user_default_llm:
   factory: 'Tongyi-Qianwen'
-  api_key: 'sk-3e6fc7909b4e438cae270fe89a85cc00'
+  api_key: 'sk-07313e1059724edb81c1daa60584d454'
   base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   default_models:
     chat_model:
       model: 'qwen-plus'
       factory: 'Tongyi-Qianwen'
-      api_key: 'sk-3e6fc7909b4e438cae270fe89a85cc00'
+      api_key: 'sk-07313e1059724edb81c1daa60584d454'
       max_tokens: 32768
       base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     embedding_model:
       model: 'text-embedding-v2'
       factory: 'Tongyi-Qianwen'
-      api_key: 'sk-3e6fc7909b4e438cae270fe89a85cc00'
+      api_key: 'sk-07313e1059724edb81c1daa60584d454'
       max_tokens: 1024
+      base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+
+    rerank_model:
+      model: 'gte-rerank-v2'
+      factory: 'Tongyi-Qianwen'
+      api_key: 'sk-07313e1059724edb81c1daa60584d454'
+      max_tokens: 1024
+      base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+
+    image2text_model:
+      model: 'qwen-vl-plus'
+      factory: 'Tongyi-Qianwen'
+      api_key: 'sk-07313e1059724edb81c1daa60584d454'
+      max_tokens: 4096
       base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
     # rerank_model:

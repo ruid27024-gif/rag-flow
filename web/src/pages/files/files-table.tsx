@@ -38,7 +38,7 @@ import { useFetchFileList } from '@/hooks/use-file-request';
 import { IFile } from '@/interfaces/database/file-manager';
 import { cn } from '@/lib/utils';
 import { formatFileSize } from '@/utils/common-util';
-import { formatDate } from '@/utils/date';
+// import { formatDate } from '@/utils/date';
 import { pick } from 'lodash';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -69,13 +69,27 @@ type FilesTableProps = Pick<
   'files' | 'loading' | 'pagination' | 'setPagination' | 'total'
 > &
   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
-  UseMoveDocumentShowType & // ✅ 单独扩展出拖拽和移动需要的额外回调函数
-  {
+  UseMoveDocumentShowType & { // ✅ 单独扩展出拖拽和移动需要的额外回调函数
     onMoveClick?: (record: IFile) => void;
     onDragStart?: (e: React.DragEvent, file: any) => void;
     onDragOver?: (e: React.DragEvent) => void;
     onDrop?: (e: React.DragEvent, file: any) => void;
   };
+export const formatDate = (date?: string | number | Date) => {
+  if (!date) return '';
+
+  const d = new Date(date);
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+
+  const hour = String(d.getHours()).padStart(2, '0');
+  const minute = String(d.getMinutes()).padStart(2, '0');
+  const second = String(d.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+};
 
 export function FilesTable({
   onMoveClick,

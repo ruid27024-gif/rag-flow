@@ -45,6 +45,57 @@ class FileAdminService(CommonService):
     # Service class for managing file operations and storage
     model = File_Admin
 
+    
+    @classmethod
+    @DB.connection_context()
+    def get_root_self(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
+        if keywords:
+            files = cls.model.select().where(
+                (cls.model.tenant_id == tenant_id),
+                (cls.model.id == pf_id),
+                (fn.LOWER(cls.model.name).contains(keywords.lower()))
+            )
+        else:
+            files = cls.model.select().where(
+                (cls.model.tenant_id == tenant_id),
+                (cls.model.id == pf_id)
+            )
+
+        count = files.count()
+
+        if desc in [True, "true", "True", "1", 1]:
+            files = files.order_by(cls.model.getter_by(orderby).desc())
+        else:
+            files = files.order_by(cls.model.getter_by(orderby).asc())
+
+        files = files.paginate(page_number, items_per_page)
+
+        res_files = list(files.dicts())
+
+        for file in res_files:
+            if file["type"] == FileType.FOLDER.value:
+                file["size"] = cls.get_folder_size(file["id"])
+                file["kbs_info"] = []
+
+                children = list(
+                    cls.model.select()
+                    .where(
+                        (cls.model.parent_id == file["id"]),
+                        ~(cls.model.id == file["id"]),
+                    )
+                    .dicts()
+                )
+
+                file["has_child_folder"] = any(
+                    value["type"] == FileType.FOLDER.value for value in children
+                )
+                continue
+
+            kbs_info = cls.get_kb_id_by_file_id(file["id"])
+            file["kbs_info"] = kbs_info
+
+        return res_files, count
+
     @classmethod
     @DB.connection_context()
     def get_by_pf_id(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
