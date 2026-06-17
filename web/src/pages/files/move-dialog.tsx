@@ -404,49 +404,6 @@ export function MoveDialog({
   const [upLevelTreeData, setUpLevelTreeData] = useState<any[]>([]);
   const [externalTreeData, setExternalTreeData] = useState<any[]>([]);
 
-  // const toTreeNodes = useCallback(
-  //   (files: IFile[]) =>
-  //     files
-  //       .filter((x: IFile) => x.type === 'folder' && x.id !== currentFile.id)
-  //       .map((x: IFile) => {
-  //         const isRootNode = x.id === x.parent_id;
-
-  //         return {
-  //           id: x.id,
-  //           parentId: isRootNode ? undefined : x.parent_id,
-  //           title: isRootNode && x.name === '/' ? '根目录' : x.name,
-  //           isLeaf: isRootNode
-  //             ? false
-  //             : typeof x.has_child_folder === 'boolean'
-  //               ? !x.has_child_folder
-  //               : false,
-  //         };
-  //       }),
-  //   [currentFile.id],
-  // );
-  //   const toTreeNodes = useCallback(
-  //   (files: IFile[]) =>
-  //     files
-  //       .filter((x: IFile) => x.type === 'folder' && x.id !== currentFile.id)
-  //       .map((x: IFile) => {
-  //         const isRootNode = x.id === x.parent_id;
-  //         const isGlobalReference = x.name === '全局参考库' || x.name === '全局文献参考库'|| x.name === '工艺研究一室'|| x.name === '.knowledgebase'||
-  //         x.name === '工艺研究二室' || x.name === '工艺研究三室' ;
-
-  //         return {
-  //           id: x.id,
-  //           parentId: isRootNode ? undefined : x.parent_id,
-  //           title: isRootNode && x.name === '/' ? '根目录' : x.name,
-  //           isLeaf: isRootNode || isGlobalReference
-  //             ? false
-  //             : typeof x.has_child_folder === 'boolean'
-  //               ? !x.has_child_folder
-  //               : false,
-  //         };
-  //       }),
-  //   [currentFile.id],
-  // );
-
   const toTreeNodes = useCallback(
     (files: IFile[]) =>
       files

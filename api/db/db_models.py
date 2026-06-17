@@ -1084,6 +1084,12 @@ class Search(DataBaseModel):
     class Meta:
         db_table = "search"
 
+class SearchMessage(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    search_id = CharField(max_length=32, index=True)
+    content = TextField()
+    create_time = BigIntegerField(index=True)
+
 
 class PipelineOperationLog(DataBaseModel):
     id = CharField(max_length=32, primary_key=True)

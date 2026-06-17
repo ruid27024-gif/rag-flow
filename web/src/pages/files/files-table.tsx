@@ -69,7 +69,8 @@ type FilesTableProps = Pick<
   'files' | 'loading' | 'pagination' | 'setPagination' | 'total'
 > &
   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> &
-  UseMoveDocumentShowType & { // ✅ 单独扩展出拖拽和移动需要的额外回调函数
+  UseMoveDocumentShowType & {
+    // ✅ 单独扩展出拖拽和移动需要的额外回调函数
     onMoveClick?: (record: IFile) => void;
     onDragStart?: (e: React.DragEvent, file: any) => void;
     onDragOver?: (e: React.DragEvent) => void;
@@ -183,33 +184,68 @@ export function FilesTable({
           }
         };
 
+        // return (
+        //   <div
+        //     className="flex gap-2 items-center "
+        //     draggable // 让这一整块区域都能被拖拽
+        //     onDragStart={(e) => {
+        //       // 手动触发父组件传下来的拖拽开始事件
+        //       onDragStart?.(e, row.original);
+        //     }}
+        //     // 阻止这个 div 的点击事件冒泡，防止和拖拽冲突
+        //     onClick={(e) => e.stopPropagation()}
+        //   >
+        //     <Tooltip>
+        //       <TooltipTrigger asChild>
+        //         <div className="flex gap-2">
+        //           <span className="size-4">
+        //             <FileIcon name={name} type={type}></FileIcon>
+        //           </span>
+        //           <span
+        //             className={cn('truncate', { ['cursor-pointer']: isFolder })}
+        //             onClick={handleNameClick}
+        //           >
+        //             {name}
+        //           </span>
+        //         </div>
+        //       </TooltipTrigger>
+        //       <TooltipContent>
+        //         {/* <p>{name}</p> */}
+        //         <p>{isFolder ? `点击进入文件夹：${name}` : name}</p>
+        //       </TooltipContent>
+        //     </Tooltip>
+        //   </div>
+        // );
+
         return (
           <div
-            className="flex gap-2 items-center"
-            draggable // 让这一整块区域都能被拖拽
+            className="flex items-center gap-2 min-w-0 max-w-[20vw]"
+            draggable
             onDragStart={(e) => {
-              // 手动触发父组件传下来的拖拽开始事件
               onDragStart?.(e, row.original);
             }}
-            // 阻止这个 div 的点击事件冒泡，防止和拖拽冲突
             onClick={(e) => e.stopPropagation()}
           >
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex gap-2">
-                  <span className="size-4">
+                <div className="flex items-center gap-2 min-w-0 max-w-full">
+                  <span className="size-4 shrink-0">
                     <FileIcon name={name} type={type}></FileIcon>
                   </span>
+
                   <span
-                    className={cn('truncate', { ['cursor-pointer']: isFolder })}
+                    className={cn('min-w-0 flex-1 truncate', {
+                      ['cursor-pointer']: isFolder,
+                    })}
                     onClick={handleNameClick}
+                    title={name}
                   >
                     {name}
                   </span>
                 </div>
               </TooltipTrigger>
+
               <TooltipContent>
-                {/* <p>{name}</p> */}
                 <p>{isFolder ? `点击进入文件夹：${name}` : name}</p>
               </TooltipContent>
             </Tooltip>

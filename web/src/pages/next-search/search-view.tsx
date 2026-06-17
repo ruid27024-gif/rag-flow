@@ -18,6 +18,7 @@ import { isEmpty } from 'lodash';
 import { BrainCircuit, Search, X } from 'lucide-react';
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router-dom';
 import { ISearchAppDetailProps } from '../next-searches/hooks';
 import PdfDrawer from './document-preview-modal';
 import { ISearchReturnProps } from './hooks';
@@ -246,6 +247,7 @@ export default function SearchingView({
   searchData: ISearchAppDetailProps;
 }) {
   const { t } = useTranslation();
+
   // useEffect(() => {
   //   const changeLanguage = async () => {
   //     await i18n.changeLanguage('zh');
@@ -255,6 +257,48 @@ export default function SearchingView({
   const [searchtext, setSearchtext] = useState<string>('');
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [previewImageId, setPreviewImageId] = useState<string>();
+  const { id: searchId } = useParams();
+
+  const saveSearchMessage = async (content: string) => {
+    const nextContent = content.trim();
+
+    if (!searchId || !nextContent) return false;
+
+    try {
+      const res = await fetch('/v1/search_keep/message', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          search_id: searchId,
+          content: nextContent,
+        }),
+      });
+
+      const data = await res.json();
+
+      console.log('保存搜索记录结果:', data);
+
+      if (data.code === 0) {
+        window.dispatchEvent(
+          new CustomEvent('search-message-saved', {
+            detail: {
+              content: nextContent,
+            },
+          }),
+        );
+
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('save search message failed:', error);
+      return false;
+    }
+  };
 
   useEffect(() => {
     setSearchtext(searchStr);
@@ -298,9 +342,18 @@ export default function SearchingView({
                   setSearchtext(e.target.value);
                 }}
                 disabled={sendingLoading}
-                onKeyUp={(e) => {
+                // onKeyUp={(e) => {
+                //   if (e.key === 'Enter') {
+                //     handleSearch(searchtext);
+                //   }
+                onKeyUp={async (e) => {
                   if (e.key === 'Enter') {
-                    handleSearch(searchtext);
+                    const content = searchtext.trim();
+
+                    if (!content) return;
+
+                    await saveSearchMessage(content);
+                    handleSearch(content);
                   }
                 }}
               />
@@ -314,7 +367,7 @@ export default function SearchingView({
                   }}
                 />
                 <span className="text-text-secondary opacity-20 ml-4">|</span>
-                <button
+                {/* <button
                   type="button"
                   className="rounded-full bg-text-primary p-1 text-bg-base shadow w-12 h-8 ml-4"
                   onClick={() => {
@@ -327,6 +380,30 @@ export default function SearchingView({
                 >
                   {sendingLoading ? (
                     // <Square size={22} className="m-auto" />
+                    <div className="w-2 h-2 bg-bg-base m-auto"></div>
+                  ) : (
+                    <Search size={22} className="m-auto" />
+                  )}
+                </button> */}
+
+                <button
+                  type="button"
+                  className="rounded-full bg-text-primary p-1 text-bg-base shadow w-12 h-8 ml-4"
+                  onClick={async () => {
+                    if (sendingLoading) {
+                      stopOutputMessage();
+                      return;
+                    }
+
+                    const content = searchtext.trim();
+
+                    if (!content) return;
+
+                    await saveSearchMessage(content);
+                    handleSearch(content);
+                  }}
+                >
+                  {sendingLoading ? (
                     <div className="w-2 h-2 bg-bg-base m-auto"></div>
                   ) : (
                     <Search size={22} className="m-auto" />
