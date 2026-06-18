@@ -297,23 +297,26 @@ export function DatasetActionCell({
           </Tooltip>
         )}
 
-        <ConfirmDeleteDialog onOk={handleRemove} hidden={readonly}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="transparent"
-                className="border-none hover:bg-bg-card text-text-primary"
-                size={'sm'}
-                disabled={isRunning || readonly}
-              >
-                <Trash2 />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>删除</p>
-            </TooltipContent>
-          </Tooltip>
-        </ConfirmDeleteDialog>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <ConfirmDeleteDialog onOk={handleRemove} hidden={readonly}>
+                <Button
+                  variant="transparent"
+                  className="border-none hover:bg-bg-card text-text-primary"
+                  size="sm"
+                  disabled={isRunning || readonly}
+                >
+                  <Trash2 />
+                </Button>
+              </ConfirmDeleteDialog>
+            </span>
+          </TooltipTrigger>
+
+          <TooltipContent>
+            <p>删除</p>
+          </TooltipContent>
+        </Tooltip>
       </section>
       {/* <Dialog open={logOpen} onOpenChange={setLogOpen}>
       <DialogContent>

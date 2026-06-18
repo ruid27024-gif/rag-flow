@@ -303,6 +303,8 @@ export default function SearchingView({
   useEffect(() => {
     setSearchtext(searchStr);
   }, [searchStr, setSearchtext]);
+
+  console.log(retrievalLoading);
   return (
     <section
       className={cn(
@@ -458,6 +460,39 @@ export default function SearchingView({
               </>
             )}
             <div className="mt-3 ">
+              {sendingLoading && chunks?.length === 0 && (
+                <div className="mt-4 flex h-full min-h-[240px] w-full flex-col items-center justify-center gap-5">
+                  <div className="relative flex h-20 w-20 items-center justify-center">
+                    {/* 外层柔和光晕 */}
+                    <div className="absolute inset-0 rounded-full bg-blue-500/20 blur-2xl animate-pulse" />
+
+                    {/* 外层渐变流光环 */}
+                    <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_0deg,transparent_0deg,rgba(96,165,250,0.15)_80deg,#60a5fa_150deg,#22d3ee_220deg,transparent_300deg)] animate-spin shadow-[0_0_30px_rgba(59,130,246,0.45)]" />
+
+                    {/* 挖空中间，形成环 */}
+                    <div className="absolute inset-[6px] rounded-full bg-bg-base" />
+
+                    {/* 内层反向流光环 */}
+                    <div className="absolute inset-3 rounded-full bg-[conic-gradient(from_180deg,transparent_0deg,rgba(34,211,238,0.15)_90deg,#38bdf8_160deg,#818cf8_230deg,transparent_310deg)] animate-[spin_1.8s_linear_infinite_reverse]" />
+
+                    {/* 再次挖空 */}
+                    <div className="absolute inset-[18px] rounded-full bg-bg-base" />
+
+                    {/* 中心呼吸点 */}
+                    <div className="relative h-3 w-3 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.95)] animate-pulse" />
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="animate-pulse text-sm font-medium tracking-wide text-text-secondary">
+                      正在加载切片，请稍候...
+                    </span>
+                    <span className="text-xs text-text-secondary/50">
+                      正在检索相关内容
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {chunks?.length > 0 && (
                 <>
                   {chunks.map((chunk, index) => {
