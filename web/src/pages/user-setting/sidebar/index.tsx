@@ -53,7 +53,7 @@ const menuItems = (t: TFunction) => {
 
   return [
     { icon: User, label: t('setting.profile'), key: Routes.Profile },
-    { icon: User, label: t('setting.model'), key: Routes.Model },
+    // { icon: User, label: t('setting.model'), key: Routes.Model },
     // 如果是管理员，就展开这两个对象；否则展开空数组（相当于不渲染）
     ...(isAdmin
       ? [

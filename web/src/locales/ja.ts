@@ -54,7 +54,7 @@ export default {
       nicknamePlaceholder: 'ニックネームを入力してください',
       register: 'アカウント作成',
       continue: '続行',
-      title: 'もくほん・うんすう',
+      title: '製紙研究開発ナレッジベース',
       annotation: '知識ベース及びインテリジェント意思決定システム',
       Company: '恒豊紙業（こうほうしぎょう）',
       description:
@@ -63,7 +63,7 @@ export default {
     },
     header: {
       dataset: 'ナレッジベース',
-      chat: 'テーマ',
+      chat: 'インテリジェントQ&A',
       register: '登録',
       signin: 'ログイン',
       home: 'ホーム',

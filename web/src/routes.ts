@@ -72,6 +72,11 @@ const routes = [
     layout: false,
   },
   {
+    path: '/sso',
+    component: '@/pages/login-sso',
+    layout: false,
+  },
+  {
     path: '/login-next',
     component: '@/pages/login-next',
     layout: false,

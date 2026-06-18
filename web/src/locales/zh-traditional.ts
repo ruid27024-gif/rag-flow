@@ -55,7 +55,7 @@ export default {
       nicknamePlaceholder: '請輸入名稱',
       register: '創建賬戶',
       continue: '繼續',
-      title: '木本·雲樞',
+      title: '造紙研發知識庫',
       annotation: '知識庫及智能決策系統',
       Company: '恆豐紙業',
       description:
@@ -64,7 +64,7 @@ export default {
     },
     header: {
       dataset: '知識庫',
-      chat: '主題',
+      chat: '智能問答',
       register: '註冊',
       signin: '登入',
       home: '首頁',

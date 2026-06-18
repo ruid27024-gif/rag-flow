@@ -76,7 +76,7 @@ export default {
       nicknamePlaceholder: '请输入名称',
       register: '创建账户',
       continue: '继续',
-      title: '木本·云枢',
+      title: '造纸研发知识库',
       annotation: '知识库及智能决策系统',
       Company: '恒丰纸业',
       start: '立即开始',
@@ -86,7 +86,7 @@ export default {
     },
     header: {
       knowledgeBase: '知识库',
-      chat: '云枢',
+      chat: '智能问答',
       register: '注册',
       signin: '登录',
       home: '首页',

@@ -80,7 +80,7 @@ export default {
       nicknamePlaceholder: 'Please input nickname',
       register: 'Create an account',
       continue: 'Continue',
-      title: 'Woody · Cloud Pivot',
+      title: 'Papermaking R&D Knowledge Base',
       annotation: 'Knowledge Base and Intelligent Decision-Making System',
       Company: 'Hengfeng Paper Industry Co., Ltd.',
       start: "Let's get started",
@@ -90,7 +90,7 @@ export default {
     },
     header: {
       knowledgeBase: 'Dataset',
-      chat: 'Theme',
+      chat: 'Intelligent Q&A',
       register: 'Register',
       signin: 'Sign in',
       home: 'Home',
