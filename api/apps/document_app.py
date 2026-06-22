@@ -679,6 +679,158 @@ async def list_docs():
         this_week_count = Document.select().where(
             Document.kb_id == kb_id,
             Document.create_time >= this_week_start_ts,
+            Document.status != "2",
+        ).count()
+
+        week_file_ratio = 0 if tol == 0 else round(this_week_count / tol * 100, 2)
+
+        return get_json_result(data={"total": tol, "docs": docs,
+                                     "week_growth_rate": week_file_ratio,
+                                        "this_week_count": this_week_count,})
+    except Exception as e:
+        return server_error_response(e) 
+    
+
+
+@manager.route("/list_wasted", methods=["POST"])  # noqa: F821
+@login_required
+async def list_docs_wasted():
+    kb_id = request.args.get("kb_id")
+    if not kb_id:
+        return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+    ok, kb = KnowledgebaseService.get_by_id(kb_id)
+    if not ok:
+        return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
+    if not check_kb_team_permission(kb, current_user.id):
+        return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
+    keywords = request.args.get("keywords", "")
+
+    page_number = int(request.args.get("page", 0))
+    items_per_page = int(request.args.get("page_size", 0))
+    orderby = request.args.get("orderby", "create_time")
+    if request.args.get("desc", "true").lower() == "false":
+        desc = False
+    else:
+        desc = True
+    create_time_from = int(request.args.get("create_time_from", 0))
+    create_time_to = int(request.args.get("create_time_to", 0))
+
+    req = await get_request_json()
+
+    run_status = req.get("run_status", [])
+    if run_status:
+        invalid_status = {s for s in run_status if s not in VALID_TASK_STATUS}
+        if invalid_status:
+            return get_data_error_result(message=f"Invalid filter run status conditions: {', '.join(invalid_status)}")
+
+    types = req.get("types", [])
+    if types:
+        invalid_types = {t for t in types if t not in VALID_FILE_TYPES}
+        if invalid_types:
+            return get_data_error_result(message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}")
+
+    suffix = req.get("suffix", [])
+    metadata_condition = req.get("metadata_condition", {}) or {}
+    if metadata_condition and not isinstance(metadata_condition, dict):
+        return get_data_error_result(message="metadata_condition must be an object.")
+
+    doc_ids_filter = None
+    if metadata_condition:
+        metas = DocumentService.get_flatted_meta_by_kbs([kb_id])
+        doc_ids_filter = meta_filter(metas, convert_conditions(metadata_condition), metadata_condition.get("logic", "and"))
+        if metadata_condition.get("conditions") and not doc_ids_filter:
+            return get_json_result(data={"total": 0, "docs": []})
+
+    try:
+        docs, tol = DocumentService.get_by_kb_id_wasted(kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix, doc_ids_filter)
+
+        from collections import defaultdict
+        from api.db.db_models import Task
+
+        doc_ids = [doc["id"] for doc in docs]
+        doc_tasks = defaultdict(list)
+
+        if doc_ids:
+            task_rows = (
+                Task.select(Task.doc_id, Task.task_type, Task.progress, Task.progress_msg, Task.begin_at)
+                .where(Task.doc_id.in_(doc_ids))
+                .order_by(Task.begin_at)
+            )
+
+            for task in task_rows:
+                task_type = (task.task_type or "").lower().strip()
+                doc_tasks[task.doc_id].append({
+                    "task_type": task_type,
+                    "progress": task.progress,
+                    "progress_msg": task.progress_msg,
+                    "begin_at": task.begin_at,
+                })
+        if create_time_from or create_time_to:
+            filtered_docs = []
+            for doc in docs:
+                doc_create_time = doc.get("create_time", 0)
+                if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
+                    filtered_docs.append(doc)
+            docs = filtered_docs
+        for doc_item in docs:
+            tasks = doc_tasks.get(doc_item["id"], [])
+
+            has_author_task = any(t["task_type"] == "parse_author_info" for t in tasks)
+            has_parse_task = any(t["task_type"] == "" for t in tasks)
+
+            doc_item["has_author_task"] = has_author_task
+            doc_item["has_parse_task"] = has_parse_task
+
+            if has_author_task and has_parse_task:
+                doc_item["process_scene"] = "author_with_parse"
+            elif has_author_task:
+                doc_item["process_scene"] = "author_only"
+            elif has_parse_task:
+                doc_item["process_scene"] = "parse_only"
+            else:
+                doc_item["process_scene"] = "unknown"
+
+            latest_task = tasks[-1] if tasks else None
+            doc_item["latest_task_type"] = latest_task["task_type"] if latest_task else ""
+
+            if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
+                doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
+            if doc_item.get("source_type"):
+                doc_item["source_type"] = doc_item["source_type"].split("/")[0]
+            # 将字段的meta_fields字段解析出新的字段，并且整理为我们需要的作者、学校、论文发布时间
+            if doc_item.get("meta_fields"):
+                meta_fields = doc_item["meta_fields"]
+                # 确保 meta_fields 是一个字典
+                if isinstance(meta_fields, str):
+                    try:
+                        meta_fields = json.loads(meta_fields)
+                    except json.JSONDecodeError:
+                        meta_fields = {}
+                # 确保 meta_fields 是一个字典
+                if isinstance(meta_fields, dict):
+                    doc_item["author"] = meta_fields.get("author", "")
+                    doc_item["school"] = meta_fields.get("school", "")
+                    doc_item["publish_time"] = meta_fields.get("publish_time", "")
+                else:
+                    doc_item["author"] = ""
+                    doc_item["school"] = ""
+                    doc_item["publish_time"] = ""
+
+        # 新增显示本周文件占比
+        from datetime import datetime, timedelta, time
+        from api.db.db_models import Document
+
+        now = datetime.now()
+        this_week_start = datetime.combine(
+            now.date() - timedelta(days=now.weekday()),
+            time.min,
+        )
+
+        this_week_start_ts = int(this_week_start.timestamp() * 1000)
+
+        this_week_count = Document.select().where(
+            Document.kb_id == kb_id,
+            Document.create_time >= this_week_start_ts,
         ).count()
 
         week_file_ratio = 0 if tol == 0 else round(this_week_count / tol * 100, 2)
@@ -722,6 +874,43 @@ async def get_filter():
 
     try:
         filter, total = DocumentService.get_filter_by_kb_id(kb_id, keywords, run_status, types, suffix)
+        return get_json_result(data={"total": total, "filter": filter})
+    except Exception as e:
+        return server_error_response(e)
+    
+
+@manager.route("/filter_wasted", methods=["POST"])  # noqa: F821
+@login_required
+async def get_filter_wasted():
+    req = await get_request_json()
+
+    kb_id = req.get("kb_id")
+    if not kb_id:
+        return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+    ok, kb = KnowledgebaseService.get_by_id(kb_id)
+    if not ok:
+        return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
+    if not check_kb_team_permission(kb, current_user.id):
+        return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
+
+    keywords = req.get("keywords", "")
+
+    suffix = req.get("suffix", [])
+
+    run_status = req.get("run_status", [])
+    if run_status:
+        invalid_status = {s for s in run_status if s not in VALID_TASK_STATUS}
+        if invalid_status:
+            return get_data_error_result(message=f"Invalid filter run status conditions: {', '.join(invalid_status)}")
+
+    types = req.get("types", [])
+    if types:
+        invalid_types = {t for t in types if t not in VALID_FILE_TYPES}
+        if invalid_types:
+            return get_data_error_result(message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}")
+
+    try:
+        filter, total = DocumentService.get_filter_by_kb_id_wasted(kb_id, keywords, run_status, types, suffix)
         return get_json_result(data={"total": total, "filter": filter})
     except Exception as e:
         return server_error_response(e)
@@ -863,6 +1052,12 @@ async def change_status():
                 result[doc_id] = {"error": "Database error (Document update)!"}
                 continue
 
+            PipelineOperationLogService.update_status_by_document_ids(
+                doc_id,
+                status,
+            )
+
+
             status_int = int(status)
             if not settings.docStoreConn.update({"doc_id": doc_id}, {"available_int": status_int}, search.index_name(kb.tenant_id), doc.kb_id):
                 result[doc_id] = {"error": "Database error (docStore update)!"}
@@ -872,11 +1067,48 @@ async def change_status():
 
     return get_json_result(data=result)
 
-
+# 软删除
 @manager.route("/rm", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("doc_id")
 async def rm():
+    req = await get_request_json()
+    doc_ids = req["doc_id"]
+    if isinstance(doc_ids, str):
+        doc_ids = [doc_ids]
+
+    for doc_id in doc_ids:
+        e, doc = DocumentService.get_by_id(doc_id)
+        if not e:
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+        e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+        if not e:
+            return get_data_error_result(message="Can't find this dataset!")
+
+        if not check_kb_team_write_permission(kb, current_user.id):
+            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+    try:
+        for doc_id in doc_ids:
+            DocumentService.update_by_id(doc_id, {"status": "2"})
+
+        await asyncio.to_thread(
+            PipelineOperationLogService.update_status_by_document_ids,
+            
+            doc_ids,
+            "2",
+        )
+
+        return get_json_result(data=True)
+    except Exception as e:
+        return server_error_response(e)
+
+# 回收站删除
+@manager.route("/rm_wasted", methods=["POST"])  # noqa: F821
+@login_required
+@validate_request("doc_id")
+async def rm_wasted():
     req = await get_request_json()
     doc_ids = req["doc_id"]
     if isinstance(doc_ids, str):

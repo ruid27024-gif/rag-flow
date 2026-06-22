@@ -14,7 +14,10 @@ import {
   IDocumentMetaRequestBody,
 } from '@/interfaces/request/document';
 import i18n from '@/locales/config';
-import kbService, { listDocument } from '@/services/knowledge-service';
+import kbService, {
+  listDocument,
+  listWastedDocument,
+} from '@/services/knowledge-service';
 import api, { api_host } from '@/utils/api';
 import { buildChunkHighlights } from '@/utils/document-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,6 +49,9 @@ export const enum DocumentApiAction {
   WebCrawl = 'webCrawl',
   FetchDocumentThumbnails = 'fetchDocumentThumbnails',
   ParseDocument = 'parseDocument',
+  FetchWastedDocumentList = 'fetchWastedDocumentList',
+  RemoveWastedDocument = 'removeWastedDocument',
+  FetchWastedDocumentFilter = 'fetchWastedDocumentFilter',
 }
 
 export const useUploadNextDocument = () => {
@@ -171,6 +177,75 @@ export const useFetchDocumentList = () => {
   };
 };
 
+export const useFetchWastedDocumentList = () => {
+  const { knowledgeId } = useGetKnowledgeSearchParams();
+  const { searchString, handleInputChange } = useHandleSearchChange();
+  const { pagination, setPagination } = useGetPaginationWithRouter();
+  const { id } = useParams();
+  const debouncedSearchString = useDebounce(searchString, { wait: 500 });
+  const { filterValue, handleFilterSubmit } = useHandleFilterSubmit();
+
+  const { data, isFetching: loading } = useQuery<{
+    docs: IDocumentInfo[];
+    total: number;
+  }>({
+    queryKey: [
+      DocumentApiAction.FetchWastedDocumentList,
+      'wasted',
+      debouncedSearchString,
+      pagination,
+      filterValue,
+    ],
+    initialData: {
+      docs: [],
+      total: 0,
+    },
+    enabled: !!knowledgeId || !!id,
+    queryFn: async () => {
+      const ret = await listWastedDocument(
+        {
+          kb_id: knowledgeId || id,
+          keywords: debouncedSearchString,
+          page_size: pagination.pageSize,
+          page: pagination.current,
+        },
+        {
+          suffix: filterValue.type,
+          run_status: filterValue.run,
+        },
+      );
+
+      if (ret.data.code === 0) {
+        return ret.data.data;
+      }
+
+      return {
+        docs: [],
+        total: 0,
+      };
+    },
+  });
+
+  const onInputChange: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+    (e) => {
+      setPagination({ page: 1 });
+      handleInputChange(e);
+    },
+    [handleInputChange, setPagination],
+  );
+
+  return {
+    loading,
+    searchString,
+    documents: data.docs,
+    pagination: { ...pagination, total: data.total },
+    handleInputChange: onInputChange,
+    setPagination,
+    filterValue,
+    handleFilterSubmit,
+  };
+};
+
 // get document filter
 export const useGetDocumentFilter = (): {
   filter: IDocumentInfoFilter;
@@ -204,6 +279,50 @@ export const useGetDocumentFilter = (): {
       setOpen(currentOpen);
     }
   };
+  return {
+    filter: data?.filter || {
+      run_status: {},
+      suffix: {},
+    },
+    onOpenChange: handleOnpenChange,
+  };
+};
+
+export const useGetWastedDocumentFilter = (): {
+  filter: IDocumentInfoFilter;
+  onOpenChange: (open: boolean) => void;
+} => {
+  const { knowledgeId } = useGetKnowledgeSearchParams();
+  const { searchString } = useHandleSearchChange();
+  const { id } = useParams();
+  const debouncedSearchString = useDebounce(searchString, { wait: 500 });
+  const [open, setOpen] = useState<number>(0);
+
+  const { data } = useQuery({
+    queryKey: [
+      DocumentApiAction.FetchWastedDocumentFilter,
+      debouncedSearchString,
+      knowledgeId || id,
+      open,
+    ],
+    queryFn: async () => {
+      const { data } = await kbService.documentFilterWasted({
+        kb_id: knowledgeId || id,
+        keywords: debouncedSearchString,
+      });
+
+      if (data.code === 0) {
+        return data.data;
+      }
+    },
+  });
+
+  const handleOnpenChange = (e: boolean) => {
+    if (e) {
+      setOpen((prev) => prev + 1);
+    }
+  };
+
   return {
     filter: data?.filter || {
       run_status: {},
@@ -311,6 +430,59 @@ export const useRemoveDocument = () => {
   });
 
   return { data, loading, removeDocument: mutateAsync };
+};
+
+export const useRemoveWastedDocument = () => {
+  const queryClient = useQueryClient();
+
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [DocumentApiAction.RemoveWastedDocument],
+    mutationFn: async (documentIds: string | string[]) => {
+      const { data } = await kbService.document_rm_wasted({
+        doc_id: documentIds,
+      });
+
+      return {
+        code: data.code,
+        documentIds: Array.isArray(documentIds) ? documentIds : [documentIds],
+      };
+    },
+    onSuccess: async ({ code, documentIds }) => {
+      if (code !== 0) return;
+
+      message.success(i18n.t('message.deleted'));
+
+      const deletedIdSet = new Set(documentIds);
+
+      queryClient.setQueriesData<{ docs: IDocumentInfo[]; total: number }>(
+        {
+          predicate: (query) =>
+            query.queryKey.includes(DocumentApiAction.FetchWastedDocumentList),
+        },
+        (oldData) => {
+          if (!oldData) return oldData;
+
+          return {
+            ...oldData,
+            docs: oldData.docs.filter((doc) => !deletedIdSet.has(doc.id)),
+            total: Math.max((oldData.total || 0) - documentIds.length, 0),
+          };
+        },
+      );
+
+      await queryClient.refetchQueries({
+        predicate: (query) =>
+          query.queryKey.includes(DocumentApiAction.FetchWastedDocumentList),
+        type: 'active',
+      });
+    },
+  });
+
+  return { data, loading, removeWastedDocument: mutateAsync };
 };
 
 export const useSaveDocumentName = () => {

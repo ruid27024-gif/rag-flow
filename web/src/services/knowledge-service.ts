@@ -18,6 +18,7 @@ const {
   get_document_list,
   document_change_status,
   document_rm,
+  document_rm_wasted,
   document_delete,
   document_create,
   document_change_parser,
@@ -47,6 +48,7 @@ const {
   runRaptor,
   traceRaptor,
   check_embedding,
+  document_filter_wasted,
 } = api;
 
 const methods = {
@@ -82,6 +84,10 @@ const methods = {
   },
   document_rm: {
     url: document_rm,
+    method: 'post',
+  },
+  document_rm_wasted: {
+    url: document_rm_wasted,
     method: 'post',
   },
   document_rename: {
@@ -215,6 +221,10 @@ const methods = {
     url: check_embedding,
     method: 'post',
   },
+  documentFilterWasted: {
+    url: document_filter_wasted,
+    method: 'post',
+  },
 };
 
 const kbService = registerServer<keyof typeof methods>(methods, request);
@@ -247,6 +257,11 @@ export const listDocument = (
   params?: IFetchKnowledgeListRequestParams,
   body?: IFetchDocumentListRequestBody,
 ) => request.post(api.get_document_list, { data: body || {}, params });
+
+export const listWastedDocument = (
+  params?: IFetchKnowledgeListRequestParams,
+  body?: IFetchDocumentListRequestBody,
+) => request.post(api.get_document_list_wasted, { data: body || {}, params });
 
 export const documentFilter = (kb_id: string) =>
   request.post(api.get_dataset_filter, { kb_id });

@@ -300,6 +300,7 @@ async def list_kbs():
         return server_error_response(e)
 
 
+
 @manager.route('/rm', methods=['post'])  # noqa: F821
 @login_required
 @validate_request("kb_id")
@@ -589,6 +590,50 @@ async def list_pipeline_logs():
 
     try:
         logs, tol = PipelineOperationLogService.get_file_logs_by_kb_id(kb_id, page_number, items_per_page, orderby, desc, keywords, operation_status, types, suffix, create_date_from, create_date_to)
+        return get_json_result(data={"total": tol, "logs": logs})
+    except Exception as e:
+        return server_error_response(e)
+    
+
+@manager.route("/list_pipeline_logs_wasted", methods=["POST"])  # noqa: F821
+@login_required
+async def list_pipeline_logs_wasted():
+    kb_id = request.args.get("kb_id")
+    if not kb_id:
+        return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+
+    keywords = request.args.get("keywords", "")
+
+    page_number = int(request.args.get("page", 0))
+    items_per_page = int(request.args.get("page_size", 0))
+    orderby = request.args.get("orderby", "create_time")
+    if request.args.get("desc", "true").lower() == "false":
+        desc = False
+    else:
+        desc = True
+    create_date_from = request.args.get("create_date_from", "")
+    create_date_to = request.args.get("create_date_to", "")
+    if create_date_to > create_date_from:
+        return get_data_error_result(message="Create data filter is abnormal.")
+
+    req = await get_request_json()
+
+    operation_status = req.get("operation_status", [])
+    if operation_status:
+        invalid_status = {s for s in operation_status if s not in VALID_TASK_STATUS}
+        if invalid_status:
+            return get_data_error_result(message=f"Invalid filter operation_status status conditions: {', '.join(invalid_status)}")
+
+    types = req.get("types", [])
+    if types:
+        invalid_types = {t for t in types if t not in VALID_FILE_TYPES}
+        if invalid_types:
+            return get_data_error_result(message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}")
+
+    suffix = req.get("suffix", [])
+
+    try:
+        logs, tol = PipelineOperationLogService.get_file_logs_by_kb_id_wasted(kb_id, page_number, items_per_page, orderby, desc, keywords, operation_status, types, suffix, create_date_from, create_date_to)
         return get_json_result(data={"total": tol, "logs": logs})
     except Exception as e:
         return server_error_response(e)

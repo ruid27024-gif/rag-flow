@@ -154,6 +154,58 @@ class DocumentService(CommonService):
         if suffix:
             docs = docs.where(cls.model.suffix.in_(suffix))
 
+        # 只展示 status 不为 2 的文档
+        docs = docs.where(cls.model.status != "2")
+
+
+        count = docs.count()
+        if desc:
+            docs = docs.order_by(cls.model.getter_by(orderby).desc())
+        else:
+            docs = docs.order_by(cls.model.getter_by(orderby).asc())
+
+
+        if page_number and items_per_page:
+            docs = docs.paginate(page_number, items_per_page)
+
+        return list(docs.dicts()), count
+    
+    @classmethod
+    @DB.connection_context()
+    def get_by_kb_id_wasted(cls, kb_id, page_number, items_per_page,
+                     orderby, desc, keywords, run_status, types, suffix, doc_ids=None):
+        fields = cls.get_cls_model_fields()
+        if keywords:
+            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
+                .join(File, on=(File.id == File2Document.file_id))\
+                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
+                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
+                .where(
+                    (cls.model.kb_id == kb_id),
+                    (fn.LOWER(cls.model.name).contains(keywords.lower()))
+                )
+        else:
+            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
+                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
+                .join(File, on=(File.id == File2Document.file_id))\
+                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
+                .where(cls.model.kb_id == kb_id)
+
+        if doc_ids:
+            docs = docs.where(cls.model.id.in_(doc_ids))
+        if run_status:
+            docs = docs.where(cls.model.run.in_(run_status))
+        if types:
+            docs = docs.where(cls.model.type.in_(types))
+        if suffix:
+            docs = docs.where(cls.model.suffix.in_(suffix))
+
+        # 只展示 status 为 2 的文档
+        docs = docs.where(cls.model.status == "2")
+
+
         count = docs.count()
         if desc:
             docs = docs.order_by(cls.model.getter_by(orderby).desc())
@@ -166,6 +218,55 @@ class DocumentService(CommonService):
 
         return list(docs.dicts()), count
 
+    # @classmethod
+    # @DB.connection_context()
+    # def get_filter_by_kb_id(cls, kb_id, keywords, run_status, types, suffix):
+    #     """
+    #     returns:
+    #     {
+    #         "suffix": {
+    #             "ppt": 1,
+    #             "doxc": 2
+    #         },
+    #         "run_status": {
+    #          "1": 2,
+    #          "2": 2
+    #         }
+    #     }, total
+    #     where "1" => RUNNING, "2" => CANCEL
+    #     """
+    #     fields = cls.get_cls_model_fields()
+    #     if keywords:
+    #         query = cls.model.select(*fields).join(File2Document, on=(File2Document.document_id == cls.model.id)).join(File, on=(File.id == File2Document.file_id)).where(
+    #             (cls.model.kb_id == kb_id),
+    #             (fn.LOWER(cls.model.name).contains(keywords.lower()))
+    #         )
+    #     else:
+    #         query  = cls.model.select(*fields).join(File2Document, on=(File2Document.document_id == cls.model.id)).join(File, on=(File.id == File2Document.file_id)).where(cls.model.kb_id == kb_id)
+
+
+    #     if run_status:
+    #         query = query.where(cls.model.run.in_(run_status))
+    #     if types:
+    #         query = query.where(cls.model.type.in_(types))
+    #     if suffix:
+    #         query = query.where(cls.model.suffix.in_(suffix))
+
+    #     rows = query.select(cls.model.run, cls.model.suffix)
+    #     total = rows.count()
+
+    #     suffix_counter = {}
+    #     run_status_counter = {}
+
+    #     for row in rows:
+    #         suffix_counter[row.suffix] = suffix_counter.get(row.suffix, 0) + 1
+    #         run_status_counter[str(row.run)] = run_status_counter.get(str(row.run), 0) + 1
+
+    #     return {
+    #         "suffix": suffix_counter,
+    #         "run_status": run_status_counter
+    #     }, total
+
     @classmethod
     @DB.connection_context()
     def get_filter_by_kb_id(cls, kb_id, keywords, run_status, types, suffix):
@@ -177,21 +278,37 @@ class DocumentService(CommonService):
                 "doxc": 2
             },
             "run_status": {
-             "1": 2,
-             "2": 2
+            "1": 2,
+            "2": 2
             }
         }, total
         where "1" => RUNNING, "2" => CANCEL
         """
         fields = cls.get_cls_model_fields()
+
         if keywords:
-            query = cls.model.select(*fields).join(File2Document, on=(File2Document.document_id == cls.model.id)).join(File, on=(File.id == File2Document.file_id)).where(
-                (cls.model.kb_id == kb_id),
-                (fn.LOWER(cls.model.name).contains(keywords.lower()))
+            query = (
+                cls.model
+                .select(*fields)
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))
+                .join(File, on=(File.id == File2Document.file_id))
+                .where(
+                    cls.model.kb_id == kb_id,
+                    cls.model.status != "2",
+                    fn.LOWER(cls.model.name).contains(keywords.lower()),
+                )
             )
         else:
-            query  = cls.model.select(*fields).join(File2Document, on=(File2Document.document_id == cls.model.id)).join(File, on=(File.id == File2Document.file_id)).where(cls.model.kb_id == kb_id)
-
+            query = (
+                cls.model
+                .select(*fields)
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))
+                .join(File, on=(File.id == File2Document.file_id))
+                .where(
+                    cls.model.kb_id == kb_id,
+                    cls.model.status != "2",
+                )
+            )
 
         if run_status:
             query = query.where(cls.model.run.in_(run_status))
@@ -212,7 +329,72 @@ class DocumentService(CommonService):
 
         return {
             "suffix": suffix_counter,
-            "run_status": run_status_counter
+            "run_status": run_status_counter,
+        }, total
+    
+    @classmethod
+    @DB.connection_context()
+    def get_filter_by_kb_id_wasted(cls, kb_id, keywords, run_status, types, suffix):
+        """
+        returns:
+        {
+            "suffix": {
+                "ppt": 1,
+                "doxc": 2
+            },
+            "run_status": {
+            "1": 2,
+            "2": 2
+            }
+        }, total
+        where "1" => RUNNING, "2" => CANCEL
+        """
+        fields = cls.get_cls_model_fields()
+
+        if keywords:
+            query = (
+                cls.model
+                .select(*fields)
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))
+                .join(File, on=(File.id == File2Document.file_id))
+                .where(
+                    cls.model.kb_id == kb_id,
+                    cls.model.status == "2",
+                    fn.LOWER(cls.model.name).contains(keywords.lower()),
+                )
+            )
+        else:
+            query = (
+                cls.model
+                .select(*fields)
+                .join(File2Document, on=(File2Document.document_id == cls.model.id))
+                .join(File, on=(File.id == File2Document.file_id))
+                .where(
+                    cls.model.kb_id == kb_id,
+                    cls.model.status == "2",
+                )
+            )
+
+        if run_status:
+            query = query.where(cls.model.run.in_(run_status))
+        if types:
+            query = query.where(cls.model.type.in_(types))
+        if suffix:
+            query = query.where(cls.model.suffix.in_(suffix))
+
+        rows = query.select(cls.model.run, cls.model.suffix)
+        total = rows.count()
+
+        suffix_counter = {}
+        run_status_counter = {}
+
+        for row in rows:
+            suffix_counter[row.suffix] = suffix_counter.get(row.suffix, 0) + 1
+            run_status_counter[str(row.run)] = run_status_counter.get(str(row.run), 0) + 1
+
+        return {
+            "suffix": suffix_counter,
+            "run_status": run_status_counter,
         }, total
 
     @classmethod
@@ -1148,40 +1330,157 @@ class DocumentService(CommonService):
     #         "downloaded": int(downloaded)
     #     }
 
+    # @classmethod
+    # @DB.connection_context()
+    # def knowledgebase_basic_info(cls, kb_id: str) -> dict[str, int]:
+    #     # cancelled: run == "2" but progress can vary
+    #     cancelled = (
+    #         cls.model.select(fn.COUNT(1))
+    #         .where((cls.model.kb_id == kb_id) & (cls.model.run == TaskStatus.CANCEL))
+    #         .scalar()
+    #     )
+
+    #     downloaded = (
+    #         cls.model.select(fn.COUNT(1))
+    #         .where(
+    #             cls.model.kb_id == kb_id,
+    #             cls.model.source_type != "local"
+    #         )
+    #         .scalar()
+    #     )
+
+    #     row = (
+    #         cls.model.select(
+    #             # finished: progress == 1
+    #             fn.COALESCE(
+    #                 fn.SUM(Case(None, [(cls.model.progress == 1, 1)], 0)),
+    #                 0
+    #             ).alias("finished"),
+
+    #             # failed: progress == -1
+    #             fn.COALESCE(
+    #                 fn.SUM(Case(None, [(cls.model.progress == -1, 1)], 0)),
+    #                 0
+    #             ).alias("failed"),
+
+    #             # processing: 0 <= progress < 1
+    #             fn.COALESCE(
+    #                 fn.SUM(
+    #                     Case(
+    #                         None,
+    #                         [
+    #                             (
+    #                                 (
+    #                                     (cls.model.progress == 0)
+    #                                     | ((cls.model.progress > 0) & (cls.model.progress < 1))
+    #                                 ),
+    #                                 1
+    #                             ),
+    #                         ],
+    #                         0,
+    #                     )
+    #                 ),
+    #                 0,
+    #             ).alias("processing"),
+    #         )
+    #         .where(
+    #             (cls.model.kb_id == kb_id)
+    #             & ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL))
+    #         )
+    #         .dicts()
+    #         .get()
+    #     )
+
+    #     LatestTaskAlias = cls.model.alias()
+    #     from api.db.db_models import Task
+
+    #     LatestTaskAlias = Task.alias()
+
+    #     latest_task_id = (
+    #         LatestTaskAlias
+    #         .select(LatestTaskAlias.id)
+    #         .where(
+    #             LatestTaskAlias.doc_id == Task.doc_id,
+    #             LatestTaskAlias.task_type == Task.task_type,
+    #         )
+    #         .order_by(
+    #             LatestTaskAlias.create_time.desc(),
+    #             LatestTaskAlias.id.desc(),
+    #         )
+    #         .limit(1)
+    #     )
+
+    #     parse_failed = (
+    #         Task
+    #         .select(fn.COUNT(fn.DISTINCT(Task.doc_id)))
+    #         .join(cls.model, on=(Task.doc_id == cls.model.id))
+    #         .where(
+    #             cls.model.kb_id == kb_id,
+    #             Task.task_type == "",
+    #             Task.progress == -1,
+    #             Task.id == latest_task_id,
+    #         )
+    #         .scalar()
+    #     )
+
+    #     author_failed = (
+    #         Task
+    #         .select(fn.COUNT(fn.DISTINCT(Task.doc_id)))
+    #         .join(cls.model, on=(Task.doc_id == cls.model.id))
+    #         .where(
+    #             cls.model.kb_id == kb_id,
+    #             Task.task_type == "parse_author_info",
+    #             Task.progress == -1,
+    #             Task.id == latest_task_id,
+    #         )
+    #         .scalar()
+    #     )
+
+    #     return {
+    #         "processing": int(row["processing"]),
+    #         "finished": int(row["finished"]),
+    #         "failed": int(row["failed"]),
+    #         "cancelled": int(cancelled),
+    #         "downloaded": int(downloaded),
+    #         "parse_failed": int(parse_failed or 0),
+    #         "author_failed": int(author_failed or 0),
+    #     }
+
     @classmethod
     @DB.connection_context()
     def knowledgebase_basic_info(cls, kb_id: str) -> dict[str, int]:
-        # cancelled: run == "2" but progress can vary
+        base_condition = (
+            (cls.model.kb_id == kb_id)
+            & (cls.model.status != "2")
+        )
+
         cancelled = (
             cls.model.select(fn.COUNT(1))
-            .where((cls.model.kb_id == kb_id) & (cls.model.run == TaskStatus.CANCEL))
+            .where(base_condition & (cls.model.run == TaskStatus.CANCEL))
             .scalar()
         )
 
         downloaded = (
             cls.model.select(fn.COUNT(1))
             .where(
-                cls.model.kb_id == kb_id,
-                cls.model.source_type != "local"
+                base_condition,
+                cls.model.source_type != "local",
             )
             .scalar()
         )
 
         row = (
             cls.model.select(
-                # finished: progress == 1
                 fn.COALESCE(
                     fn.SUM(Case(None, [(cls.model.progress == 1, 1)], 0)),
-                    0
+                    0,
                 ).alias("finished"),
 
-                # failed: progress == -1
                 fn.COALESCE(
                     fn.SUM(Case(None, [(cls.model.progress == -1, 1)], 0)),
-                    0
+                    0,
                 ).alias("failed"),
 
-                # processing: 0 <= progress < 1
                 fn.COALESCE(
                     fn.SUM(
                         Case(
@@ -1192,7 +1491,7 @@ class DocumentService(CommonService):
                                         (cls.model.progress == 0)
                                         | ((cls.model.progress > 0) & (cls.model.progress < 1))
                                     ),
-                                    1
+                                    1,
                                 ),
                             ],
                             0,
@@ -1202,14 +1501,13 @@ class DocumentService(CommonService):
                 ).alias("processing"),
             )
             .where(
-                (cls.model.kb_id == kb_id)
+                base_condition
                 & ((cls.model.run.is_null(True)) | (cls.model.run != TaskStatus.CANCEL))
             )
             .dicts()
             .get()
         )
 
-        LatestTaskAlias = cls.model.alias()
         from api.db.db_models import Task
 
         LatestTaskAlias = Task.alias()
@@ -1233,7 +1531,7 @@ class DocumentService(CommonService):
             .select(fn.COUNT(fn.DISTINCT(Task.doc_id)))
             .join(cls.model, on=(Task.doc_id == cls.model.id))
             .where(
-                cls.model.kb_id == kb_id,
+                base_condition,
                 Task.task_type == "",
                 Task.progress == -1,
                 Task.id == latest_task_id,
@@ -1246,7 +1544,7 @@ class DocumentService(CommonService):
             .select(fn.COUNT(fn.DISTINCT(Task.doc_id)))
             .join(cls.model, on=(Task.doc_id == cls.model.id))
             .where(
-                cls.model.kb_id == kb_id,
+                base_condition,
                 Task.task_type == "parse_author_info",
                 Task.progress == -1,
                 Task.id == latest_task_id,

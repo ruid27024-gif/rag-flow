@@ -11,7 +11,7 @@ import { Routes } from '@/routes';
 import { formatPureDate } from '@/utils/date';
 import { isEmpty } from 'lodash';
 // import { FolderOpen, Logs } from 'lucide-react';
-import { FolderOpen, Logs } from 'lucide-react';
+import { FolderOpen, Logs, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
@@ -44,6 +44,12 @@ export function SideBar({ refreshCount }: PropType) {
         icon: <Logs className="size-4" />,
         label: t(`knowledgeDetails.overview`),
         key: Routes.DataSetOverview,
+      },
+      {
+        icon: <Trash2 className="size-4" />,
+        // label: t(`knowledgeDetails.subbarFiles`),
+        label: '回收站',
+        key: Routes.DatasetBaseWasted,
       },
       // {
       //   icon: <Banknote className="size-4" />,

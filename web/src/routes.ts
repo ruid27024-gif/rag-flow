@@ -7,6 +7,7 @@ export enum Routes {
   Home = '/home',
   Datasets = '/datasets',
   DatasetBase = '/dataset',
+  DatasetBaseWasted = '/dataset-wasted',
   Dataset = `${Routes.DatasetBase}${Routes.DatasetBase}`,
   Agent = '/agent',
   AgentTemplates = '/agent-templates',
@@ -310,6 +311,10 @@ const routes = [
       {
         path: `${Routes.DatasetBase}${Routes.DataSetOverview}/:id`,
         component: `@/pages${Routes.DatasetBase}${Routes.DataSetOverview}`,
+      },
+      {
+        path: `${Routes.DatasetBase}${Routes.DatasetBaseWasted}/:id`,
+        component: `@/pages${Routes.DatasetBase}${Routes.DatasetBaseWasted}`,
       },
       {
         path: `${Routes.DatasetBase}${Routes.DataSetSetting}/:id`,

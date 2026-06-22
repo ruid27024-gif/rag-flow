@@ -136,8 +136,10 @@ export default {
 
   // document
   get_document_list: `${api_host}/document/list`,
+  get_document_list_wasted: `${api_host}/document/list_wasted`,
   document_change_status: `${api_host}/document/change_status`,
   document_rm: `${api_host}/document/rm`,
+  document_rm_wasted: `${api_host}/document/rm_wasted`,
   document_delete: `${api_host}/api/document`,
   document_rename: `${api_host}/document/rename`,
   document_create: `${api_host}/document/create`,
@@ -154,6 +156,7 @@ export default {
   parse: `${api_host}/document/parse`,
   setMeta: `${api_host}/document/set_meta`,
   get_dataset_filter: `${api_host}/document/filter`,
+  document_filter_wasted: `${api_host}/document/filter_wasted`,
 
   // chat
   setDialog: `${api_host}/dialog/set_by_config`,
