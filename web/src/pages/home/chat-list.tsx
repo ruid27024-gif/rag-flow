@@ -41,6 +41,12 @@ export function ChatList({
             ...x,
           }}
           onClick={navigateToChat(x.id)}
+          //   cardClassName="border-blue-400/40
+          // bg-blue-500/10
+          // shadow-[0_0_18px_rgba(168,85,247,0.25)]
+          // hover:border-blue-400/70
+          // hover:bg-blue-500/15
+          // hover:shadow-[0_0_28px_rgba(168,85,247,0.45)]"
           moreDropdown={
             <ChatDropdown chat={x} showChatRenameModal={showChatRenameModal}>
               <MoreButton></MoreButton>

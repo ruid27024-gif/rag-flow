@@ -102,6 +102,35 @@ export function Applications() {
           ></SeeAllAppCard>
         )}
       </CardSineLineContainer>
+
+      {/* <div className="grid grid-cols-[repeat(auto-fill,_minmax(200px,_300px))] gap-6">
+  {val === Routes.Agents && (
+    <Agents
+      setListLength={(length: number) => setListLength(length)}
+      setLoading={(loading: boolean) => setLoading(loading)}
+    />
+  )}
+
+  {val === Routes.Chats && (
+    <ChatList
+      setListLength={(length: number) => setListLength(length)}
+      setLoading={(loading: boolean) => setLoading(loading)}
+    />
+  )}
+
+  {val === Routes.Searches && (
+    <SearchList
+      setListLength={(length: number) => setListLength(length)}
+      setLoading={(loading: boolean) => setLoading(loading)}
+    />
+  )}
+
+  {listLength > 0 && (
+    <SeeAllAppCard
+      click={() => handleNavigate({ isCreate: false })}
+    />
+  )}
+</div> */}
       {listLength <= 0 && !loading && (
         <EmptyAppCard
           type={EmptyTypeMap[val as keyof typeof EmptyTypeMap]}

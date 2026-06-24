@@ -63,6 +63,38 @@ export function Datasets() {
               />
             )}
           </>
+          //           <>
+          //   {kbs?.length > 0 && (
+          //     <div className="grid grid-cols-[repeat(auto-fill,_minmax(200px,_300px))] gap-6">
+          //       {kbs?.slice(0, 6).map((dataset) => (
+          //         <DatasetCard
+          //           key={dataset.id}
+          //           dataset={dataset}
+          //           showDatasetRenameModal={showDatasetRenameModal}
+          //           cardClassName="
+          //         border-green-400/40
+          //         bg-green-500/10
+          //         shadow-[0_0_18px_rgba(248,113,113,0.25)]
+          //         hover:border-green-400/70
+          //         hover:bg-green-500/15
+          //         hover:shadow-[0_0_28px_rgba(248,113,113,0.45)]
+          //       "
+          //         />
+          //       ))}
+
+          //       <SeeAllAppCard
+          //         click={() => navigateToDatasetList({ isCreate: false })}
+          //       />
+          //     </div>
+          //   )}
+
+          //   {kbs?.length <= 0 && (
+          //     <EmptyAppCard
+          //       type={EmptyCardType.Dataset}
+          //       onClick={() => navigateToDatasetList({ isCreate: true })}
+          //     />
+          //   )}
+          // </>
           // </div>
         )}
       </div>

@@ -517,12 +517,153 @@ async def remove_member_from_my_group():
     
     
 # 拉取全量的人员数据入组
-# 1级别管理员拉人
+# 1级别管理员拉人 + 参考库挂接
+# @manager.route("/new_all", methods=["POST"])  # noqa: F821
+# @login_required
+# @validate_request("group_id")
+# async def add_all_user_to_group():
+#     req = await get_request_json()
+#     # 获取当前的组id
+#     group_id = req["group_id"]
+#     print(group_id)
+
+#     # 根据组id获取组名称
+#     group_name = GroupService.get_name_by_id(group_id)
+
+#     # 通过组名称获取所有人
+#     persons = SyncPerson.select().where(SyncPerson.organize == group_name)
+#     for p in persons:
+#     # 打印你需要的字段，比如 mdmName、phone、email 等
+#         print(f"姓名: {p.mdmName}, 手机号: {p.phone}, 邮箱: {p.email}")
+#     success_count = 0
+#     # 遍历每一个人
+#     for person in persons:
+#         # 获取每一个人的账号
+#         phone = person.phone
+#         # 通过账号获取每一个人的id
+        
+#         # 尝试获取匹配该邮箱的用户对象
+#         user = User.get(User.email == phone)
+#         # 获取该用户的 id
+#         user_id = user.id
+#         print(f"获取到的用户ID为: {user_id}")
+#         # 判断该用户是否已经存在组内
+#         user_in_group = UserGroup.get_or_none(
+#             (UserGroup.user_id == user_id) &
+#             (UserGroup.group_id == group_id)
+#         )
+#         # 💡 优化1：增加计数器，统计成功拉取的人数
+#         print(user_in_group)
+
+#         if not user_in_group:
+#             success_count += 1
+#             print(success_count)
+#             # 把人员拉入组内
+#             obj = UserGroupService.save(
+#                 user_id=user_id,
+#                 group_id=group_id,
+#                 created_by=current_user.id,
+#             )
+
+#             # 拿到当前用户的根
+#             add_user = UserService.filter_by_id(user_id)
+
+#             file = FileService.get_root_folder(user_id)
+
+#             # 直接把人挂到1级表的组id下面
+#             file1 = FileAdminService.insert({
+#                 "id": file['id'],  # 昵称的id
+#                 "parent_id": group_id,
+#                 "tenant_id": current_user.id,
+#                 "created_by": current_user.id,
+#                 "name": user.nickname,
+#                 "location": "",
+#                 "size": 0,
+#                 "type": FileType.FOLDER.value
+#             })
+
+#             # 获取当前人员的根
+#             file_mem = FileService.get_root_folder(user_id)
+#             person_id = file_mem['id']
+#             # 将人员文件全部挂在组id下面
+#             # 当前人员的非根文件
+#             file_person_root_fei = File.select().where((File.id != File.parent_id)
+#                                                     & (File.tenant_id == person_id)
+#                                                     )
+#             # 1级表中是否已经存在
+#             file_person_admin = File_Admin.select().where((File_Admin.parent_id == person_id)
+#                                                     & (File_Admin.tenant_id == user_id)
+#                                                     )
+            
+#             # 如果之前二级表中不存在就写入
+#             if not file_person_admin.exists():
+#                 print("不存在")
+#                 # 将文件全部写入到全局参考库下
+#                 for i in file_person_root_fei:
+#                     i.to_dict()
+#                     print(i.to_dict())
+#                     try:
+#                         File_Admin.create(**i.to_dict())
+#                     except:
+#                         pass
+
+            
+#             # 2级表中是否已经存在
+#             file_person_group = File_Group.select().where((File_Group.parent_id == person_id)
+#                                                     & (File_Group.tenant_id == user_id)
+#                                                     )
+
+#             # 判断组内是否存在二级管理员
+#             query = (AdminUser
+#                         .select()
+#                         .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
+#                         .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+
+#             admin_group = query.get_or_none()
+#             if admin_group:
+#                 # 2. 获取第一个结果 （组管理员）
+#                 group_user = query.first()
+#                 # 获取组管理员的根目录
+#                 root_folder = FileService.model.select().where((FileService.model.tenant_id == group_user.user_id), (
+#                         FileService.model.parent_id == FileService.model.id)).first()
+#                 # 根目录id
+#                 pf_id = root_folder.id
+#                 # 将新增用户添加到二级别表
+#                 file3 = FileGroupService.insert({
+#                     "id": file['id'],  # 昵称的id
+#                     "parent_id": pf_id,
+#                     "tenant_id": group_user.user_id,
+#                     "created_by": group_user.user_id,
+#                     "name": add_user.nickname,
+#                     "location": "",
+#                     "size": 0,
+#                     "type": FileType.FOLDER.value
+#                 })
+
+#                 # 文件全部写入到2级表
+#                 if not file_person_group.exists():
+#                     for i in file_person_root_fei:
+#                         i.to_dict()
+#                         print(i.to_dict())
+#                         try:
+#                             File_Group.create(**i.to_dict())
+#                         except:
+#                             pass
+
+#     # 💡 优化4：返回标准的 JSON 结果
+#     return get_json_result(data={
+#         "success_count": success_count, 
+#         "msg": f"全量拉取完成，成功拉取 {success_count} 名成员"
+#     })
+
+# 拉取全量的人员数据入组
+# 1级别管理员拉人 + 参考库挂接
 @manager.route("/new_all", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("group_id")
 async def add_all_user_to_group():
     req = await get_request_json()
+
     # 获取当前的组id
     group_id = req["group_id"]
     print(group_id)
@@ -530,34 +671,82 @@ async def add_all_user_to_group():
     # 根据组id获取组名称
     group_name = GroupService.get_name_by_id(group_id)
 
+    # ===============================
+    # 参考库挂到 1 级表 File_Admin
+    # 逻辑：
+    # 1. 当前组配置了参考库 tenant
+    # 2. 查到参考库根目录
+    # 3. File_Admin 中不存在该参考库 id，则插入
+    # 4. 如果已存在但 parent_id 不是当前 group_id，则更新 parent_id
+    # ===============================
+    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    group_public_id = cfg_map.get(group_id)
+
+    if group_public_id:
+        ref_root = File.select().where(
+            (File.parent_id == File.id)
+            & (File.tenant_id == group_public_id)
+        ).first()
+
+        if ref_root:
+            print(ref_root)
+            exists_ref = File_Admin.select().where(
+                File_Admin.id == ref_root.id
+            ).first()
+
+            print(exists_ref)
+            print("----------------------------")
+            if not exists_ref:
+                FileAdminService.insert({
+                    "id": ref_root.id,
+                    "parent_id": group_id,
+                    "tenant_id": current_user.id,
+                    "created_by": current_user.id,
+                    "name": '参考库+报告库',
+                    "location": ref_root.location or "",
+                    "size": ref_root.size or 0,
+                    "type": ref_root.type or FileType.FOLDER.value,
+                })
+            elif exists_ref.parent_id != group_id:
+                File_Admin.update({
+                    File_Admin.parent_id: group_id,
+                    File_Admin.tenant_id: current_user.id,
+                    File_Admin.created_by: current_user.id,
+                    File_Admin.name: '参考库+报告库',
+                }).where(
+                    File_Admin.id == ref_root.id
+                ).execute()
+
     # 通过组名称获取所有人
     persons = SyncPerson.select().where(SyncPerson.organize == group_name)
+
     for p in persons:
-    # 打印你需要的字段，比如 mdmName、phone、email 等
         print(f"姓名: {p.mdmName}, 手机号: {p.phone}, 邮箱: {p.email}")
+
     success_count = 0
+
     # 遍历每一个人
     for person in persons:
         # 获取每一个人的账号
         phone = person.phone
+
         # 通过账号获取每一个人的id
-        
-        # 尝试获取匹配该邮箱的用户对象
         user = User.get(User.email == phone)
-        # 获取该用户的 id
         user_id = user.id
         print(f"获取到的用户ID为: {user_id}")
+
         # 判断该用户是否已经存在组内
         user_in_group = UserGroup.get_or_none(
-            (UserGroup.user_id == user_id) &
-            (UserGroup.group_id == group_id)
+            (UserGroup.user_id == user_id)
+            & (UserGroup.group_id == group_id)
         )
-        # 💡 优化1：增加计数器，统计成功拉取的人数
+
         print(user_in_group)
 
         if not user_in_group:
             success_count += 1
             print(success_count)
+
             # 把人员拉入组内
             obj = UserGroupService.save(
                 user_id=user_id,
@@ -565,95 +754,106 @@ async def add_all_user_to_group():
                 created_by=current_user.id,
             )
 
-            # 拿到当前用户的根
+            # 拿到当前用户
             add_user = UserService.filter_by_id(user_id)
 
+            # 拿到当前用户的根目录
             file = FileService.get_root_folder(user_id)
 
-            # 直接把人挂到1级表的组id下面
-            file1 = FileAdminService.insert({
-                "id": file['id'],  # 昵称的id
+            # 直接把人挂到 1 级表的组id下面
+            FileAdminService.insert({
+                "id": file["id"],
                 "parent_id": group_id,
                 "tenant_id": current_user.id,
                 "created_by": current_user.id,
                 "name": user.nickname,
                 "location": "",
                 "size": 0,
-                "type": FileType.FOLDER.value
+                "type": FileType.FOLDER.value,
             })
 
             # 获取当前人员的根
             file_mem = FileService.get_root_folder(user_id)
-            person_id = file_mem['id']
-            # 将人员文件全部挂在组id下面
+            person_id = file_mem["id"]
+
             # 当前人员的非根文件
-            file_person_root_fei = File.select().where((File.id != File.parent_id)
-                                                    & (File.tenant_id == person_id)
-                                                    )
-            # 1级表中是否已经存在
-            file_person_admin = File_Admin.select().where((File_Admin.parent_id == person_id)
-                                                    & (File_Admin.tenant_id == user_id)
-                                                    )
-            
-            # 如果之前二级表中不存在就写入
+            file_person_root_fei = File.select().where(
+                (File.id != File.parent_id)
+                & (File.tenant_id == person_id)
+            )
+
+            # 1级表中是否已经存在当前人员文件
+            file_person_admin = File_Admin.select().where(
+                (File_Admin.parent_id == person_id)
+                & (File_Admin.tenant_id == user_id)
+            )
+
+            # 如果之前1级表中不存在就写入
             if not file_person_admin.exists():
                 print("不存在")
-                # 将文件全部写入到全局参考库下
                 for i in file_person_root_fei:
-                    i.to_dict()
                     print(i.to_dict())
                     try:
                         File_Admin.create(**i.to_dict())
-                    except:
+                    except Exception:
                         pass
 
-            
             # 2级表中是否已经存在
-            file_person_group = File_Group.select().where((File_Group.parent_id == person_id)
-                                                    & (File_Group.tenant_id == user_id)
-                                                    )
+            file_person_group = File_Group.select().where(
+                (File_Group.parent_id == person_id)
+                & (File_Group.tenant_id == user_id)
+            )
 
             # 判断组内是否存在二级管理员
-            query = (AdminUser
-                        .select()
-                        .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
-                        .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+            query = (
+                AdminUser
+                .select()
+                .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))
+                .where(
+                    (UserGroup.group_id == group_id)
+                    & (AdminUser.role_level == 2)
+                )
+            )
 
             admin_group = query.get_or_none()
+
             if admin_group:
-                # 2. 获取第一个结果 （组管理员）
+                # 获取第一个组管理员
                 group_user = query.first()
+
                 # 获取组管理员的根目录
-                root_folder = FileService.model.select().where((FileService.model.tenant_id == group_user.user_id), (
-                        FileService.model.parent_id == FileService.model.id)).first()
+                root_folder = FileService.model.select().where(
+                    (FileService.model.tenant_id == group_user.user_id)
+                    & (FileService.model.parent_id == FileService.model.id)
+                ).first()
+
                 # 根目录id
                 pf_id = root_folder.id
-                # 将新增用户添加到二级别表
-                file3 = FileGroupService.insert({
-                    "id": file['id'],  # 昵称的id
+
+                # 将新增用户添加到二级表
+                FileGroupService.insert({
+                    "id": file["id"],
                     "parent_id": pf_id,
                     "tenant_id": group_user.user_id,
                     "created_by": group_user.user_id,
                     "name": add_user.nickname,
                     "location": "",
                     "size": 0,
-                    "type": FileType.FOLDER.value
+                    "type": FileType.FOLDER.value,
                 })
 
                 # 文件全部写入到2级表
                 if not file_person_group.exists():
                     for i in file_person_root_fei:
-                        i.to_dict()
                         print(i.to_dict())
                         try:
                             File_Group.create(**i.to_dict())
-                        except:
+                        except Exception:
                             pass
 
-    # 💡 优化4：返回标准的 JSON 结果
     return get_json_result(data={
-        "success_count": success_count, 
-        "msg": f"全量拉取完成，成功拉取 {success_count} 名成员"
+        "success_count": success_count,
+        "msg": f"全量拉取完成，成功拉取 {success_count} 名成员",
     })
 
 

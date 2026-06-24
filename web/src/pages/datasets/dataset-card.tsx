@@ -44,6 +44,34 @@ export function DatasetCard({
   );
 }
 
+// export function DatasetCard({
+//   dataset,
+//   showDatasetRenameModal,
+//   cardClassName,
+// }: DatasetCardProps & { cardClassName?: string }) {
+//   const { navigateToDataset } = useNavigatePage();
+
+//   return (
+//     <HomeCard
+//       data={{
+//         ...dataset,
+//         description: `${dataset.doc_num} ${t('knowledgeDetails.files')}`,
+//       }}
+//       cardClassName={cardClassName}
+//       moreDropdown={
+//         <DatasetDropdown
+//           showDatasetRenameModal={showDatasetRenameModal}
+//           dataset={dataset}
+//         >
+//           <MoreButton />
+//         </DatasetDropdown>
+//       }
+//       sharedBadge={<SharedBadge>{dataset.nickname}</SharedBadge>}
+//       onClick={navigateToDataset(dataset.id)}
+//     />
+//   );
+// }
+
 export function SeeAllCard() {
   const { navigateToDatasetList } = useNavigatePage();
 
