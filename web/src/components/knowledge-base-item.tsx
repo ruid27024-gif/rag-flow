@@ -5,7 +5,7 @@ import { useBuildQueryVariableOptions } from '@/pages/agent/hooks/use-get-begin-
 import { UserOutlined } from '@ant-design/icons';
 import { Avatar as AntAvatar, Form, Select, Space } from 'antd';
 import { toLower } from 'lodash';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { RAGFlowAvatar } from './ragflow-avatar';
@@ -74,6 +74,210 @@ function buildQueryVariableOptionsByShowVariable(showVariable?: boolean) {
   return showVariable ? useBuildQueryVariableOptions : () => [];
 }
 
+// export function KnowledgeBaseFormField({
+//   showVariable = false,
+//   hideLabel = false,
+// }: {
+//   showVariable?: boolean;
+//   hideLabel?: boolean;
+// }) {
+//   const form = useFormContext();
+//   const { t } = useTranslation();
+
+//   const { list: knowledgeList } = useFetchKnowledgeList(true);
+
+//   const filteredKnowledgeList = knowledgeList.filter(
+//     (x) => x.parser_id !== DocumentParserType.Tag,
+//   );
+
+//   const nextOptions = buildQueryVariableOptionsByShowVariable(showVariable)();
+
+//   const knowledgeOptions = filteredKnowledgeList.map((x) => ({
+//     label: x.name,
+//     value: x.id,
+//     icon: () => (
+//       <RAGFlowAvatar className="size-4 mr-2" avatar={x.avatar} name={x.name} />
+//     ),
+//   }));
+
+//   const options = useMemo(() => {
+//     if (showVariable) {
+//       return [
+//         {
+//           label: t('knowledgeDetails.dataset'),
+//           options: knowledgeOptions,
+//         },
+//         ...nextOptions.map((x) => {
+//           return {
+//             ...x,
+//             options: x.options
+//               .filter((y) => toLower(y.type).includes('string'))
+//               .map((x) => ({
+//                 ...x,
+//                 icon: () => (
+//                   <RAGFlowAvatar
+//                     className="size-4 mr-2"
+//                     avatar={x.label}
+//                     name={x.label}
+//                   />
+//                 ),
+//               })),
+//           };
+//         }),
+//       ];
+//     }
+
+//     return knowledgeOptions;
+//   }, [knowledgeOptions, nextOptions, showVariable, t]);
+
+//   const [isHovering, setIsHovering] = useState(false);
+
+//   return (
+//     <FormField
+//       control={form.control}
+//       name="kb_ids"
+//       // render={({ field }) => (
+
+//       //   <FormItem>
+//       //     {!hideLabel && (
+//       //       <FormLabel tooltip={t('chat.knowledgeBasesTip')} required>
+//       //         {t('chat.knowledgeBases')}
+//       //       </FormLabel>
+//       //     )}
+//       //     <FormControl>
+
+//       //       {/* <MultiSelect
+//       //         options={options}
+//       //         onValueChange={field.onChange}
+//       //         placeholder={t('chat.knowledgeBasesMessage')}
+//       //         variant="inverted"
+//       //         maxCount={100}
+//       //         defaultValue={field.value}
+//       //         {...field}
+
+//       //         nowrap={true}
+//       //       /> */}
+
+//       //       <MultiSelect
+//       //         options={options}
+//       //         onValueChange={field.onChange}
+//       //         placeholder={t('chat.knowledgeBasesMessage')}
+//       //         variant="inverted"
+//       //         maxCount={100}
+//       //         defaultValue={field.value}
+//       //         {...field}
+//       //         // 1. 添加一个自定义类名，方便定位
+//       //         className="hover-expand-multiselect"
+//       //         // 2. 定义默认的内联样式（默认折叠状态）
+//       //         style={{
+//       //           maxHeight: '40px',      // 限制高度为一行（根据实际 padding 调整）
+//       //           overflow: 'hidden',     // 隐藏超出部分
+//       //           transition: 'max-height 0.3s ease-in-out', // 添加高度变化的动画
+//       //           cursor: 'pointer',      // 鼠标变成手型，提示可交互
+//       //         }}
+//       //       />
+//       //     </FormControl>
+//       //   </FormItem>
+//       // )}
+//       render={({ field }) => {
+//         // 1. 计算数量：如果是数组则取长度，否则为 0
+//         const count = Array.isArray(field.value) ? field.value.length : 0;
+
+//         return (
+//           <FormItem>
+//             {!hideLabel && (
+//               <FormLabel tooltip={t('chat.knowledgeBasesTip')} required>
+//                 {t('chat.knowledgeBases')}
+//               </FormLabel>
+//             )}
+//             <FormControl>
+//               <div className="relative w-full">
+//                 {' '}
+//                 {/* 添加相对定位容器 */}
+//                 {/* <MultiSelect
+//                   options={options}
+//                   onValueChange={field.onChange}
+//                   placeholder={t('chat.knowledgeBasesMessage')}
+//                   variant="inverted"
+//                   maxCount={100}
+//                   defaultValue={field.value}
+//                   {...field}
+//                   className="hover-expand-multiselect"
+//                   style={{
+//                     maxHeight: '36px',
+//                     overflow: 'hidden',
+//                     transition: 'max-height 0.3s ease-in-out',
+//                     cursor: 'pointer',
+//                   }}
+//                 /> */}
+//                 <div
+//   className="relative w-full"
+//   onMouseEnter={() => setIsHovering(true)}
+//   onMouseLeave={() => setIsHovering(false)}
+// >
+//   <MultiSelect
+//     options={options}
+//     onValueChange={field.onChange}
+//     placeholder={t('chat.knowledgeBasesMessage')}
+//     variant="inverted"
+//     maxCount={isHovering ? 100 : 1}
+//     defaultValue={field.value}
+//     {...field}
+//   />
+
+// </div>
+//                 <div
+//                   style={{
+//                     display: 'inline-flex',
+//                     alignItems: 'center',
+//                     justifyContent: 'center',
+//                     height: '20px', // 稍微高一点点，更显大气
+//                     padding: '0 8px',
+//                     marginLeft: '8px',
+//                     fontSize: '12px', // 稍微大一点，更易读
+//                     fontWeight: '700',
+//                     color: '#831843',
+//                     // 核心：更鲜亮的渐变色
+//                     background:
+//                       'linear-gradient(135deg, #FF9A9E 0%, #FECFEF 99%, #FECFEF 100%)', // 粉色系
+//                     // 核心：多层阴影制造立体感
+//                     boxShadow:
+//                       '0px 2px 4px rgba(255, 154, 158, 0.4), inset 0px 1px 2px rgba(255,255,255,0.6)',
+//                     borderRadius: '12px', // 稍微圆润一点
+//                     border: '1px solid rgba(255,255,255,0.6)', // 亮边框
+//                     position: 'relative',
+//                     overflow: 'hidden',
+//                     textShadow: '0px 1px 0px rgba(255, 100, 100, 0.3)', // 文字投影
+//                   }}
+//                 >
+//                   {/* 高光：模拟顶部的反光 */}
+//                   <div
+//                     style={{
+//                       position: 'absolute',
+//                       top: '0',
+//                       left: '0',
+//                       right: '0',
+//                       height: '50%',
+//                       background:
+//                         'linear-gradient(to bottom, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.1) 100%)',
+//                       borderRadius: '12px 12px 50% 50% / 12px 12px 0 0',
+//                       pointerEvents: 'none',
+//                     }}
+//                   ></div>
+
+//                   <span style={{ position: 'relative', zIndex: 1 }}>
+//                     {count}已选
+//                   </span>
+//                 </div>
+//               </div>
+//             </FormControl>
+//           </FormItem>
+//         );
+//       }}
+//     />
+//   );
+// }
+
 export function KnowledgeBaseFormField({
   showVariable = false,
   hideLabel = false,
@@ -83,6 +287,8 @@ export function KnowledgeBaseFormField({
 }) {
   const form = useFormContext();
   const { t } = useTranslation();
+
+  const multiSelectRef = useRef<HTMLDivElement>(null);
 
   const { list: knowledgeList } = useFetchKnowledgeList(true);
 
@@ -134,52 +340,16 @@ export function KnowledgeBaseFormField({
     <FormField
       control={form.control}
       name="kb_ids"
-      // render={({ field }) => (
-
-      //   <FormItem>
-      //     {!hideLabel && (
-      //       <FormLabel tooltip={t('chat.knowledgeBasesTip')} required>
-      //         {t('chat.knowledgeBases')}
-      //       </FormLabel>
-      //     )}
-      //     <FormControl>
-
-      //       {/* <MultiSelect
-      //         options={options}
-      //         onValueChange={field.onChange}
-      //         placeholder={t('chat.knowledgeBasesMessage')}
-      //         variant="inverted"
-      //         maxCount={100}
-      //         defaultValue={field.value}
-      //         {...field}
-
-      //         nowrap={true}
-      //       /> */}
-
-      //       <MultiSelect
-      //         options={options}
-      //         onValueChange={field.onChange}
-      //         placeholder={t('chat.knowledgeBasesMessage')}
-      //         variant="inverted"
-      //         maxCount={100}
-      //         defaultValue={field.value}
-      //         {...field}
-      //         // 1. 添加一个自定义类名，方便定位
-      //         className="hover-expand-multiselect"
-      //         // 2. 定义默认的内联样式（默认折叠状态）
-      //         style={{
-      //           maxHeight: '40px',      // 限制高度为一行（根据实际 padding 调整）
-      //           overflow: 'hidden',     // 隐藏超出部分
-      //           transition: 'max-height 0.3s ease-in-out', // 添加高度变化的动画
-      //           cursor: 'pointer',      // 鼠标变成手型，提示可交互
-      //         }}
-      //       />
-      //     </FormControl>
-      //   </FormItem>
-      // )}
       render={({ field }) => {
-        // 1. 计算数量：如果是数组则取长度，否则为 0
         const count = Array.isArray(field.value) ? field.value.length : 0;
+
+        const openMultiSelect = () => {
+          const trigger = multiSelectRef.current?.querySelector(
+            'button,[role="combobox"]',
+          ) as HTMLElement | null;
+
+          trigger?.click();
+        };
 
         return (
           <FormItem>
@@ -188,68 +358,82 @@ export function KnowledgeBaseFormField({
                 {t('chat.knowledgeBases')}
               </FormLabel>
             )}
-            <FormControl>
-              <div className="relative w-full">
-                {' '}
-                {/* 添加相对定位容器 */}
-                <MultiSelect
-                  options={options}
-                  onValueChange={field.onChange}
-                  placeholder={t('chat.knowledgeBasesMessage')}
-                  variant="inverted"
-                  maxCount={100}
-                  defaultValue={field.value}
-                  {...field}
-                  className="hover-expand-multiselect"
-                  style={{
-                    maxHeight: '10px',
-                    overflow: 'hidden',
-                    transition: 'max-height 0.3s ease-in-out',
-                    cursor: 'pointer',
-                  }}
-                />
-                <div
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '20px', // 稍微高一点点，更显大气
-                    padding: '0 8px',
-                    marginLeft: '8px',
-                    fontSize: '12px', // 稍微大一点，更易读
-                    fontWeight: '700',
-                    color: '#831843',
-                    // 核心：更鲜亮的渐变色
-                    background:
-                      'linear-gradient(135deg, #FF9A9E 0%, #FECFEF 99%, #FECFEF 100%)', // 粉色系
-                    // 核心：多层阴影制造立体感
-                    boxShadow:
-                      '0px 2px 4px rgba(255, 154, 158, 0.4), inset 0px 1px 2px rgba(255,255,255,0.6)',
-                    borderRadius: '12px', // 稍微圆润一点
-                    border: '1px solid rgba(255,255,255,0.6)', // 亮边框
-                    position: 'relative',
-                    overflow: 'hidden',
-                    textShadow: '0px 1px 0px rgba(255, 100, 100, 0.3)', // 文字投影
-                  }}
-                >
-                  {/* 高光：模拟顶部的反光 */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '0',
-                      left: '0',
-                      right: '0',
-                      height: '50%',
-                      background:
-                        'linear-gradient(to bottom, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.1) 100%)',
-                      borderRadius: '12px 12px 50% 50% / 12px 12px 0 0',
-                      pointerEvents: 'none',
-                    }}
-                  ></div>
 
-                  <span style={{ position: 'relative', zIndex: 1 }}>
-                    {count}已选
+            <FormControl>
+              <div className="relative inline-flex h-9 items-center">
+                <button
+                  type="button"
+                  className="
+                  group inline-flex h-9 items-center gap-2 rounded-lg
+                  border border-slate-200 bg-white px-3.5
+                  text-sm font-medium text-slate-700
+                  shadow-sm transition-all duration-200 ease-out
+                  hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 hover:shadow-md
+                  active:scale-[0.98] active:bg-slate-100
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-1
+                  /* 暗黑模式适配 */
+                  dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
+                  dark:hover:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-white
+                  dark:active:bg-slate-600
+                "
+                  onClick={openMultiSelect}
+                >
+                  {/* 书籍图标 */}
+                  <svg
+                    className="h-4 w-4 text-slate-500 dark:text-slate-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                    />
+                  </svg>
+
+                  <span>知识库</span>
+
+                  {/* 数字徽章：保持深色背景+白色文字，在黑白模式下都清晰 */}
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-slate-200 bg-slate-100 px-1.5 text-xs font-bold text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-50 dark:text-slate-900">
+                    {count ?? 0}
                   </span>
+
+                  <span className="text-xs font-medium text-slate-500 tracking-wide dark:text-slate-400">
+                    已选
+                  </span>
+
+                  {/* 下拉箭头 */}
+                  <svg
+                    className="ml-0.5 h-3.5 w-3.5 text-slate-400 transition-transform duration-200 group-hover:rotate-180 dark:text-slate-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+
+                {/* 隐藏的 MultiSelect 触发器 */}
+                <div
+                  ref={multiSelectRef}
+                  className="pointer-events-none absolute left-0 top-full z-10 h-0 w-0 overflow-hidden opacity-0"
+                >
+                  <MultiSelect
+                    options={options}
+                    onValueChange={field.onChange}
+                    placeholder={t('chat.knowledgeBasesMessage')}
+                    variant="inverted"
+                    maxCount={0}
+                    defaultValue={field.value}
+                    {...field}
+                  />
                 </div>
               </div>
             </FormControl>

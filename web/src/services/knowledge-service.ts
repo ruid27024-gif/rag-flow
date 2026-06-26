@@ -253,6 +253,11 @@ export const listDataset = (
   body?: IFetchKnowledgeListRequestBody,
 ) => request.post(api.kb_list, { data: body || {}, params });
 
+export const listDataset2 = (
+  params?: IFetchKnowledgeListRequestParams,
+  body?: IFetchKnowledgeListRequestBody,
+) => request.post(api.kb_list2, { data: body || {}, params });
+
 export const listDocument = (
   params?: IFetchKnowledgeListRequestParams,
   body?: IFetchDocumentListRequestBody,

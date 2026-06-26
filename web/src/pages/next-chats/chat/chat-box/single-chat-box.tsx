@@ -214,7 +214,7 @@ export function SingleChatBox({
                   fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, Georgia, "Times New Roman", serif`,
                 }}
               >
-                木本·云枢 智能小助手
+                恒丰纸业 智能小助手
                 <span className="ml-2 inline-block animate-bounce text-green-600">
                   <TimeIcon />
                 </span>

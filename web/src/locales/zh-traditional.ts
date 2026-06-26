@@ -407,6 +407,22 @@ export default {
       delete: '删除',
     },
     chat: {
+      metadataTip:
+        '元數據過濾是使用元數據屬性（例如標籤、類別或存取權限）來優化和控制系統內相關資訊檢索的過程。',
+
+      tocEnhanceTip: `解析文件時生成了目錄資訊（見知識庫上傳解析時 General 方法的「啟用目錄擷取」），讓大模型返回和使用者問題相關的目錄項，從而利用目錄項取得相關 chunk，對這些 chunk 在排序中進行加權。這種方法來源於模仿人類查詢書本中知識的行為邏輯`,
+
+      // keywordTip: `提取使用者問題中的關鍵字，對長查詢效果較好，但會延長回應時間。`,
+
+      // quoteTip: '是否應該顯示出處原文？',
+
+      // emptyResponseTip: `如果在知識庫中沒有檢索到問題，將使用框內的內容作為回覆。`,
+
+      // setAnOpenerTip: '您想如何歡迎您的客戶？',
+
+      assistantNameTip: '智能體的名稱',
+
+      descriptionTip: '智能體的描述',
       newConversation: '新會話',
       createAssistant: '新建助理',
       assistantSetting: '助理設置',

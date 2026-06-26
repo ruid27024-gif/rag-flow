@@ -3,10 +3,12 @@ import {
   useSelectedIds,
 } from '@/hooks/logic-hooks/use-row-selection';
 import {
+  DocumentApiAction,
   useRemoveWastedDocument,
   useSetDocumentStatus,
 } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
+import { useQueryClient } from '@tanstack/react-query';
 import { CircleCheck, Trash2 } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +23,7 @@ export function useBulkOperateWastedDataset({
   documents: IDocumentInfo[];
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
 
   const { selectedIds: selectedRowKeys } = useSelectedIds(
     rowSelection,
@@ -28,6 +31,7 @@ export function useBulkOperateWastedDataset({
   );
 
   const { removeWastedDocument } = useRemoveWastedDocument();
+  const { setDocumentStatus } = useSetDocumentStatus();
 
   const handleDelete = useCallback(() => {
     const deletedKeys = selectedRowKeys.filter(
@@ -45,17 +49,42 @@ export function useBulkOperateWastedDataset({
     return removeWastedDocument(deletedKeys);
   }, [selectedRowKeys, removeWastedDocument, documents, t]);
 
-  const { setDocumentStatus } = useSetDocumentStatus();
+  const handleEnableClick = useCallback(async () => {
+    const res = await setDocumentStatus({
+      status: true,
+      documentId: selectedRowKeys,
+    });
 
-  const onChangeStatus = useCallback(
-    (enabled: boolean) => {
-      setDocumentStatus({ status: enabled, documentId: selectedRowKeys });
-    },
-    [selectedRowKeys, setDocumentStatus],
-  );
-  const handleEnableClick = useCallback(() => {
-    onChangeStatus(true);
-  }, [onChangeStatus]);
+    const code = typeof res === 'number' ? res : res?.code;
+
+    if (code !== 0) return;
+
+    setRowSelection({});
+
+    const restoredIdSet = new Set(selectedRowKeys);
+
+    queryClient.setQueriesData<{ docs: IDocumentInfo[]; total: number }>(
+      {
+        predicate: (query) =>
+          query.queryKey.includes(DocumentApiAction.FetchWastedDocumentList),
+      },
+      (oldData) => {
+        if (!oldData) return oldData;
+
+        return {
+          ...oldData,
+          docs: oldData.docs.filter((doc) => !restoredIdSet.has(doc.id)),
+          total: Math.max((oldData.total || 0) - selectedRowKeys.length, 0),
+        };
+      },
+    );
+
+    await queryClient.refetchQueries({
+      predicate: (query) =>
+        query.queryKey.includes(DocumentApiAction.FetchWastedDocumentList),
+      type: 'active',
+    });
+  }, [selectedRowKeys, setDocumentStatus, setRowSelection, queryClient]);
 
   const list = [
     {
@@ -70,6 +99,7 @@ export function useBulkOperateWastedDataset({
       icon: <Trash2 />,
       onClick: async () => {
         const code = await handleDelete();
+
         if (code === 0) {
           setRowSelection({});
         }

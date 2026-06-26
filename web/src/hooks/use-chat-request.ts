@@ -172,6 +172,51 @@ export const useSetDialog = () => {
   return { data, loading, setDialog: mutateAsync };
 };
 
+// export const useSetDialog = () => {
+//   const queryClient = useQueryClient();
+//   const { t } = useTranslation();
+
+//   const {
+//     data,
+//     isPending: loading,
+//     mutateAsync,
+//   } = useMutation({
+//     mutationKey: [ChatApiAction.SetDialog],
+//     mutationFn: async (params: Partial<IDialog>) => {
+//       console.log('====== useSetDialog params ======');
+//       console.log(params.prompt_config);
+
+//       const { data } = await chatService.setDialog(params);
+
+//       console.log('====== useSetDialog response ======');
+//       console.log(data);
+//       console.log('response dialog:', data?.data);
+//       console.log('response prompt_config:', data?.data?.prompt_config);
+
+//       if (data.code !== 0) {
+//         return null;
+//       }
+
+//       const latestDialog = data.data;
+
+//       queryClient.setQueryData([ChatApiAction.FetchDialog], latestDialog);
+
+//       await queryClient.invalidateQueries({
+//         exact: false,
+//         queryKey: [ChatApiAction.FetchDialogList],
+//       });
+
+//       message.success(
+//         t(`message.${params.dialog_id ? 'modified' : 'created'}`),
+//       );
+
+//       return latestDialog;
+//     },
+//   });
+
+//   return { data, loading, setDialog: mutateAsync };
+// };
+
 export const useFetchDialog = () => {
   const { id } = useParams();
 

@@ -545,6 +545,17 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       delete: '删除',
     },
     chat: {
+      metadataTip:
+        '元数据过滤是使用元数据属性（例如标签、类别或访问权限）来优化和控制系统内相关信息检索的过程。',
+
+      tocEnhanceTip: `解析文档时生成了目录信息（见知识库上传解析时General方法的‘启用目录抽取’），让大模型返回和用户问题相关的目录项，从而利用目录项拿到相关chunk，对这些chunk在排序中进行加权。这种方法来源于模仿人类查询书本中知识的行为逻辑`,
+      keywordTip: `提取用户问题中的关键词，对长查询效果较好，但会延长响应时间。`,
+      quoteTip: '是否应该显示原文出处？',
+      emptyResponseTip: `如果在知识库中没有检索到问题，将使用框内的内容作为回复。`,
+      setAnOpenerTip: '设置一句欢迎语',
+      assistantNameTip: '设置智能体名称',
+      descriptionTip: '描述智能体的能力和使用场景',
+
       messagePlaceholder: '请输入消息...',
       exit: '退出',
       multipleModels: '多模型',
@@ -570,12 +581,12 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       assistantAvatar: '助理头像',
       language: '语言',
       emptyResponse: '空回复',
-      emptyResponseTip: `如果在知识库中没有检索到问题，将使用框内的内容作为回复。`,
+
       // emptyResponseTip: `如果在知识库中没有检索到用户的问题，它将使用它作为答案。 如果您希望 LLM 在未检索到任何内容时提出自己的意见，请将此留空。`,
       emptyResponseMessage: `当知识库中未检索到任何相关信息时，将触发空响应。由于未选择任何知识库，因此请清除“空响应”。`,
       setAnOpener: '设置开场白',
       setAnOpenerInitial: `你好！ 我是你的助理，有什么可以帮到你的吗？`,
-      setAnOpenerTip: '您想如何欢迎您的客户？',
+
       knowledgeBases: '知识库',
       knowledgeBasesMessage: '请选择',
       knowledgeBasesTip:
@@ -633,7 +644,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       maxTokensInvalidMessage: '请输入有效的最大令牌数。',
       maxTokensMinMessage: '最大令牌数不能小于 0。',
       quote: '显示引文',
-      quoteTip: '是否应该显示原文出处？',
+
       selfRag: 'Self-RAG',
       selfRagTip: '请参考: https://huggingface.co/papers/2310.11511',
       overview: '聊天 ID',
@@ -683,7 +694,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
         '是否检索与所选知识库对应的知识图谱相关文本块，以处理复杂的多跳问题？这一过程将涉及对实体、关系和社区报告文本块的多次检索，会显著延长检索时间。',
       keyword: '关键词分析',
       // keywordTip: `应用 LLM 分析用户的问题，提取在相关性计算中要强调的关键词。对长查询效果较好，但会延长响应时间。`,
-      keywordTip: `对长查询效果较好，但会延长响应时间。`,
+      // keywordTip: `对长查询效果较好，但会延长响应时间。`,
       reasoning: '推理',
       reasoningTip:
         '在问答过程中是否启用推理工作流，例如Deepseek-R1或OpenAI o1等模型所采用的方式。启用后，该功能允许模型访问外部知识，并借助思维链推理等技术逐步解决复杂问题。通过将问题分解为可处理的步骤，这种方法增强了模型提供准确回答的能力，从而在需要逻辑推理和多步思考的任务上表现更优。',
@@ -694,8 +705,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       crossLanguage: '跨语言搜索',
       crossLanguageTip: `选择一种或多种语言进行跨语言搜索。如果未选择任何语言，系统将使用原始查询进行搜索。`,
       metadata: '元数据',
-      metadataTip:
-        '元数据过滤是使用元数据属性（例如标签、类别或访问权限）来优化和控制系统内相关信息检索的过程。',
+
       conditions: '条件',
       metadataKeys: '可选过滤项',
       addCondition: '增加条件',
@@ -710,7 +720,6 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       avatarHidden: '隐藏头像',
       locale: '地区',
       tocEnhance: '目录增强',
-      tocEnhanceTip: `解析文档时生成了目录信息（见General方法的‘启用目录抽取’），让大模型返回和用户问题相关的目录项，从而利用目录项拿到相关chunk，对这些chunk在排序中进行加权。这种方法来源于模仿人类查询书本中知识的行为逻辑`,
     },
     setting: {
       deleteModel: '删除模型',
@@ -2014,7 +2023,7 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       noMCP: '暂无 MCP 服务器可用',
       agentTitle: '尚未创建智能体',
       notFoundAgent: '未查询到智能体',
-      datasetTitle: '尚未创建数据集',
+      datasetTitle: '创建知识库',
       notFoundDataset: '未查询到数据集',
       chatTitle: '尚未创建聊天应用',
       notFoundChat: '未查询到聊天应用',

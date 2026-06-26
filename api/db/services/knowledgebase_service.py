@@ -239,6 +239,181 @@ class KnowledgebaseService(CommonService):
         doc_ids = list(doc_ids.dicts())
         doc_ids = [doc["document_id"] for doc in doc_ids]
         return doc_ids
+    
+    @classmethod
+    @DB.connection_context()
+    def get_by_tenant_ids2(
+        cls,
+        joined_tenant_ids,
+        user_id,
+        page_number,
+        items_per_page,
+        orderby,
+        desc,
+        keywords,
+        parser_id=None,
+        admin_bypass=False,
+    ):
+        fields = [
+            cls.model.id,
+            cls.model.avatar,
+            cls.model.name,
+            cls.model.language,
+            cls.model.description,
+            cls.model.tenant_id,
+            cls.model.permission,
+            cls.model.doc_num,
+            cls.model.token_num,
+            cls.model.chunk_num,
+            cls.model.parser_id,
+            cls.model.embd_id,
+            User.nickname,
+            User.avatar.alias("tenant_avatar"),
+            cls.model.update_time,
+            UserGroup.group_id,
+            Group.group_name,
+        ]
+
+        kbs = (
+            cls.model.select(*fields)
+            .join(User, on=(cls.model.tenant_id == User.id))
+            .join(
+                UserGroup,
+                JOIN.LEFT_OUTER,
+                on=(cls.model.tenant_id == UserGroup.user_id),
+            )
+            .join(
+                Group,
+                JOIN.LEFT_OUTER,
+                on=(UserGroup.group_id == Group.group_id),
+            )
+        )
+
+        is_super_admin = admin_bypass or bool(
+            AdminUser.query(user_id=user_id, role_level=1)
+        )
+        is_level_2_admin = bool(
+            AdminUser.query(user_id=user_id, role_level=2)
+        )
+
+        if not is_super_admin:
+            if is_level_2_admin:
+                my_group = (
+                    UserGroup.select()
+                    .where(UserGroup.user_id == user_id)
+                    .first()
+                )
+
+                if my_group:
+                    group_members = (
+                        UserGroup.select(UserGroup.user_id)
+                        .where(UserGroup.group_id == my_group.group_id)
+                    )
+                    tenant_ids = [member.user_id for member in group_members]
+
+                    # 加上二级管理员自己
+                    if user_id not in tenant_ids:
+                        tenant_ids.append(user_id)
+
+                    # 加上当前组对应的参考库
+                    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+                    group_reference_tenant_id = (
+                        cfg_map.get(my_group.group_id)
+                        or cfg_map.get(str(my_group.group_id))
+                    )
+
+                    if (
+                        group_reference_tenant_id
+                        and group_reference_tenant_id not in tenant_ids
+                    ):
+                        tenant_ids.append(group_reference_tenant_id)
+
+                    kbs = kbs.where(cls.model.tenant_id.in_(tenant_ids))
+                else:
+                    kbs = kbs.where(cls.model.tenant_id == user_id)
+            else:
+                kbs = kbs.where(cls.model.tenant_id == user_id)
+
+        kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
+
+        if keywords:
+            kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
+
+        if parser_id:
+            kbs = kbs.where(cls.model.parser_id == parser_id)
+
+        if desc:
+            kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
+        else:
+            kbs = kbs.order_by(cls.model.getter_by(orderby).asc())
+
+        count = kbs.count()
+
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        reversed_map = {v: k for k, v in cfg_map.items()}
+        public_id = settings.REFERENCE_TENANT_ID
+
+        res = list(kbs.dicts())
+
+        for kb in res:
+            tenant_id = kb["tenant_id"]
+
+            if tenant_id == public_id:
+                kb["group_name"] = "全局参考库"
+                kb["color"] = 3
+
+            elif tenant_id in reversed_map:
+                group_id = reversed_map[tenant_id]
+                group_obj = (
+                    Group.select(Group.group_name)
+                    .where(Group.group_id == group_id)
+                    .first()
+                )
+
+                kb["group_id"] = group_id
+                kb["group_name"] = group_obj.group_name if group_obj else None
+                kb["color"] = 3
+
+            elif AdminUser.query(user_id=tenant_id, role_level=1):
+                kb["color"] = 1
+
+            elif AdminUser.query(user_id=tenant_id, role_level=2):
+                kb["color"] = 2
+
+        def custom_sort_key(kb):
+            name = kb.get("group_name")
+            color = kb.get("color")
+
+            # 1. 全局参考库最前
+            if name == "全局参考库":
+                return (0, "")
+
+            # 2. 各组参考库排在成员库前面
+            if color == 3:
+                if name == "工艺研究一室":
+                    return (1, "")
+                if name == "工艺研究二室":
+                    return (2, "")
+                if name == "工艺研究三室":
+                    return (3, "")
+                if name == "新品事业部研发部":
+                    return (4, "")
+                return (5, name or "")
+
+            # 3. 二级管理员的知识库
+            if color == 2:
+                return (6, name or "")
+
+            # 4. 超级管理员/普通成员/无分组的知识库放后面
+            return (7, name or "")
+        
+        res = sorted(res, key=custom_sort_key)
+
+        if page_number and items_per_page:
+            offset = (page_number - 1) * items_per_page
+            res = res[offset : offset + items_per_page]
+
+        return res, count
 
     @classmethod
     @DB.connection_context()

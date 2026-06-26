@@ -97,6 +97,7 @@ export default {
 
   check_embedding: `${api_host}/kb/check_embedding`,
   kb_list: `${api_host}/kb/list`,
+  kb_list2: `${api_host}/kb/list2`,
   create_kb: `${api_host}/kb/create`,
   update_kb: `${api_host}/kb/update`,
   rm_kb: `${api_host}/kb/rm`,

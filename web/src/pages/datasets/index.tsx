@@ -28,9 +28,21 @@ export default function Datasets() {
   } = useSaveKnowledge();
 
   // 获取数据
+  // const {
+  //   kbs,
+  //   total,
+  //   pagination,
+  //   setPagination,
+  //   handleInputChange,
+  //   searchString,
+  //   filterValue,
+  //   handleFilterSubmit,
+  // } = useFetchNextKnowledgeListByPage();
   const {
     kbs,
     total,
+    kbs2,
+    total2,
     pagination,
     setPagination,
     handleInputChange,
@@ -69,11 +81,11 @@ export default function Datasets() {
 
   // 在组件内部添加分组逻辑
   const groupedDatasets = useMemo(() => {
-    if (!kbs?.length) return {};
+    if (!kbs2?.length) return {};
 
     const groups: Record<string, typeof kbs> = {};
 
-    kbs.forEach((dataset) => {
+    kbs2.forEach((dataset) => {
       const groupName = dataset.group_name || '管理员私有库';
 
       if (!groups[groupName]) {
@@ -83,7 +95,7 @@ export default function Datasets() {
     });
 
     return groups;
-  }, [kbs]);
+  }, [kbs2]);
 
   const queryClient = useQueryClient(); //单例模式
 
@@ -102,7 +114,7 @@ export default function Datasets() {
   return (
     <>
       <section className="py-4 flex-1 flex flex-col min-h-0">
-        {(!kbs?.length || kbs?.length <= 0) && !searchString && (
+        {(!kbs2?.length || kbs2?.length <= 0) && !searchString && (
           <div className="flex w-full items-center justify-center h-[calc(100vh-164px)]">
             <EmptyAppCard
               showIcon
@@ -114,7 +126,7 @@ export default function Datasets() {
             />
           </div>
         )}
-        {(!!kbs?.length || searchString) && (
+        {(!!kbs2?.length || searchString) && (
           <>
             <div className="px-8 pt-5">
               <ListFilterBar
@@ -133,7 +145,7 @@ export default function Datasets() {
                 </Button>
               </ListFilterBar>
             </div>
-            {(!kbs?.length || kbs?.length <= 0) && searchString && (
+            {(!kbs2?.length || kbs2?.length <= 0) && searchString && (
               <div className="flex w-full items-center justify-center h-[calc(100vh-164px)]">
                 <EmptyAppCard
                   showIcon
@@ -224,7 +236,7 @@ export default function Datasets() {
                 {/* 添加 pb-8 底部内边距 */}
                 <RAGFlowPagination
                   {...pick(pagination, 'current', 'pageSize')}
-                  total={total}
+                  total={total2}
                   onChange={handlePageChange}
                 />
               </div>

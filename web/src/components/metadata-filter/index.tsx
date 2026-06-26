@@ -63,7 +63,7 @@ export function MetadataFilter({
         <RAGFlowFormItem
           label={t('metadata')}
           name={methodName}
-          // tooltip={t('metadataTip')}
+          tooltip={t('metadataTip')}
         >
           <SelectWithSearch
             options={MetadataOptions}

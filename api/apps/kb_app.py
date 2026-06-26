@@ -298,6 +298,49 @@ async def list_kbs():
         return get_json_result(data={"kbs": kbs, "total": total})
     except Exception as e:
         return server_error_response(e)
+    
+
+@manager.route('/list2', methods=['POST'])  # noqa: F821
+@login_required
+async def list_kbs2():
+    args = request.args
+    keywords = args.get("keywords", "")
+    page_number = int(args.get("page", 0))
+    items_per_page = int(args.get("page_size", 0))
+    parser_id = args.get("parser_id")
+    orderby = args.get("orderby", "create_time")
+    if args.get("desc", "true").lower() == "false":
+        desc = False
+    else:
+        desc = True
+
+    req = await get_request_json()
+    owner_ids = req.get("owner_ids", [])
+    
+    is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
+    
+    try:
+        if not owner_ids:
+            from api.db.services.user_group_service import UserGroupService
+            tenants = UserGroupService.get_team_tenant_ids(current_user.id)
+            kbs, total = KnowledgebaseService.get_by_tenant_ids2(
+                tenants, current_user.id, page_number,
+                items_per_page, orderby, desc, keywords, parser_id,
+                admin_bypass=bool(is_admin)
+            )
+        else:
+            tenants = owner_ids
+            kbs, total = KnowledgebaseService.get_by_tenant_ids(
+                tenants, current_user.id, 0,
+                0, orderby, desc, keywords, parser_id, admin_bypass=bool(is_admin))
+            
+            kbs = [kb for kb in kbs if kb["tenant_id"] in tenants]
+            total = len(kbs)
+            if page_number and items_per_page:
+                kbs = kbs[(page_number-1)*items_per_page:page_number*items_per_page]
+        return get_json_result(data={"kbs": kbs, "total": total})
+    except Exception as e:
+        return server_error_response(e)
 
 
 

@@ -32,20 +32,24 @@ export default function ChatBasicSetting() {
 
   return (
     <div className="space-y-8 pt-2">
-      <div className="flex items-center gap-2 mb-4">
-        {/* 短横线 */}
-        <div className="h-4 w-1 bg-red-500 rounded-full"></div>
-        <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
-          必填项-1
+      <div className="mb-4 flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-semibold text-white shadow-sm">
+          1
+        </span>
+
+        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          必填项
         </span>
       </div>
       <KnowledgeBaseFormField></KnowledgeBaseFormField>
 
-      <div className="flex items-center gap-2 mb-4">
-        {/* 短横线 */}
-        <div className="h-4 w-1 bg-green-500 rounded-full"></div>
-        <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
-          选填项-7
+      <div className="mb-4 flex items-center gap-2">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-xs font-semibold text-white shadow-sm">
+          7
+        </span>
+
+        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          选填项
         </span>
       </div>
 
@@ -75,21 +79,29 @@ export default function ChatBasicSetting() {
         name="name"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>{t('assistantName')}</FormLabel>
-            <FormControl>
-              <Input {...field}></Input>
-            </FormControl>
+            <FormLabel tooltip={t('assistantNameTip')}>
+              {t('assistantName')}
+            </FormLabel>
+            <div className="relative">
+              <FormControl>
+                <Input {...field} maxLength={32} className="pr-14" />
+              </FormControl>
+
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">
+                {field.value?.length || 0}/32
+              </span>
+            </div>
             <FormMessage />
           </FormItem>
         )}
       />
 
-      <FormField
+      {/* <FormField
         control={form.control}
         name="description"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>{t('description')}</FormLabel>
+            <FormLabel tooltip={t('descriptionTip')}>{t('description')}</FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
@@ -103,8 +115,8 @@ export default function ChatBasicSetting() {
         name={'prompt_config.prologue'}
         render={({ field }) => (
           <FormItem>
-            {/* <FormLabel tooltip={t('setAnOpenerTip')}> */}
-            <FormLabel>{t('setAnOpener')}</FormLabel>
+            <FormLabel tooltip={t('setAnOpenerTip')}>
+            <FormLabel tooltip={t('setAnOpenerTip')}>{t('setAnOpener')}</FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
@@ -118,11 +130,74 @@ export default function ChatBasicSetting() {
         name={'prompt_config.empty_response'}
         render={({ field }) => (
           <FormItem>
-            {/* <FormLabel tooltip={t('emptyResponseTip')}> */}
-            <FormLabel>{t('emptyResponse')}</FormLabel>
+            <FormLabel tooltip={t('emptyResponseTip')}>
+            <FormLabel tooltip={t('emptyResponseTip')}>{t('emptyResponse')}</FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      /> */}
+
+      <FormField
+        control={form.control}
+        name="description"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel tooltip={t('descriptionTip')}>
+              {t('description')}
+            </FormLabel>
+            <div className="relative">
+              <FormControl>
+                <Textarea {...field} maxLength={128} className="pb-7" />
+              </FormControl>
+              <span className="pointer-events-none absolute bottom-2 right-3 text-xs text-slate-400 dark:text-slate-500">
+                {String(field.value || '').length}/128
+              </span>
+            </div>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name={'prompt_config.prologue'}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel tooltip={t('setAnOpenerTip')}>
+              {t('setAnOpener')}
+            </FormLabel>
+            <div className="relative">
+              <FormControl>
+                <Textarea {...field} maxLength={128} className="pb-7" />
+              </FormControl>
+              <span className="pointer-events-none absolute bottom-2 right-3 text-xs text-slate-400 dark:text-slate-500">
+                {String(field.value || '').length}/128
+              </span>
+            </div>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name={'prompt_config.empty_response'}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel tooltip={t('emptyResponseTip')}>
+              {t('emptyResponse')}
+            </FormLabel>
+            <div className="relative">
+              <FormControl>
+                <Textarea {...field} maxLength={128} className="pb-7" />
+              </FormControl>
+              <span className="pointer-events-none absolute bottom-2 right-3 text-xs text-slate-400 dark:text-slate-500">
+                {String(field.value || '').length}/128
+              </span>
+            </div>
             <FormMessage />
           </FormItem>
         )}
@@ -131,12 +206,12 @@ export default function ChatBasicSetting() {
       <SwitchFormField
         name={'prompt_config.quote'}
         label={t('quote')}
-        // tooltip={t('quoteTip')}
+        tooltip={t('quoteTip')}
       ></SwitchFormField>
       <SwitchFormField
         name={'prompt_config.keyword'}
         label={t('keyword')}
-        // tooltip={t('keywordTip')}
+        tooltip={t('keywordTip')}
       ></SwitchFormField>
       {/* <SwitchFormField
         name={'prompt_config.tts'}

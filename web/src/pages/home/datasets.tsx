@@ -13,7 +13,8 @@ import { SeeAllAppCard } from './application-card';
 
 export function Datasets() {
   const { t } = useTranslation();
-  const { kbs, loading } = useFetchNextKnowledgeListByPage();
+  const { kbs2: kbs, loading } = useFetchNextKnowledgeListByPage();
+
   const {
     datasetRenameLoading,
     initialDatasetName,

@@ -97,7 +97,8 @@ export function Sessions({
                     fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, serif`,
                   }}
                 >
-                  {t('chat.server')}
+                  {/* {t('chat.server')} */}
+                  {'恒丰纸业'}
                 </span>
 
                 {/* Tooltip */}

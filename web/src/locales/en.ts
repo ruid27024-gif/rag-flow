@@ -621,6 +621,8 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       delete: 'Delete',
     },
     chat: {
+      assistantNameTip: 'Name of the assistant',
+      descriptionTip: 'Description of the assistant',
       messagePlaceholder: 'Type your message here...',
       exit: 'Exit',
       multipleModels: 'Multiple models',

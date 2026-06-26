@@ -65,7 +65,7 @@ export default function ChatBasicSetting() {
           </FormItem>
         )}
       />
-      <FormField
+      {/* <FormField
         control={form.control}
         name={'prompt_config.empty_response'}
         render={({ field }) => (
@@ -90,6 +90,45 @@ export default function ChatBasicSetting() {
             </FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      /> */}
+
+      <FormField
+        control={form.control}
+        name="prompt_config.empty_response"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel tooltip={t('emptyResponseTip')}>
+              {t('emptyResponse')}
+            </FormLabel>
+            <FormControl>
+              <Textarea
+                {...field}
+                value={field.value ?? ''}
+                onChange={field.onChange}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name="prompt_config.prologue"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel tooltip={t('setAnOpenerTip')}>
+              {t('setAnOpener')}
+            </FormLabel>
+            <FormControl>
+              <Textarea
+                {...field}
+                value={field.value ?? ''}
+                onChange={field.onChange}
+              />
             </FormControl>
             <FormMessage />
           </FormItem>

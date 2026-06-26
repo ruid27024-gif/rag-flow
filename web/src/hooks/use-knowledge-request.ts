@@ -15,6 +15,7 @@ import kbService, {
   deleteKnowledgeGraph,
   getKnowledgeGraph,
   listDataset,
+  listDataset2,
   listTag,
   removeTag,
   renameTag,
@@ -120,13 +121,74 @@ export const useTestRetrieval = () => {
   };
 };
 
+// export const useFetchNextKnowledgeListByPage = () => {
+//   const { searchString, handleInputChange } = useHandleSearchChange();
+//   const { pagination, setPagination } = useGetPaginationWithRouter();
+//   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
+//   const { filterValue, handleFilterSubmit } = useHandleFilterSubmit();
+
+//   const { data, isFetching: loading } = useQuery<IKnowledgeResult>({
+//     queryKey: [
+//       KnowledgeApiAction.FetchKnowledgeListByPage,
+//       {
+//         debouncedSearchString,
+//         ...pagination,
+//         filterValue,
+//       },
+//     ],
+//     initialData: {
+//       kbs: [],
+//       total: 0,
+//     },
+//     gcTime: 0,
+//     queryFn: async () => {
+//       const { data } = await listDataset(
+//         {
+//           keywords: debouncedSearchString,
+//           page_size: pagination.pageSize,
+//           page: pagination.current,
+//         },
+//         {
+//           owner_ids: filterValue.owner,
+//         },
+//       );
+
+//       return data?.data;
+//     },
+//   });
+
+//   const onInputChange: React.ChangeEventHandler<HTMLInputElement> = useCallback(
+//     (e) => {
+//       // setPagination({ page: 1 }); // TODO: This results in repeated requests
+//       handleInputChange(e);
+//     },
+//     [handleInputChange],
+//   );
+
+//   return {
+//     ...data,
+//     searchString,
+//     handleInputChange: onInputChange,
+//     pagination: { ...pagination, total: data?.total },
+//     setPagination,
+//     loading,
+//     filterValue,
+//     handleFilterSubmit,
+//   };
+// };
+
 export const useFetchNextKnowledgeListByPage = () => {
   const { searchString, handleInputChange } = useHandleSearchChange();
   const { pagination, setPagination } = useGetPaginationWithRouter();
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
   const { filterValue, handleFilterSubmit } = useHandleFilterSubmit();
 
-  const { data, isFetching: loading } = useQuery<IKnowledgeResult>({
+  const { data, isFetching: loading } = useQuery<
+    IKnowledgeResult & {
+      kbs2: IKnowledgeResult['kbs'];
+      total2: number;
+    }
+  >({
     queryKey: [
       KnowledgeApiAction.FetchKnowledgeListByPage,
       {
@@ -138,27 +200,46 @@ export const useFetchNextKnowledgeListByPage = () => {
     initialData: {
       kbs: [],
       total: 0,
+      kbs2: [],
+      total2: 0,
     },
     gcTime: 0,
     queryFn: async () => {
-      const { data } = await listDataset(
-        {
-          keywords: debouncedSearchString,
-          page_size: pagination.pageSize,
-          page: pagination.current,
-        },
-        {
-          owner_ids: filterValue.owner,
-        },
-      );
+      const params = {
+        keywords: debouncedSearchString,
+        page_size: pagination.pageSize,
+        page: pagination.current,
+      };
 
-      return data?.data;
+      const body = {
+        owner_ids: filterValue.owner,
+      };
+
+      const [oldRes, newRes] = await Promise.all([
+        listDataset(params, body),
+        listDataset2(params, body),
+      ]);
+
+      const oldData = oldRes.data?.data || {
+        kbs: [],
+        total: 0,
+      };
+
+      const newData = newRes.data?.data || {
+        kbs: [],
+        total: 0,
+      };
+
+      return {
+        ...oldData,
+        kbs2: newData.kbs || [],
+        total2: newData.total || 0,
+      };
     },
   });
 
   const onInputChange: React.ChangeEventHandler<HTMLInputElement> = useCallback(
     (e) => {
-      // setPagination({ page: 1 }); // TODO: This results in repeated requests
       handleInputChange(e);
     },
     [handleInputChange],
@@ -166,6 +247,8 @@ export const useFetchNextKnowledgeListByPage = () => {
 
   return {
     ...data,
+    kbs2: data?.kbs2 || [],
+    total2: data?.total2 || 0,
     searchString,
     handleInputChange: onInputChange,
     pagination: { ...pagination, total: data?.total },

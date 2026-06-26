@@ -168,6 +168,12 @@ const MarkdownContent = ({
     return result.replace(/^\n+/, '');
   }, []);
 
+  const removeEmptySourceSections = (text: string) =>
+    text.replace(
+      /\n*<source-heading>[^<]+<\/source-heading>\s*(?:该来源未检索到相关内容。|该来源未检索到相关内容)\s*/g,
+      '\n\n',
+    );
+
   // const contentWithCursor = useMemo(() => {
   //   let text = content || '';
 
@@ -196,6 +202,7 @@ const MarkdownContent = ({
 
     // 只替换 think 外面的来源标题
     text = replaceSourceHeading(text);
+    text = removeEmptySourceSections(text);
 
     text = DOMPurify.sanitize(text, {
       ADD_TAGS: ['think', 'section', 'source-heading'],

@@ -67,7 +67,7 @@ export function Header() {
   const tagsData = useMemo(() => {
     const list = [
       { path: Routes.Root, name: t('header.Root'), icon: House },
-      // { path: Routes.Datasets, name: t('header.dataset'), icon: Library },
+      { path: Routes.Datasets, name: t('header.dataset'), icon: Library },
       { path: Routes.Chats, name: t('header.chat'), icon: MessageSquareText },
       // {
       //   path: 'create-dialog-api',
@@ -82,11 +82,11 @@ export function Header() {
     ];
 
     if (is_admin_user || role_level === 2) {
-      list.push({
-        path: Routes.Datasets,
-        name: t('header.dataset'),
-        icon: Library,
-      });
+      // list.push({
+      //   path: Routes.Datasets,
+      //   name: t('header.dataset'),
+      //   icon: Library,
+      // });
       list.push({
         path: Routes.AdminFiles,
         name: t('header.admin'),
