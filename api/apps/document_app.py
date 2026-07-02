@@ -335,7 +335,7 @@ async def upload():
     if "file" not in files:
         return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
 
-
+    
     file_objs = files.getlist("file")
     for file_obj in file_objs:
         if file_obj.filename == "":

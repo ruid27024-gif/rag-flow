@@ -2,7 +2,6 @@ import EmbedDialog from '@/components/embed-dialog';
 import { useShowEmbedModal } from '@/components/embed-dialog/use-show-embed-dialog';
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form } from '@/components/ui/form';
 import { DatasetMetadata, SharedFrom } from '@/constants/chat';
 import { useSetModalState } from '@/hooks/common-hooks';
@@ -215,35 +214,80 @@ export default function Chat() {
         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
         className="h-full flex flex-col pr-5"
       >
-        <div className="flex flex-1 min-h-0 pb-9">
-          {/* 左边栏 */}
+        {/* <div className="flex flex-1 min-h-0 pb-1">
+
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
             switchSettingVisible={switchSettingVisible}
-          ></Sessions>
+          ></Sessions> */}
 
-          {/* 右侧聊天栏目 */}
-          <Card className="flex-1 min-w-0 bg-transparent border h-full">
-            {/* 两个大卡片）默认从左到右横向排列 */}
+        <div className="flex flex-1 min-h-0 pb-1 overflow-hidden">
+          {/* 左侧会话列表：自己内部滚动 */}
+          <Sessions
+            hasSingleChatBox={hasSingleChatBox}
+            handleConversationCardClick={handleSessionClick}
+            switchSettingVisible={switchSettingVisible}
+          />
+
+          {/* 右侧整体区域 */}
+          <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+            {/* 外部 Header，不参与滚动 */}
+            <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div
+                  className={cn('flex items-center gap-1', {
+                    hidden: settingVisible,
+                  })}
+                >
+                  <div className="w-auto">
+                    <KnowledgeBaseFormField hideLabel />
+                  </div>
+
+                  <SavingButton
+                    loading={loading}
+                    className="bg-white text-black hover:bg-gray-100 border"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 主内容区 */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              {/* 左侧聊天主区域 */}
+              <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+                <SingleChatBox
+                  controller={controller}
+                  stopOutputMessage={stopOutputMessage}
+                  conversation={currentConversation}
+                />
+              </div>
+
+              {/* 右侧设置面板 */}
+              <ChatSettings
+                className={cn('shrink-0', {
+                  hidden: !settingVisible,
+                })}
+                switchSettingVisible={switchSettingVisible}
+                onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+                loading={loading}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* <Card className="flex-1 min-w-0 bg-transparent border h-full">
+
             <CardContent className="flex p-0 h-full">
-              {/* 左边的聊天主面板 */}
+
               <Card className="flex flex-col flex-1 bg-transparent min-w-0">
-                {/* 聊天头部 */}
-                {/* <CardHeader
-                  className={cn('p-5', { 'border-b': hasSingleChatBox })}
-                > */}
+
 
                 <CardHeader className={cn('py-2 px-5')}>
-                  {/* <CardTitle className="flex justify-between items-center text-base">
-                    <div className="flex items-center gap-4 flex-1 min-w-0 ml-[-8px]"> */}
+
                   <CardTitle className="flex justify-between items-center text-base">
                     <div className="flex items-center gap-4 flex-1 min-w-0 ml-[-8px]">
-                      {/* <div
-                        className={cn('flex items-center gap-2', {
-                          hidden: settingVisible,
-                        })}
-                      > */}
+
                       <div
                         className={cn('flex items-center gap-2', {
                           hidden: settingVisible,
@@ -260,12 +304,10 @@ export default function Chat() {
                       </div>
                     </div>
 
-                    {/* <Button variant={'ghost'} onClick={switchDebugMode}>
-                      <ArrowUpRight /> {t('chat.multipleModels')}
-                    </Button> */}
+
                   </CardTitle>
                 </CardHeader>
-                {/* 消息展示区 */}
+
                 <CardContent className="flex-1 p-0 min-h-[300px] pt-0">
                   <SingleChatBox
                     controller={controller}
@@ -274,7 +316,7 @@ export default function Chat() {
                   ></SingleChatBox>
                 </CardContent>
               </Card>
-              {/* 聊天设置右边栏 */}
+
               <ChatSettings
                 className={cn({ hidden: !settingVisible })}
                 switchSettingVisible={switchSettingVisible}
@@ -283,7 +325,7 @@ export default function Chat() {
               ></ChatSettings>
             </CardContent>
           </Card>
-        </div>
+        </div> */}
         {embedVisible && (
           <EmbedDialog
             visible={embedVisible}

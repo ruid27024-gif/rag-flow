@@ -27,6 +27,13 @@ import { UseRenameDocumentShowType } from './use-rename-document';
 import { isParserRunning } from './utils';
 
 const Fields = ['name', 'size', 'type', 'create_time', 'update_time'];
+const FieldNameMap: Record<string, string> = {
+  name: '名称',
+  size: '大小',
+  type: '类型',
+  create_time: '创建时间',
+  update_time: '更新时间',
+};
 
 const FunctionMap = {
   size: formatFileSize,
@@ -227,7 +234,8 @@ export function DatasetActionCell({
                 .map(([key, value], idx) => {
                   return (
                     <li key={idx} className="flex gap-2">
-                      {key}:
+                      {/* {key}: */}
+                      {FieldNameMap[key] || key}:
                       <div>
                         {key in FunctionMap
                           ? FunctionMap[key as keyof typeof FunctionMap](value)

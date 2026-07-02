@@ -143,6 +143,7 @@ export function Sessions({
             avatar={data.icon}
             name={data.name}
             className="size-8"
+            color={6}
           />
           <span className="flex-1 truncate text-gray-900 dark:text-white">
             {data.name}

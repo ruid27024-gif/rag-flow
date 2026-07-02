@@ -11,6 +11,7 @@ import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { IClientConversation } from '@/interfaces/database/chat';
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import { useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   useGetSendButtonDisabled,
   useSendButtonDisabled,
@@ -73,11 +74,17 @@ export function SingleChatBox({
 
   // ✅ 新增：处理建议列表点击的函数
   // ✅ 修改：构造一个符合 ChangeEventHandler 的事件对象
+  // 单击：填入输入框
   const handleSuggestionClick = (suggestion: string) => {
     setValue(suggestion);
+  };
 
-    // 2. 直接调用现有的发送逻辑
-    handlePressEnter();
+  const handleSuggestionDoubleClick = (suggestion: string) => {
+    flushSync(() => {
+      setValue(suggestion);
+    });
+
+    handlePressEnter(suggestion);
   };
 
   // import { SunIcon, SmileIcon, MoonIcon, StarIcon } from 'lucide-react';
@@ -184,36 +191,120 @@ export function SingleChatBox({
           : StarIcon;
 
   return (
-    <section className="flex flex-col p-5 h-full">
-      {/* 消息滚动区域 */}
-      {/* 消息滚动区域 */}
-      <div ref={messageContainerRef} className="flex-1 overflow-auto min-h-0">
-        <div className="w-full pr-5">
+    // <section className="flex flex-col p-5 h-full">
+    //   {/* 消息滚动区域 */}
+    //   {/* 消息滚动区域 */}
+    //   <div ref={messageContainerRef} className="flex-1 overflow-auto min-h-0">
+    //     <div className="w-full pr-5">
+    //       {/* 🎯 核心判断：没有对话ID 或 有对话ID但消息为空时显示欢迎页 */}
+    //       {!conversationId || derivedMessages.length === 1 ? (
+    //         // ✅ 情况 A：显示带昵称的欢迎页
+    //         /* 外层容器 */
+    //         <div
+    //           className="
+    //       relative overflow-hidden
+    //       p-8
+    //       py-16
+    //       rounded-3xl
+    //       /* 修改点：使用 cyan-50 和 sky-50，看起来更像冰蓝色 */
+    //       bg-gradient-to-b from-cyan-50/50 to-white dark:from-sky-900/20 dark:to-gray-900
+    //       /* 修改点：边框使用 cyan-100 */
+    //       border border-cyan-100 dark:border-sky-900/30
+    //       text-center space-y-4
+    //       mt-12
+    //     "
+    //         >
+    //           {/* 修改点：光晕使用 cyan-300，更亮更透 */}
+    //           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-cyan-300/20 blur-3xl rounded-full pointer-events-none" />
+
+    //           <h1
+    //             className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight"
+    //             style={{
+    //               fontFamily: `Georgia, "Times New Roman", serif`,
+    //             }}
+    //           >
+    //             恒丰纸业 智能小助手
+    //             <span className="ml-2 inline-block animate-bounce text-green-600">
+    //               <TimeIcon />
+    //             </span>
+    //           </h1>
+
+    //           <p className="relative text-lg text-gray-600 dark:text-gray-400">
+    //             欢迎回来，
+    //             <span className="font-bold text-pink-700 dark:text-green-400">
+    //               {userInfo?.nickname}
+    //             </span>
+    //             <span className="mx-2 opacity-40">|</span>
+    //             <span className="font-mono text-sm text-green-700 bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded">
+    //               {hours}:{minutes}
+    //             </span>
+    //           </p>
+    //         </div>
+    //       ) : (
+    //         // ✅ 情况 B：有对话ID且消息不为空，正常渲染对话气泡
+    //         derivedMessages?.map((message, i) => (
+    //           <MessageItem
+    //             loading={
+    //               message.role === MessageType.Assistant &&
+    //               sendLoading &&
+    //               derivedMessages.length - 1 === i
+    //             }
+    //             key={buildMessageUuidWithRole(message)}
+    //             item={message}
+    //             nickname={userInfo.nickname}
+    //             avatar={userInfo.avatar}
+    //             avatarDialog={currentDialog.icon}
+    //             reference={buildMessageItemReference(
+    //               {
+    //                 message: derivedMessages,
+    //                 reference: conversation.reference,
+    //               },
+    //               message,
+    //             )}
+    //             clickDocumentButton={clickDocumentButton}
+    //             index={i}
+    //             removeMessageById={removeMessageById}
+    //             regenerateMessage={regenerateMessage}
+    //             sendLoading={sendLoading}
+    //             visibleAvatar={false}
+    //             onSuggestionClick={handleSuggestionClick}
+    //             onSuggestionDoubleClick={handleSuggestionDoubleClick}
+    //           />
+    //         ))
+    //       )}
+    //     </div>
+    //     {/* 用于滚动到底部的锚点 */}
+    //     <div ref={scrollRef} />
+    //   </div>
+    <section className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+      {/* 消息滚动区域：这一层是全宽的，所以滚动条会在最右侧 */}
+      <div
+        ref={messageContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+      >
+        {/* 内容居中区域：只控制内容宽度，不负责滚动 */}
+        <div className="max-w-[860px] mx-auto w-full px-5 pt-0 pb-4">
           {/* 🎯 核心判断：没有对话ID 或 有对话ID但消息为空时显示欢迎页 */}
           {!conversationId || derivedMessages.length === 1 ? (
-            // ✅ 情况 A：显示带昵称的欢迎页
-            /* 外层容器 */
             <div
               className="
-          relative overflow-hidden
-          p-8                    
-          py-16                  
-          rounded-3xl
-          /* 修改点：使用 cyan-50 和 sky-50，看起来更像冰蓝色 */
-          bg-gradient-to-b from-cyan-50/50 to-white dark:from-sky-900/20 dark:to-gray-900
-          /* 修改点：边框使用 cyan-100 */
-          border border-cyan-100 dark:border-sky-900/30
-          text-center space-y-4
-          mt-12
-        "
+                relative overflow-hidden
+                p-8
+                py-16
+                rounded-3xl
+                bg-gradient-to-b from-green-50/50 to-white dark:from-green-900/20 dark:to-gray-900
+                border border-green-100 dark:border-green-900/30
+                text-center space-y-4
+                mt-12
+              "
             >
-              {/* 修改点：光晕使用 cyan-300，更亮更透 */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-cyan-300/20 blur-3xl rounded-full pointer-events-none" />
+              {/* 装饰性背景光晕 */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-green-400/20 blur-3xl rounded-full pointer-events-none" />
 
               <h1
                 className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight"
                 style={{
-                  fontFamily: `Georgia, "Times New Roman", serif`,
+                  fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, Georgia, "Times New Roman", serif`,
                 }}
               >
                 恒丰纸业 智能小助手
@@ -234,7 +325,6 @@ export function SingleChatBox({
               </p>
             </div>
           ) : (
-            // ✅ 情况 B：有对话ID且消息不为空，正常渲染对话气泡
             derivedMessages?.map((message, i) => (
               <MessageItem
                 loading={
@@ -261,15 +351,39 @@ export function SingleChatBox({
                 sendLoading={sendLoading}
                 visibleAvatar={false}
                 onSuggestionClick={handleSuggestionClick}
+                onSuggestionDoubleClick={handleSuggestionDoubleClick}
               />
             ))
           )}
+
+          {/* 用于滚动到底部的锚点 */}
+          <div ref={scrollRef} />
         </div>
-        {/* 用于滚动到底部的锚点 */}
-        <div ref={scrollRef} />
       </div>
 
-      {/* 底部输入框 */}
+      {/* 底部输入框：固定在底部，不参与滚动 */}
+      <div className="shrink-0 w-full bg-background px-5 pb-4">
+        <div className="max-w-[860px] mx-auto w-full">
+          <NextMessageInput
+            disabled={disabled}
+            sendDisabled={sendDisabled}
+            sendLoading={sendLoading}
+            value={value}
+            onInputChange={handleInputChange}
+            onPressEnter={handlePressEnter}
+            conversationId={conversationId}
+            createConversationBeforeUploadDocument={
+              createConversationBeforeUploadDocument
+            }
+            stopOutputMessage={stopOutputMessage}
+            onUpload={handleUploadFile}
+            isUploading={isUploading}
+            removeFile={removeFile}
+          />
+        </div>
+      </div>
+
+      {/* 
       <NextMessageInput
         disabled={disabled}
         sendDisabled={sendDisabled}
@@ -285,7 +399,7 @@ export function SingleChatBox({
         onUpload={handleUploadFile}
         isUploading={isUploading}
         removeFile={removeFile}
-      />
+      /> */}
 
       {/* PDF 预览弹窗 */}
       {visible && (

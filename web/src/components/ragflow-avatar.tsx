@@ -50,11 +50,14 @@ export const RAGFlowAvatar = memo(
     }
   >(({ name, avatar, isPerson = false, color, className, ...props }, ref) => {
     // Generate initial letter logic
+    const isGreenSvgIcon = color === 6;
     const getInitials = (name?: string) => {
       if (color === 3) {
         return '参';
       }
-
+      if (color === 6) {
+        return '';
+      }
       if (typeof name !== 'string' || !name) return '';
       const parts = name?.trim().split(/\s+/);
       if (parts.length === 1) {
@@ -72,7 +75,10 @@ export const RAGFlowAvatar = memo(
     let from, to;
 
     // 判断 color 是否为数字 (1, 2, 3...)
-    if (typeof color === 'number') {
+    if (color === 6) {
+      from = '#064E3B';
+      to = '#047857';
+    } else if (typeof color === 'number') {
       // 获取对应的颜色配置
       // 注意：数组索引是从 0 开始的，所以用 color - 1
       console.log(color);
@@ -137,7 +143,7 @@ export const RAGFlowAvatar = memo(
         className={cn(className, { 'rounded-md': !isPerson })}
       >
         <AvatarImage src={avatar} />
-        <AvatarFallback
+        {/* <AvatarFallback
           ref={(node) => {
             fallbackRef.current = node;
             calculateFontSize();
@@ -155,6 +161,35 @@ export const RAGFlowAvatar = memo(
           }}
         >
           {initials}
+        </AvatarFallback> */}
+        <AvatarFallback
+          ref={(node) => {
+            fallbackRef.current = node;
+            calculateFontSize();
+          }}
+          className={cn(
+            'flex items-center justify-center overflow-hidden',
+            isGreenSvgIcon
+              ? 'bg-emerald-50 text-emerald-900 border border-emerald-100'
+              : 'bg-gradient-to-b text-white',
+            { 'rounded-md': !isPerson },
+          )}
+          style={{
+            backgroundImage: isGreenSvgIcon
+              ? 'none'
+              : `linear-gradient(to bottom, ${from}, ${to})`,
+            fontSize: isGreenSvgIcon ? undefined : fontSize,
+          }}
+        >
+          {isGreenSvgIcon ? (
+            <img
+              src="/hf-remove-bg-io.png"
+              alt="恒丰纸业"
+              className="h-[72%] w-[72%] object-contain"
+            />
+          ) : (
+            initials
+          )}
         </AvatarFallback>
       </Avatar>
     );

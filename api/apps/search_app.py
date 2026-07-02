@@ -185,3 +185,72 @@ async def rm():
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
+    
+@manager.route("/init_search_app", methods=["post"])  # noqa: F821
+@login_required
+async def init_search_app():
+    """
+    初始化搜索应用：
+    - 如果当前用户已存在名称为“搜索”的有效应用，则直接返回
+    - 如果不存在，则创建一个名称为“搜索”的应用
+    """
+    try:
+        default_name = "搜索"
+        default_description = "默认搜索应用"
+
+        e, _ = TenantService.get_by_id(current_user.id)
+        if not e:
+            return get_data_error_result(message="Authorized identity.")
+
+        # 1. 先查询是否已经存在名称为“搜索”的有效应用
+        existed_search = (
+            SearchService.model
+            .select()
+            .where(
+                SearchService.model.tenant_id == current_user.id,
+                SearchService.model.name == default_name,
+                SearchService.model.status == StatusEnum.VALID.value,
+            )
+            .first()
+        )
+
+        if existed_search:
+            # 如果存在，直接返回已有应用
+            search_detail = SearchService.get_detail(existed_search.id)
+
+            return get_json_result(
+                data={
+                    "search_id": existed_search.id,
+                    "created": False,
+                    "detail": search_detail,
+                }
+            )
+
+        # 2. 不存在则创建
+        search_id = get_uuid()
+
+        req = {
+            "id": search_id,
+            "name": default_name,
+            "description": default_description,
+            "tenant_id": current_user.id,
+            "created_by": current_user.id,
+        }
+
+        with DB.atomic():
+            if not SearchService.save(**req):
+                return get_data_error_result(message="Failed to create Search App.")
+
+        # 3. 创建后再查询详情返回
+        search_detail = SearchService.get_detail(search_id)
+
+        return get_json_result(
+            data={
+                "search_id": search_id,
+                "created": True,
+                "detail": search_detail,
+            }
+        )
+
+    except Exception as e:
+        return server_error_response(e)

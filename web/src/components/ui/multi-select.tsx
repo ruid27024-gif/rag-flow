@@ -448,7 +448,7 @@ export const MultiSelect = React.forwardRef<
                         onSelect={handleClear}
                         className="flex-1 justify-center cursor-pointer"
                       >
-                        Clear
+                        清空
                       </CommandItem>
                       <Separator
                         orientation="vertical"

@@ -7,7 +7,7 @@ import {
   UploadResponseDataType,
 } from '@/interfaces/database/chat';
 import classNames from 'classnames';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 
 import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,7 @@ interface IProps extends Partial<IRemoveMessageById>, IRegenerateMessage {
   showLikeButton?: boolean;
   showLoudspeaker?: boolean;
   onSuggestionClick?: (text: string) => void;
+  onSuggestionDoubleClick?: (text: string) => void;
 }
 
 const MessageItem = ({
@@ -55,12 +56,14 @@ const MessageItem = ({
   showLoudspeaker = true,
   visibleAvatar = true,
   onSuggestionClick,
+  onSuggestionDoubleClick,
 }: IProps) => {
   const { theme } = useTheme();
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
 
   console.log('🔍 item:', item);
+  console.log('🔍 reference:', reference);
   // 上传的文件
   const uploadedFiles = useMemo(() => {
     return item?.files ?? [];
@@ -104,6 +107,10 @@ const MessageItem = ({
     regenerateMessage?.(item);
   }, [regenerateMessage, item]);
 
+  const suggestionClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
   //   const mockDownloadInfo = {
   //   base64: "JVBERi0xLjQKJeLjz9MKMiAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMyAwIFIgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFsgNCAwIFIgXSAvQ291bnQgMSA+PgplbmRvYmoKNCAwIG0KPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAzIDAgUiAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvQ29udGVudHMgNiAwIFIgPj4KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago2IDAgbwo8PCAvTGVuZ3RoIDQ0ID4+CnN0cmVhbQoKvUYxIDEyIFRmCjEwMCAxMDAgVGQKKFJhZ0Zsb3chKSBUagplbmRzdHJlYW0KZW5kb2JqCjEgMCBvYmoKPDwgL1R5cGUgL0NhdGFsb2cgL1BhZ2VzIDMgMCBSID4+CmVuZG9iago=",
   //   filename: "mock-document.pdf",
@@ -146,7 +153,13 @@ const MessageItem = ({
             ))}
 
           {/* // 消息上的按钮 */}
-          <section className="flex gap-2 flex-1 flex-col">
+          {/* <section className="flex gap-2 flex-1 flex-col"> */}
+          <section
+            className={classNames('flex gap-2 flex-col min-w-0', {
+              'flex-1': item.role === MessageType.Assistant,
+              'items-end': item.role === MessageType.User,
+            })}
+          >
             {isAssistant ? (
               index !== 0 && (
                 <AssistantGroupButton
@@ -155,7 +168,8 @@ const MessageItem = ({
                   prompt={item.prompt}
                   showLikeButton={showLikeButton}
                   audioBinary={item.audio_binary}
-                  showLoudspeaker={showLoudspeaker}
+                  // showLoudspeaker={showLoudspeaker}
+                  showLoudspeaker={false}
                 ></AssistantGroupButton>
               )
             ) : (
@@ -211,7 +225,7 @@ const MessageItem = ({
                 list={referenceDocumentList}
               ></ReferenceDocumentList>
             )}
-            {isAssistant && suggestionsList.length > 0 && (
+            {/* {isAssistant && suggestionsList.length > 0 && (
               <div className="mt-2.5 flex flex-col gap-2">
                 {suggestionsList.map((suggestion, index) => (
                   <span
@@ -226,6 +240,94 @@ const MessageItem = ({
                   >
                     {suggestion}
                   </span>
+                ))}
+              </div>
+            )} */}
+
+            {isAssistant && suggestionsList.length > 0 && (
+              <div
+                className="
+                  mt-4
+                  w-full
+                  max-w-[850px]
+                  border-t
+                  border-gray-200/70
+                  dark:border-gray-700/50
+                "
+              >
+                {suggestionsList.map((suggestion, index) => (
+                  <div
+                    key={index}
+                    onClick={() => {
+                      if (suggestionClickTimerRef.current) {
+                        clearTimeout(suggestionClickTimerRef.current);
+                      }
+
+                      suggestionClickTimerRef.current = setTimeout(() => {
+                        // 单击：只进入输入框
+                        onSuggestionClick?.(suggestion);
+                        suggestionClickTimerRef.current = null;
+                      }, 220);
+                    }}
+                    onDoubleClick={() => {
+                      if (suggestionClickTimerRef.current) {
+                        clearTimeout(suggestionClickTimerRef.current);
+                        suggestionClickTimerRef.current = null;
+                      }
+
+                      // 双击：直接发送
+                      onSuggestionDoubleClick?.(suggestion);
+                    }}
+                    className="
+                      group
+                      flex
+                      cursor-pointer
+                      select-none
+                      items-start
+                      gap-3
+                      border-b
+                      border-gray-200/70
+                      py-3
+                      text-sm
+                      leading-6
+                      text-gray-900
+                      transition-colors
+                      hover:bg-gray-50/70
+                      dark:border-gray-700/50
+                      dark:text-gray-100
+                      dark:hover:bg-white/5
+                    "
+                  >
+                    {/* 左侧小箭头 */}
+                    <span
+                      className="
+                        mt-0.5
+                        shrink-0
+                        text-base
+                        leading-6
+                        text-gray-400
+                        transition-colors
+                        group-hover:text-gray-600
+                        dark:text-gray-500
+                        dark:group-hover:text-gray-300
+                      "
+                    >
+                      ↳
+                    </span>
+
+                    {/* 建议文字 */}
+                    <span
+                      className="
+                        min-w-0
+                        flex-1
+                        break-words
+                        text-gray-900
+                        dark:text-gray-100
+                      "
+                    >
+                      {suggestion}
+                    </span>
+                  </div>
                 ))}
               </div>
             )}

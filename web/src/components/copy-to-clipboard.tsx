@@ -7,6 +7,10 @@ import { CopyToClipboard as Clipboard, Props } from 'react-copy-to-clipboard';
 const CopyToClipboard = ({ text }: Props) => {
   const [copied, setCopied] = useState(false);
   const { t } = useTranslate('common');
+  // 使用捕获组 () 来“记住”中间的内容
+  const filteredText = text
+    .replace(/<think>([\s\S]*?)<\/think>/gi, '$1')
+    .trim();
 
   const handleCopy = () => {
     setCopied(true);
@@ -17,7 +21,7 @@ const CopyToClipboard = ({ text }: Props) => {
 
   return (
     <Tooltip title={copied ? t('copied') : t('copy')}>
-      <Clipboard text={text} onCopy={handleCopy}>
+      <Clipboard text={filteredText} onCopy={handleCopy}>
         {copied ? <CheckOutlined /> : <CopyOutlined />}
       </Clipboard>
     </Tooltip>

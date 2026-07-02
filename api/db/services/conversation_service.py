@@ -89,6 +89,9 @@ def structure_answer(conv, ans, message_id, session_id):
     if conv.reference:
         conv.reference[-1] = reference
 
+    print(".......................................................................................")
+    print(reference)
+    print(".......................................................................................")
     print(ans)
     return ans
 

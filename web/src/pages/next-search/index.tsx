@@ -179,6 +179,7 @@ import SearchingPage from './searching';
 //   );
 // }
 
+import { FileSearch, Search } from 'lucide-react';
 import { useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -349,35 +350,57 @@ export default function SearchPage() {
   return (
     <section className="relative h-full">
       <PageHeader>
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink onClick={navigateToSearchList}>
-                <span
+        <div className="mx-4 mt-3 mb-2">
+          <Breadcrumb>
+            <BreadcrumbList className="flex items-center gap-1 text-sm">
+              <BreadcrumbItem>
+                <BreadcrumbLink
+                  onClick={navigateToSearchList}
                   className="
-                    ml-4
-                    text-lg font-bold
-                    bg-gradient-to-r from-blue-600 to-cyan-500
-                    bg-clip-text text-transparent
-                    group-hover:text-slate-900 dark:group-hover:text-white
-                    transition-all duration-300
-                    cursor-pointer
-                  "
+                  group inline-flex h-7 items-center gap-1.5 rounded-md px-2
+                  text-emerald-600 dark:text-emerald-400
+                  transition-colors cursor-pointer
+                  hover:text-emerald-700 dark:hover:text-emerald-300
+                "
                 >
-                  {t('header.search')}
-                </span>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
+                  <Search className="h-4 w-4 shrink-0 text-emerald-500 dark:text-emerald-300 transition-transform duration-200 group-hover:scale-105" />
 
-            <BreadcrumbSeparator className="translate-y-[7px]" />
+                  <span
+                    className="
+                    font-semibold
+                    transition-all duration-200
+                    group-hover:underline
+                    group-hover:decoration-emerald-600
+                    dark:group-hover:decoration-emerald-300
+                    group-hover:underline-offset-4
+                  "
+                  >
+                    {t('header.search')}
+                  </span>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
 
-            <BreadcrumbItem>
-              <BreadcrumbPage className="w-28 whitespace-nowrap text-ellipsis overflow-hidden translate-y-[3px] text-gray-400 dark:text-gray-500">
-                {SearchData?.name}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+              <BreadcrumbSeparator className="text-gray-300 dark:text-gray-600" />
+
+              <BreadcrumbItem>
+                <BreadcrumbPage
+                  title={SearchData?.name}
+                  className="
+                  inline-flex h-7 max-w-[240px] items-center gap-1.5
+                  truncate rounded-md px-2
+                  cursor-default select-none
+                  font-medium
+                  text-blue-600 dark:text-blue-400
+                "
+                >
+                  <FileSearch className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+
+                  <span className="truncate">{SearchData?.name}</span>
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
       </PageHeader>
 
       <div className="flex gap-3 w-full bg-bg-base">

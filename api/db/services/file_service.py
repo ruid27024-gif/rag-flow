@@ -105,56 +105,6 @@ class FileService(CommonService):
         except Exception as e:
             print(f"Error fetching team root ids: {e}")
             return []
-    
-    @classmethod
-    @DB.connection_context()
-    def get_root_self(cls, tenant_id, pf_id, page_number, items_per_page, orderby, desc, keywords):
-        if keywords:
-            files = cls.model.select().where(
-                (cls.model.tenant_id == tenant_id),
-                (cls.model.id == pf_id),
-                (fn.LOWER(cls.model.name).contains(keywords.lower()))
-            )
-        else:
-            files = cls.model.select().where(
-                (cls.model.tenant_id == tenant_id),
-                (cls.model.id == pf_id)
-            )
-
-        count = files.count()
-
-        if desc in [True, "true", "True", "1", 1]:
-            files = files.order_by(cls.model.getter_by(orderby).desc())
-        else:
-            files = files.order_by(cls.model.getter_by(orderby).asc())
-
-        files = files.paginate(page_number, items_per_page)
-
-        res_files = list(files.dicts())
-
-        for file in res_files:
-            if file["type"] == FileType.FOLDER.value:
-                file["size"] = cls.get_folder_size(file["id"])
-                file["kbs_info"] = []
-
-                children = list(
-                    cls.model.select()
-                    .where(
-                        (cls.model.parent_id == file["id"]),
-                        ~(cls.model.id == file["id"]),
-                    )
-                    .dicts()
-                )
-
-                file["has_child_folder"] = any(
-                    value["type"] == FileType.FOLDER.value for value in children
-                )
-                continue
-
-            kbs_info = cls.get_kb_id_by_file_id(file["id"])
-            file["kbs_info"] = kbs_info
-
-        return res_files, count
 
     # TODO 新增的
     @classmethod
@@ -512,73 +462,146 @@ class FileService(CommonService):
             print("1、2级表知识库写入根路径失败")
         return file
 
+    # @classmethod
+    # @DB.connection_context()
+    # def get_kb_folder(cls, tenant_id):
+    #     # Get dataset folder for tenant
+    #     # Args:
+    #     #     tenant_id: Tenant ID
+    #     # Returns:
+    #     #     Knowledge base folder dictionary
+    #     root_folder = cls.get_root_folder(tenant_id)
+    #     root_id = root_folder["id"]
+    #     kb_folder = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == root_id), (cls.model.name == KNOWLEDGEBASE_FOLDER_NAME)).first()
+    #     print("------------------------------------------------------------------------------")
+    #     print(kb_folder)
+    #     if not kb_folder:
+    #         # 没有和就创建一个 .knowladge
+    #         kb_folder = cls.new_a_file_from_kb(tenant_id, KNOWLEDGEBASE_FOLDER_NAME, root_id)
+    #         print(kb_folder.id)
+    #         print("-------------------------尚未存在------------------------------")
+
+    #         # try:
+    #         # 管理员只放1级表
+    #         if AdminUser.query(user_id=tenant_id, role_level=1):
+    #             knowladge_id = kb_folder.id
+    #             file = {
+    #                 "id": knowladge_id,
+    #                 "parent_id": root_id,
+    #                 "tenant_id": tenant_id,
+    #                 "created_by": tenant_id,
+    #                 "name": KNOWLEDGEBASE_FOLDER_NAME,
+    #                 "type": kb_folder.type,
+    #                 "size": kb_folder.size,
+    #                 "location": kb_folder.location,
+    #                 "source_type": FileSource.KNOWLEDGEBASE,
+    #             }
+    #             FileAdminService.save(**file)
+    #         # 二级管理员创建后挂接到自己的pf_id上
+    #         if AdminUser.query(user_id=tenant_id, role_level=2):
+    #             knowladge_id = kb_folder.id
+    #             file = {
+    #                 "id": knowladge_id,
+    #                 "parent_id": root_id,
+    #                 "tenant_id": tenant_id,
+    #                 "created_by": tenant_id,
+    #                 "name": KNOWLEDGEBASE_FOLDER_NAME,
+    #                 "type": kb_folder["type"],
+    #                 "size": kb_folder["size"],
+    #                 "location": kb_folder["location"],
+    #                 "source_type": FileSource.KNOWLEDGEBASE,
+    #             }
+    #             FileAdminService.save(**file)
+    #             print("------------------------------------------------------------------------------")
+    #             FileGroupService.save(**file)
+    #         # 普通用户
+    #         else:
+                
+    #             knowladge_id = kb_folder.id
+    #             file = {
+    #                 "id": knowladge_id,
+    #                 "parent_id": root_id,
+    #                 "tenant_id": tenant_id,
+    #                 "created_by": tenant_id,
+    #                 "name": KNOWLEDGEBASE_FOLDER_NAME,
+    #                 "type": kb_folder.type,
+    #                 "size": kb_folder.size,
+    #                 "location": kb_folder["location"],
+    #                 "source_type": FileSource.KNOWLEDGEBASE,
+    #             }
+    #             FileGroupService.save(**file)
+    #             FileAdminService.save(**file)
+    #         # except Exception as e:
+    #         #         print(f"错误详情: {e}")
+    #         return kb_folder
+    #     return kb_folder.to_dict()
+    
     @classmethod
     @DB.connection_context()
     def get_kb_folder(cls, tenant_id):
-        # Get dataset folder for tenant
-        # Args:
-        #     tenant_id: Tenant ID
-        # Returns:
-        #     Knowledge base folder dictionary
         root_folder = cls.get_root_folder(tenant_id)
         root_id = root_folder["id"]
-        kb_folder = cls.model.select().where((cls.model.tenant_id == tenant_id), (cls.model.parent_id == root_id), (cls.model.name == KNOWLEDGEBASE_FOLDER_NAME)).first()
-        if not kb_folder:
-            # 没有和就创建一个 .knowladge
-            kb_folder = cls.new_a_file_from_kb(tenant_id, KNOWLEDGEBASE_FOLDER_NAME, root_id)
 
-            try:
-                # 管理员只放1级表
-                if AdminUser.query(user_id=tenant_id, role_level=1):
-                    knowladge_id = kb_folder.id
-                    file = {
-                        "id": knowladge_id,
-                        "parent_id": root_id,
-                        "tenant_id": tenant_id,
-                        "created_by": tenant_id,
-                        "name": KNOWLEDGEBASE_FOLDER_NAME,
-                        "type": kb_folder.type,
-                        "size": kb_folder.size,
-                        "location": kb_folder.location,
-                        "source_type": FileSource.KNOWLEDGEBASE,
-                    }
-                    FileAdminService.save(**file)
-                # 二级管理员创建后挂接到自己的pf_id上
-                if AdminUser.query(user_id=tenant_id, role_level=2):
-                    knowladge_id = kb_folder.id
-                    file = {
-                        "id": knowladge_id,
-                        "parent_id": root_id,
-                        "tenant_id": tenant_id,
-                        "created_by": tenant_id,
-                        "name": KNOWLEDGEBASE_FOLDER_NAME,
-                        "type": kb_folder["type"],
-                        "size": kb_folder["size"],
-                        "location": kb_folder["location"],
-                        "source_type": FileSource.KNOWLEDGEBASE,
-                    }
-                    FileAdminService.save(**file)
-                    FileGroupService.save(**file)
-                # 普通用户
+        kb_folder = cls.model.select().where(
+            (cls.model.tenant_id == tenant_id) &
+            (cls.model.parent_id == root_id) &
+            (cls.model.name == KNOWLEDGEBASE_FOLDER_NAME)
+        ).first()
+
+        if not kb_folder:
+            kb_folder = cls.new_a_file_from_kb(
+                tenant_id,
+                KNOWLEDGEBASE_FOLDER_NAME,
+                root_id
+            )
+        else:
+            kb_folder = kb_folder.to_dict()
+
+        file = {
+            "id": kb_folder["id"],
+            "parent_id": root_id,
+            "tenant_id": tenant_id,
+            "created_by": tenant_id,
+            "name": KNOWLEDGEBASE_FOLDER_NAME,
+            "type": kb_folder["type"],
+            "size": kb_folder["size"],
+            "location": kb_folder["location"],
+            "source_type": FileSource.KNOWLEDGEBASE,
+        }
+
+        try:
+            if AdminUser.query(user_id=tenant_id, role_level=1):
+                for _ in FileAdminService.query(id=file["id"]):
+                    break
                 else:
-                    knowladge_id = kb_folder.id
-                    file = {
-                        "id": knowladge_id,
-                        "parent_id": root_id,
-                        "tenant_id": tenant_id,
-                        "created_by": tenant_id,
-                        "name": KNOWLEDGEBASE_FOLDER_NAME,
-                        "type": kb_folder.type,
-                        "size": kb_folder.size,
-                        "location": kb_folder["location"],
-                        "source_type": FileSource.KNOWLEDGEBASE,
-                    }
-                    FileGroupService.save(**file)
                     FileAdminService.save(**file)
-            except Exception as e:
-                    print(f"错误详情: {e}")
-            return kb_folder
-        return kb_folder.to_dict()
+
+            elif AdminUser.query(user_id=tenant_id, role_level=2):
+                for _ in FileAdminService.query(id=file["id"]):
+                    break
+                else:
+                    FileAdminService.save(**file)
+
+                for _ in FileGroupService.query(id=file["id"]):
+                    break
+                else:
+                    FileGroupService.save(**file)
+
+            else:
+                for _ in FileGroupService.query(id=file["id"]):
+                    break
+                else:
+                    FileGroupService.save(**file)
+
+                for _ in FileAdminService.query(id=file["id"]):
+                    break
+                else:
+                    FileAdminService.save(**file)
+
+        except Exception as e:
+            print(f"挂接 .knowladge 失败: {e}")
+
+        return kb_folder
 
     @classmethod
     @DB.connection_context()
@@ -1016,7 +1039,7 @@ class FileService(CommonService):
                     "size": len(blob),
                     "thumbnail": thumbnail_location,
                 }
-                DocumentService.insert(doc)
+                DocumentService.insert(doc) 
                 # 将doc的情况复制一份到file表 位置
                 FileService.add_file_from_kb(doc, kb_folder["id"], kb.tenant_id)
                 files.append((doc, blob))

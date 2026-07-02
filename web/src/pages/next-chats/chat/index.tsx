@@ -2,7 +2,6 @@ import EmbedDialog from '@/components/embed-dialog';
 import { useShowEmbedModal } from '@/components/embed-dialog/use-show-embed-dialog';
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form } from '@/components/ui/form';
 import { DatasetMetadata, SharedFrom } from '@/constants/chat';
 import { useSetModalState } from '@/hooks/common-hooks';
@@ -143,7 +142,7 @@ export default function Chat() {
         ...llmSettingEnabledValues,
       } as FormSchemaType);
 
-      setCurrentConversation(latestData as IClientConversation);
+      // setCurrentConversation(latestData as IClientConversation);
     }
 
     // 提交完成后关闭设置面板
@@ -178,7 +177,7 @@ export default function Chat() {
     };
 
     form.reset(nextData as FormSchemaType);
-    setCurrentConversation(data as IClientConversation);
+    // setCurrentConversation(data as IClientConversation);
   }, [data, form]);
 
   const fetchConversation: typeof handleConversationCardClick = useCallback(
@@ -220,7 +219,9 @@ export default function Chat() {
         ...llmSettingEnabledValues,
       } as FormSchemaType);
 
-      setCurrentConversation(latestData as IClientConversation);
+      // 不要在这里覆盖 currentConversation
+      // setCurrentConversation(latestData as IClientConversation);
+
       initializedRef.current = true;
     }
 
@@ -261,7 +262,7 @@ export default function Chat() {
         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
         className="h-full flex flex-col pr-5"
       >
-        <div className="flex flex-1 min-h-0 pb-9">
+        {/* <div className="flex flex-1 min-h-0 pb-1">
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
@@ -269,6 +270,7 @@ export default function Chat() {
           />
 
           <Card className="flex-1 min-w-0 bg-transparent border h-full">
+          
             <CardContent className="flex p-0 h-full">
               <Card className="flex flex-col flex-1 bg-transparent min-w-0">
                 <CardHeader className={cn('py-2 px-5')}>
@@ -293,6 +295,7 @@ export default function Chat() {
                 </CardHeader>
 
                 <CardContent className="flex-1 p-0 min-h-0">
+                
                   <SingleChatBox
                     controller={controller}
                     stopOutputMessage={stopOutputMessage}
@@ -309,6 +312,63 @@ export default function Chat() {
               />
             </CardContent>
           </Card>
+        </div> */}
+
+        <div className="flex flex-1 min-h-0 pb-1 overflow-hidden">
+          {/* 左侧会话列表：自己内部滚动 */}
+          <Sessions
+            hasSingleChatBox={hasSingleChatBox}
+            handleConversationCardClick={handleSessionClick}
+            switchSettingVisible={openChatSettings}
+          />
+
+          {/* 右侧整体区域 */}
+          <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+            {/* 外部 Header，不参与滚动 */}
+            <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div
+                  className={cn('flex items-center gap-1', {
+                    hidden: settingVisible,
+                  })}
+                >
+                  <div className="w-auto">
+                    <KnowledgeBaseFormField hideLabel />
+                  </div>
+
+                  <SavingButton
+                    loading={loading}
+                    className="bg-white text-black hover:bg-gray-100 border"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 主内容区 */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              {/* 左侧聊天主区域 */}
+              <div
+                id="chat-main-content"
+                className="flex-1 min-w-0 min-h-0 overflow-hidden transition-[margin-right] duration-200"
+              >
+                <SingleChatBox
+                  controller={controller}
+                  stopOutputMessage={stopOutputMessage}
+                  conversation={currentConversation}
+                />
+              </div>
+
+              {/* 右侧设置面板 */}
+              <ChatSettings
+                className={cn('shrink-0', {
+                  hidden: !settingVisible,
+                })}
+                switchSettingVisible={switchSettingVisible}
+                onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+                loading={loading}
+              />
+            </div>
+          </div>
         </div>
 
         {embedVisible && (

@@ -560,6 +560,23 @@ const AdminFiles = () => {
     }
   };
 
+  const resetAddGroupAdminForm = () => {
+    setSearchKeyword('');
+    setSearchPhone('');
+    setSelectedDept('');
+    setNewGroupAdminId('');
+  };
+
+  const handleAddGroupAdminOk = async () => {
+    await handleAddGroupAdmin();
+    resetAddGroupAdminForm();
+  };
+
+  const handleAddGroupAdminCancel = () => {
+    resetAddGroupAdminForm();
+    setIsAddGroupAdminModalOpen(false);
+  };
+
   // 删除组管理员的
   const handleRemoveGroupAdmin = async (userId: string) => {
     try {
@@ -1015,7 +1032,7 @@ const AdminFiles = () => {
         onCancel={() => setIsGroupAdminKbOpen(false)}
         size="large"
         className="w-[1100px] max-w-[calc(100vw-2rem)]"
-        footer={null} // 不需要底部按钮
+        showfooter={false}
       >
         <div className="p-4">
           {loading ? (
@@ -1171,7 +1188,7 @@ const AdminFiles = () => {
         onCancel={() => setIsModalOpen(false)}
         size="large"
         className="w-[1100px] max-w-[calc(100vw-2rem)]"
-        footer={null} // 不需要底部按钮
+        showfooter={false} // 不需要底部按钮
       >
         <div className="p-4">
           {loading ? (
@@ -1338,7 +1355,7 @@ const AdminFiles = () => {
         onCancel={() => setIsMemberModalOpen(false)}
         size="large"
         className="w-[1100px] max-w-[calc(100vw-2rem)]"
-        footer={null}
+        showfooter={false} // 不需要底部按钮
       >
         <div className="p-4">
           {memberLoading ? (
@@ -1719,6 +1736,7 @@ const AdminFiles = () => {
         onOk={() => setIsGroupAdminModalOpen(false)}
         onCancel={() => setIsGroupAdminModalOpen(false)}
         footer={null}
+        showfooter={false}
       >
         <div className="p-4">
           {groupAdminLoading ? (
@@ -1780,8 +1798,8 @@ const AdminFiles = () => {
       <Modal
         title="添加组群管理员"
         open={isAddGroupAdminModalOpen}
-        onOk={handleAddGroupAdmin}
-        onCancel={() => setIsAddGroupAdminModalOpen(false)}
+        onOk={handleAddGroupAdminOk}
+        onCancel={handleAddGroupAdminCancel}
         confirmLoading={addingGroupAdmin}
       >
         <div className="p-4">
@@ -1865,22 +1883,48 @@ const AdminFiles = () => {
                 <span className="text-sm font-medium text-gray-700">
                   选择管理员：
                 </span>
+
                 <Select
                   value={newGroupAdminId}
                   onValueChange={setNewGroupAdminId}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full h-10">
                     <SelectValue placeholder="请选择用户" />
                   </SelectTrigger>
-                  <SelectContent>
+
+                  <SelectContent className="max-h-72">
                     {filteredadminCandidates.length > 0 ? (
                       filteredadminCandidates.map((user) => (
-                        <SelectItem key={user.user_id} value={user.user_id}>
-                          <div className="flex flex-col">
-                            <span>{user.nickname}</span>
-                            <div className="flex gap-2 text-xs text-gray-400 mt-1">
-                              <span>手机号: {user.phone}</span>
-                              <span>部门: {user.nameOfAdminOrg}</span>
+                        <SelectItem
+                          key={user.user_id}
+                          value={user.user_id}
+                          className="py-2 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-semibold shrink-0">
+                              {user.nickname?.slice(0, 1) || '用'}
+                            </div>
+
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-800 truncate">
+                                  {user.nickname || '未命名用户'}
+                                </span>
+
+                                <span className="text-xs text-gray-400">
+                                  ID: {user.user_id}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                <span className="truncate">
+                                  手机号：{user.phone || '-'}
+                                </span>
+
+                                <span className="truncate">
+                                  部门：{user.nameOfAdminOrg || '-'}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </SelectItem>

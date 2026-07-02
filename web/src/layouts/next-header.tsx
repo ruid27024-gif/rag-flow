@@ -64,29 +64,37 @@ export function Header() {
     setTheme(theme === ThemeEnum.Dark ? ThemeEnum.Light : ThemeEnum.Dark);
   }, [setTheme, theme]);
 
+  const InitSearchAppApiPath = 'init-search-app-api';
+
   const tagsData = useMemo(() => {
     const list = [
       { path: Routes.Root, name: t('header.Root'), icon: House },
       { path: Routes.Datasets, name: t('header.dataset'), icon: Library },
       { path: Routes.Chats, name: t('header.chat'), icon: MessageSquareText },
+      {
+        path: InitSearchAppApiPath,
+        name: t('header.search'),
+        icon: Search,
+        isApi: true,
+      },
       // {
       //   path: 'create-dialog-api',
       //   name: t('header.chat'),
       //   icon: MessageSquareText,
       //   isApi: true,
       // },
-      { path: Routes.Searches, name: t('header.search'), icon: Search },
+      // { path: Routes.Searches, name: t('header.search'), icon: Search },
       // { path: Routes.Agents, name: t('header.flow'), icon: Cpu },
       // { path: Routes.Memories, name: t('header.Memories'), icon: Cpu },
       { path: Routes.Files, name: t('header.fileManager'), icon: File },
     ];
 
     if (is_admin_user || role_level === 2) {
-      // list.push({
-      //   path: Routes.Datasets,
-      //   name: t('header.dataset'),
-      //   icon: Library,
-      // });
+      //   list.push({
+      //     path: Routes.Datasets,
+      //     name: t('header.dataset'),
+      //     icon: Library,
+      //   });
       list.push({
         path: Routes.AdminFiles,
         name: t('header.admin'),
@@ -154,12 +162,6 @@ export function Header() {
     }
   };
 
-  // const currentPath = useMemo(() => {
-  //   return (
-  //     tagsData.find((x) => pathname.startsWith(x.path))?.path || Routes.Root
-  //   );
-  // }, [pathname, tagsData]);
-
   const handleChange = async (path: SegmentedValue) => {
     if (path === 'create-dialog-api') {
       try {
@@ -169,7 +171,9 @@ export function Header() {
             Authorization: getAuthorization() || '',
           },
         });
+
         const res = await response.json();
+
         if (res.retcode === 0 && res.data?.id) {
           navigate(`${Routes.ChatDefault}/${res.data.id}`);
         } else {
@@ -179,41 +183,37 @@ export function Header() {
         console.error(error);
         message.error('请求失败！');
       }
+
       return;
     }
-    const target = tagsData.find((item) => item.path === path);
 
-    // if (target?.isExternal) {
-    //   // 👇 获取当前的 Token
-    //   const token = getAuthorization();
+    if (path === InitSearchAppApiPath) {
+      try {
+        const response = await fetch('/v1/search/init_search_app', {
+          method: 'POST',
+          headers: {
+            Authorization: getAuthorization() || '',
+            'Content-Type': 'application/json',
+          },
+        });
 
-    //   // 👇 拼接 Token 到 URL
-    //   // 假设外部服务通过 URL 参数 ?token=xxx 来接收
-    //   const url = new URL(path as string);
-    //   url.searchParams.set('token', token || '');
+        const res = await response.json();
 
-    //   // 👇 执行全页面跳转
-    //   window.location.href = url.toString();
+        const code = res.retcode ?? res.code;
+        const searchId = res.data?.search_id || res.data?.id;
 
-    //   return; // 阻止后续的 navigate
-    // }
+        if (code === 0 && searchId) {
+          navigate(`/next-search/${searchId}`);
+        } else {
+          message.error(res.msg || res.message || '初始化搜索应用失败！');
+        }
+      } catch (error) {
+        console.error(error);
+        message.error('请求失败！');
+      }
 
-    // // 👇 换个变量名，比如 currentTag，避免和上面的 targetPath 冲突
-    // const currentTag = tagsData.find(item => item.path === path);
-
-    // // 如果是外部链接（即我们刚刚加的 9222 端口跳转）
-    // if (currentTag?.isExternal) {
-    //   // const token = getToken(); // 获取当前登录的 Token
-    //   const token = getAuthorization();
-
-    //   // 拼接 URL，带上 token 参数
-    //   const separator = (path as string).includes('?') ? '&' : '?';
-    //   const finalUrl = `${path}${separator}token=${encodeURIComponent(token || '')}`;
-
-    //   // 执行跳转
-    //   window.location.href = finalUrl;
-    //   return; // 阻止后续的 navigate 逻辑
-    // }
+      return;
+    }
 
     navigate(path as Routes);
   };
@@ -225,6 +225,9 @@ export function Header() {
   const activePath = useMemo(() => {
     if (pathname === '/dashboard' || pathname.startsWith('/dialog')) {
       return '/dashboard';
+    }
+    if (pathname.startsWith('/next-search')) {
+      return InitSearchAppApiPath;
     }
 
     return pathname;

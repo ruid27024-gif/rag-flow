@@ -136,53 +136,108 @@ export const useSendMessage = (controller: AbortController) => {
   const { createConversationBeforeSendMessage } =
     useCreateConversationBeforeSendMessage();
 
-  const handlePressEnter = useCallback(async () => {
-    if (trim(value) === '') return;
+  // const handlePressEnter = useCallback(async () => {
+  //   if (trim(value) === '') return;
 
-    const data = await createConversationBeforeSendMessage(value);
+  //   const data = await createConversationBeforeSendMessage(value);
 
-    if (data === undefined) {
-      antdMessage.error('Failed to create conversation');
-      return;
-    }
+  //   if (data === undefined) {
+  //     antdMessage.error('Failed to create conversation');
+  //     return;
+  //   }
 
-    const { targetConversationId, currentMessages } = data;
+  //   const { targetConversationId, currentMessages } = data;
 
-    const id = uuid();
+  //   const id = uuid();
 
-    addNewestQuestion({
-      content: value,
-      files: files,
-      id,
-      role: MessageType.User,
-      conversationId: targetConversationId,
-    });
+  //   addNewestQuestion({
+  //     content: value,
+  //     files: files,
+  //     id,
+  //     role: MessageType.User,
+  //     conversationId: targetConversationId,
+  //   });
 
-    if (done) {
-      setValue('');
-      sendMessage({
-        currentConversationId: targetConversationId,
-        messages: currentMessages,
-        message: {
-          id,
-          content: value.trim(),
-          role: MessageType.User,
-          files: files,
-          conversationId: targetConversationId,
-        },
+  //   if (done) {
+  //     setValue('');
+  //     sendMessage({
+  //       currentConversationId: targetConversationId,
+  //       messages: currentMessages,
+  //       message: {
+  //         id,
+  //         content: value.trim(),
+  //         role: MessageType.User,
+  //         files: files,
+  //         conversationId: targetConversationId,
+  //       },
+  //     });
+  //   }
+  //   clearFiles();
+  // }, [
+  //   value,
+  //   createConversationBeforeSendMessage,
+  //   addNewestQuestion,
+  //   files,
+  //   done,
+  //   clearFiles,
+  //   setValue,
+  //   sendMessage,
+  // ]);
+  const handlePressEnter = useCallback(
+    async (nextValue?: string) => {
+      const text = typeof nextValue === 'string' ? nextValue : value;
+      const trimmedText = trim(text);
+
+      if (trimmedText === '') return;
+
+      const data = await createConversationBeforeSendMessage(text);
+
+      if (data === undefined) {
+        antdMessage.error('Failed to create conversation');
+        return;
+      }
+
+      const { targetConversationId, currentMessages } = data;
+
+      const id = uuid();
+
+      addNewestQuestion({
+        content: text,
+        files: files,
+        id,
+        role: MessageType.User,
+        conversationId: targetConversationId,
       });
-    }
-    clearFiles();
-  }, [
-    value,
-    createConversationBeforeSendMessage,
-    addNewestQuestion,
-    files,
-    done,
-    clearFiles,
-    setValue,
-    sendMessage,
-  ]);
+
+      if (done) {
+        setValue('');
+
+        sendMessage({
+          currentConversationId: targetConversationId,
+          messages: currentMessages,
+          message: {
+            id,
+            content: trimmedText,
+            role: MessageType.User,
+            files: files,
+            conversationId: targetConversationId,
+          },
+        });
+      }
+
+      clearFiles();
+    },
+    [
+      value,
+      createConversationBeforeSendMessage,
+      addNewestQuestion,
+      files,
+      done,
+      clearFiles,
+      setValue,
+      sendMessage,
+    ],
+  );
 
   useEffect(() => {
     //  #1289

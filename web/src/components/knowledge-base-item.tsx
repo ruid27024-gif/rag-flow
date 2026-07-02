@@ -292,9 +292,49 @@ export function KnowledgeBaseFormField({
 
   const { list: knowledgeList } = useFetchKnowledgeList(true);
 
-  const filteredKnowledgeList = knowledgeList.filter(
-    (x) => x.parser_id !== DocumentParserType.Tag,
-  );
+  const groupPriorityMap: Record<string, number> = {
+    全局参考库: 1,
+    工艺研究一室: 2,
+    工艺研究二室: 3,
+    工艺研究三室: 4,
+    新品事业部研发部: 5,
+  };
+
+  const getGroupPriority = (groupName?: string | null) => {
+    if (!groupName) return 999;
+
+    return groupPriorityMap[groupName] ?? 6;
+  };
+
+  const filteredKnowledgeList = useMemo(() => {
+    return [...knowledgeList]
+      .filter((x) => x.parser_id !== DocumentParserType.Tag)
+      .sort((a, b) => {
+        const groupNameA = a.group_name || '';
+        const groupNameB = b.group_name || '';
+
+        const priorityA = getGroupPriority(groupNameA);
+        const priorityB = getGroupPriority(groupNameB);
+
+        // 1. 先按照指定 group_name 优先级排序
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+
+        // 2. 如果都是 else，也就是 priority = 6，则按 group_name 排序
+        // 这样相同 group_name 会排在一起
+        if (groupNameA !== groupNameB) {
+          return groupNameA.localeCompare(groupNameB, 'zh-CN');
+        }
+
+        // 3. 同一个 group_name 下，再按知识库 name 排序
+        return a.name.localeCompare(b.name, 'zh-CN');
+      });
+  }, [knowledgeList]);
+
+  // const filteredKnowledgeList = knowledgeList.filter(
+  //   (x) => x.parser_id !== DocumentParserType.Tag,
+  // );
 
   const nextOptions = buildQueryVariableOptionsByShowVariable(showVariable)();
 

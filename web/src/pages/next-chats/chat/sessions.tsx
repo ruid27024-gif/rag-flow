@@ -66,7 +66,7 @@ export function Sessions({
   return (
     <section
       className="
-      pt-1 px-4 w-[296px] flex flex-col
+      pt-1 px-4 w-[266px] flex flex-col
       bg-white dark:bg-zinc-900
       border-r border-gray-200 dark:border-zinc-800
     "
@@ -82,54 +82,34 @@ export function Sessions({
               >
                 <span
                   className="
-                  text-2xl font-bold
-                  bg-gradient-to-l from-cyan-400 to-emerald-400
-                  bg-clip-text
-                  text-transparent
-                  [-webkit-text-fill-color:transparent]
-                  group-hover:bg-none
-                  group-hover:text-black
-                  group-hover:[-webkit-text-fill-color:#000]
-                  dark:group-hover:text-black
-                  dark:group-hover:[-webkit-text-fill-color:#000]
-                  transition-all duration-300
-                "
-                  style={{
-                    fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, serif`,
-                  }}
+    text-2xl font-semibold
+    text-[#064E3B]
+    cursor-pointer
+    transition-colors duration-200
+    group-hover:text-[#047857]
+  "
                 >
-                  {/* {t('chat.server')} */}
-                  {'恒丰纸业'}
+                  {t('chat.chat')}
                 </span>
 
-                {/* Tooltip */}
                 <span
                   className="
-                  absolute left-0 top-full mt-3
-                  w-max max-w-xs px-3 py-1.5
-                  text-xs font-medium
-                  text-gray-800 dark:text-gray-200
-                  bg-white/70 dark:bg-zinc-800/70
-                  backdrop-blur-sm
-                  border border-gray-200 dark:border-zinc-700
-                  rounded-lg shadow-lg
-                  opacity-0 translate-y-2
-                  group-hover:opacity-100 group-hover:translate-y-0
-                  transition-all duration-300
-                  pointer-events-none z-50
-                "
+    absolute left-0 top-full mt-2
+    rounded-md
+    bg-white px-3 py-1.5
+    text-xs text-[#064E3B]
+    border border-emerald-100
+    shadow-sm
+    opacity-0
+    translate-y-1
+    transition-all duration-200
+    pointer-events-none
+    group-hover:opacity-100
+    group-hover:translate-y-0
+    z-50
+  "
                 >
                   点击返回导航页面
-                  <span
-                    className="
-                    absolute -top-[7px] left-6
-                    w-3 h-3
-                    bg-transparent
-                    border-l border-t
-                    border-gray-300 dark:border-zinc-600
-                    rotate-45
-                  "
-                  />
                 </span>
               </BreadcrumbLink>
             </BreadcrumbItem>

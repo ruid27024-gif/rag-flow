@@ -595,16 +595,16 @@ def list_files():
 
         else:
             lis = []
-            # 获取组id下的公共tenant_id
-            group_id = UserGroupService.get_group_id_by_id(current_user.id)
-            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
-            if group_id and group_id in cfg_map and cfg_map[group_id]:
-                group_public_tenant_id = cfg_map[group_id]
-                lis.append(group_public_tenant_id)
+            # # 获取组id下的公共tenant_id
+            # group_id = UserGroupService.get_group_id_by_id(current_user.id)
+            # cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            # if group_id and group_id in cfg_map and cfg_map[group_id]:
+            #     group_public_tenant_id = cfg_map[group_id]
+            #     lis.append(group_public_tenant_id)
 
-            if settings.REFERENCE_TENANT_ID:
-                public_tenant_id = settings.REFERENCE_TENANT_ID
-                lis.append(public_tenant_id)
+            # if settings.REFERENCE_TENANT_ID:
+            #     public_tenant_id = settings.REFERENCE_TENANT_ID
+            #     lis.append(public_tenant_id)
 
             lis.append(current_user.id)
             
@@ -677,63 +677,65 @@ def list_files():
             # 判断是不是根pf_id
 
             is_root_folder = FileService.is_root_node(pf_id)
-            if is_root_folder:
-                lis = []
-                # 获取组id下的公共tenant_id
-                group_id = UserGroupService.get_group_id_by_id(current_user.id)
-                cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
-                if group_id and group_id in cfg_map and cfg_map[group_id]:
-                    group_public_tenant_id = cfg_map[group_id]
-                    lis.append(group_public_tenant_id)
+            # if is_root_folder:
+            #     lis = []
+            #     # 获取组id下的公共tenant_id
+            #     group_id = UserGroupService.get_group_id_by_id(current_user.id)
+            #     cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            #     if group_id and group_id in cfg_map and cfg_map[group_id]:
+            #         group_public_tenant_id = cfg_map[group_id]
+            #         lis.append(group_public_tenant_id)
 
-                if settings.REFERENCE_TENANT_ID:
-                    public_tenant_id = settings.REFERENCE_TENANT_ID
-                    lis.append(public_tenant_id)
+            #     if settings.REFERENCE_TENANT_ID:
+            #         public_tenant_id = settings.REFERENCE_TENANT_ID
+            #         lis.append(public_tenant_id)
 
-                lis.append(current_user.id)
+            #     lis.append(current_user.id)
                 
-                lis = list(set(lis))  # 可以看到的租户id
+            #     lis = list(set(lis))  # 可以看到的租户id
 
-                # 获取二级管理员的根目录
-                root_id_current = FileService.get_team_root_id(lis)
+            #     # 获取二级管理员的根目录
+            #     root_id_current = FileService.get_team_root_id(lis)
 
-                # 处理每一个根id 获取下面的目录/文件
-                all_files = []
-                total = 0
+            #     # 处理每一个根id 获取下面的目录/文件
+            #     all_files = []
+            #     total = 0
 
-                for r_id in root_id_current:
-                    try:
+            #     for r_id in root_id_current:
+            #         try:
 
-                        # 2. 获取该目录下的文件
-                        files, count = FileService.get_by_pf_id_new(
-                            current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
-                        )
+            #             # 2. 获取该目录下的文件
+            #             files, count = FileService.get_by_pf_id_new(
+            #                 current_user.id, r_id, page_number, items_per_page, orderby, desc, keywords
+            #             )
 
-                        # 3. 累加结果
-                        all_files.extend(files)
-                        total += count
+            #             # 3. 累加结果
+            #             all_files.extend(files)
+            #             total += count
 
-                    except Exception as e:
-                        # 某个用户的目录查错了不要中断整体
-                        print(f"Error fetching folder {r_id}: {e}")
-                        continue
+            #         except Exception as e:
+            #             # 某个用户的目录查错了不要中断整体
+            #             print(f"Error fetching folder {r_id}: {e}")
+            #             continue
 
-                print(all_files)
-                # 4. 返回汇总结果
-                root_folder = FileService.get_root_folder(current_user.id)
-                pf_id = root_folder["id"]
-                parent_folder = FileService.get_parent_folder(pf_id)
-                return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
+            #     print(all_files)
+            #     # 4. 返回汇总结果
+            #     root_folder = FileService.get_root_folder(current_user.id)
+            #     pf_id = root_folder["id"]
+            #     parent_folder = FileService.get_parent_folder(pf_id)
+            #     return get_json_result(data={"total": total, "files": all_files, "parent_folder": parent_folder.to_json()})
 
-            else:
-                files, total = FileService.get_by_pf_id_new(
-                    current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+            # else:
+            # files, total = FileService.get_by_pf_id_new(
+            #     current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
+            files, total = FileService.get_by_pf_id(
+                current_user.id, pf_id, page_number, items_per_page, orderby, desc, keywords)
 
-                parent_folder = FileService.get_parent_folder(pf_id)
-                if not parent_folder:
-                    return get_json_result(message="File not found!")
+            parent_folder = FileService.get_parent_folder(pf_id)
+            if not parent_folder:
+                return get_json_result(message="File not found!")
 
-                return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
+            return get_json_result(data={"total": total, "files": files, "parent_folder": parent_folder.to_json()})
     except Exception as e:
         return server_error_response(e)
     

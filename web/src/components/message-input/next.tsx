@@ -56,6 +56,9 @@ export function NextMessageInput({
   const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
     null,
   );
+  const [inputHeight, setInputHeight] = React.useState(120);
+  const startYRef = React.useRef(0);
+  const startHeightRef = React.useRef(120);
 
   useEffect(() => {
     if (audioInputValue !== null) {
@@ -96,6 +99,49 @@ export function NextMessageInput({
     [removeFile],
   );
 
+  const handleResizeMouseDown = React.useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+
+      startYRef.current = e.clientY;
+      startHeightRef.current = inputHeight;
+
+      const handleMouseMove = (event: MouseEvent) => {
+        /**
+         * 因为拖的是上边沿：
+         * 鼠标往上移动，event.clientY 变小，高度增加
+         * 鼠标往下移动，event.clientY 变大，高度减少
+         */
+        const deltaY = startYRef.current - event.clientY;
+        const nextHeight = startHeightRef.current + deltaY;
+
+        const minHeight = 90;
+        const maxHeight = 360;
+
+        const finalHeight = Math.min(
+          Math.max(nextHeight, minHeight),
+          maxHeight,
+        );
+
+        setInputHeight(finalHeight);
+      };
+
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      };
+
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'ns-resize';
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [inputHeight],
+  );
   return (
     <FileUpload
       value={files}
@@ -121,7 +167,19 @@ export function NextMessageInput({
           </p>
         </div>
       </FileUploadDropzone>
-      <div className="relative flex w-full flex-col gap-2.5 rounded-md border border-input px-3 py-2 outline-none focus-within:ring-1 focus-within:ring-ring/50">
+      {/* <div
+        className="relative flex w-full flex-col gap-2.5 rounded-md border border-input px-3 py-2 outline-none focus-within:ring-1 focus-within:ring-ring/50"
+        style={{ height: inputHeight }}
+      > */}
+      <div
+        className="relative flex w-full flex-col gap-2.5 rounded-3xl border border-input px-3 py-2 outline-none focus-within:ring-1 focus-within:ring-ring/50"
+        style={{ height: inputHeight }}
+      >
+        {/* 顶部拖拽条：鼠标放到最外层输入框上边沿后上下拖动 */}
+        <div
+          onMouseDown={handleResizeMouseDown}
+          className="absolute top-0 left-0 z-20 h-2 w-full cursor-ns-resize bg-transparent"
+        />
         <FileUploadList
           orientation="horizontal"
           className="overflow-x-auto px-0 py-1"
@@ -146,11 +204,19 @@ export function NextMessageInput({
             </FileUploadItem>
           ))}
         </FileUploadList>
-        <Textarea
+        {/* <Textarea
           value={value}
           onChange={onInputChange}
           placeholder={t('chat.messagePlaceholder')}
           className="field-sizing-content min-h-10 w-full resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          disabled={isUploading || disabled || sendLoading}
+          onKeyDown={handleKeyDown}
+        /> */}
+        <Textarea
+          value={value}
+          onChange={onInputChange}
+          placeholder={t('chat.messagePlaceholder')}
+          className="min-h-10 flex-1 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
           disabled={isUploading || disabled || sendLoading}
           onKeyDown={handleKeyDown}
         />

@@ -1,15 +1,101 @@
+// .messageItem {
+//   padding: 24px 0;
+//   .messageItemSection {
+//     display: inline-block;
+//   }
+//   .messageItemSectionLeft {
+//     width: 80%;
+//   }
+//   .messageItemContent {
+//     display: inline-flex;
+//     gap: 20px;
+//   }
+//   .messageItemContentReverse {
+//     flex-direction: row-reverse;
+//   }
+
+//   .messageTextBase() {
+//     padding: 6px 10px;
+//     border-radius: 8px;
+//     & > p {
+//       margin: 0;
+//     }
+//   }
+//   .messageText {
+//     .chunkText();
+//     .messageTextBase();
+//     // background-color: #e6f4ff;
+//     word-break: break-word;
+//   }
+//   .messageTextDark {
+//     .chunkText();
+//     .messageTextBase();
+//     word-break: break-word;
+//     :global(section.think) {
+//       color: rgb(166, 166, 166);
+//       border-left-color: rgb(78, 78, 86);
+//     }
+//   }
+
+//   .messageUserText {
+//     .chunkText();
+//     .messageTextBase();
+//     background-color: rgba(255, 255, 255, 0.3);
+//     word-break: break-word;
+//     text-align: justify;
+//   }
+//   .messageEmpty {
+//     width: 300px;
+//   }
+
+//   .thumbnailImg {
+//     max-width: 20px;
+//   }
+// }
+
+// .messageItemLeft {
+//   text-align: left;
+// }
+
+// .messageItemRight {
+//   text-align: right;
+// }
+
 .messageItem {
   padding: 24px 0;
+
   .messageItemSection {
-    display: inline-block;
+    display: block;
+    width: 100%;
   }
+
+  // 助手消息：左侧，100%
   .messageItemSectionLeft {
-    width: 80%;
+    width: 100%;
+    margin-right: auto;
   }
+
+  // 用户消息：靠右，最大 80%，内容短就按内容宽度
+  .messageItemSectionRight {
+    width: fit-content;
+    max-width: 80%;
+    margin-left: auto;
+  }
+
   .messageItemContent {
-    display: inline-flex;
+    display: flex;
     gap: 20px;
+    width: 100%;
+    align-items: flex-start;
   }
+
+  // 用户消息内部也不要强行撑满
+  .messageItemSectionRight .messageItemContent {
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto;
+  }
+
   .messageItemContentReverse {
     flex-direction: row-reverse;
   }
@@ -17,20 +103,23 @@
   .messageTextBase() {
     padding: 6px 10px;
     border-radius: 8px;
+
     & > p {
       margin: 0;
     }
   }
+
   .messageText {
     .chunkText();
     .messageTextBase();
-    // background-color: #e6f4ff;
     word-break: break-word;
   }
+
   .messageTextDark {
     .chunkText();
     .messageTextBase();
     word-break: break-word;
+
     :global(section.think) {
       color: rgb(166, 166, 166);
       border-left-color: rgb(78, 78, 86);
@@ -43,7 +132,9 @@
     background-color: rgba(255, 255, 255, 0.3);
     word-break: break-word;
     text-align: justify;
+    max-width: 100%;
   }
+
   .messageEmpty {
     width: 300px;
   }

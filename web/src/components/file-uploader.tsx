@@ -293,7 +293,7 @@ export function FileUploader(props: FileUploaderProps) {
                   />
                 </div>
                 <p className="font-medium text-text-secondary">
-                  Drop the files here
+                  将文件拖拽至此
                 </p>
               </div>
             ) : (

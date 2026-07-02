@@ -515,7 +515,7 @@ const Login = () => {
                   </form>
                 </Form>
 
-                {title === 'login' && registerEnabled && (
+                {/* {title === 'login' && registerEnabled && (
                   <div className="mt-10 text-right">
                     <p className="text-text-disabled text-sm">
                       {t('signInTip')}
@@ -542,7 +542,7 @@ const Login = () => {
                       </Button>
                     </p>
                   </div>
-                )}
+                )} */}
               </div>
             </div>
           </FlipCard3D>

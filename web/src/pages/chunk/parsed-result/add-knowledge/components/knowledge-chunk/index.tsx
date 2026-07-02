@@ -42,6 +42,7 @@ import {
   useNavigatePage,
 } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
+import { Database, FileText } from 'lucide-react';
 import styles from './index.less';
 
 const Chunk = () => {
@@ -180,7 +181,7 @@ const Chunk = () => {
 
   return (
     <>
-      <PageHeader>
+      {/* <PageHeader>
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
@@ -204,6 +205,85 @@ const Chunk = () => {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
+      </PageHeader> */}
+
+      <PageHeader>
+        <div className="mx-4 mt-3 mb-2">
+          <Breadcrumb>
+            <BreadcrumbList className="flex items-center gap-1 text-sm">
+              {/* 知识库群 */}
+              <BreadcrumbItem>
+                <BreadcrumbLink
+                  onClick={navigateToDatasetList}
+                  className="
+                    group flex items-center gap-1.5 rounded-md px-2 py-1
+                    text-emerald-600 dark:text-emerald-400
+                    transition-colors cursor-pointer
+                    hover:text-emerald-700 dark:hover:text-emerald-300
+                  "
+                >
+                  <span className="inline-flex h-4 w-8 shrink-0 items-center align-middle">
+                    {/* 最近 */}
+                    <Database className="h-4 w-4 text-emerald-500 dark:text-emerald-300 opacity-100 transition-transform duration-200 group-hover:scale-105" />
+
+                    {/* 中间 */}
+                    <Database className="-ml-1 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 opacity-70 transition-transform duration-200 group-hover:scale-105" />
+
+                    {/* 最远 */}
+                    <Database className="-ml-1 h-3 w-3 text-emerald-700 dark:text-emerald-500 opacity-45 transition-transform duration-200 group-hover:scale-105" />
+                  </span>
+
+                  <span className="font-medium">
+                    {t('knowledgeDetails.dataset')}
+                  </span>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+
+              <BreadcrumbSeparator className="text-gray-300 dark:text-gray-600" />
+
+              {/* 当前数据集 */}
+              <BreadcrumbItem>
+                <BreadcrumbLink
+                  onClick={navigateToDataFile(
+                    getQueryString(QueryStringMap.id) as string,
+                  )}
+                  className="
+                    flex max-w-[240px] items-center gap-1.5 truncate rounded-md px-2 py-1
+                    text-emerald-600 dark:text-emerald-400
+                    transition-colors cursor-pointer
+                    hover:text-emerald-700 dark:hover:text-emerald-300
+                  "
+                  title={dataset.name}
+                >
+                  <Database className="h-4 w-4 shrink-0 text-emerald-500 dark:text-emerald-300" />
+
+                  <span className="truncate font-medium">
+                    {dataset.name || '未命名知识库'}
+                  </span>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+
+              <BreadcrumbSeparator className="text-gray-300 dark:text-gray-600" />
+
+              {/* 当前文档 */}
+              <BreadcrumbItem>
+                <BreadcrumbPage
+                  className="
+                    flex max-w-[360px] items-center gap-1.5 truncate rounded-md px-2 py-1
+                    font-medium text-blue-600 dark:text-blue-400
+                  "
+                  title={documentInfo?.name}
+                >
+                  <FileText className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
+
+                  <span className="truncate">
+                    {documentInfo?.name || '未命名文档'}
+                  </span>
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
       </PageHeader>
       <div className={styles.chunkPage}>
         <div className="flex flex-1 gap-8">

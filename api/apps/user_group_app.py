@@ -445,6 +445,35 @@ async def add_member_to_my_group():
         admin = AdminUser.select().where(AdminUser.role_level  == 1).first()
         admin_id = admin.user_id
 
+        def sync_member_files_to_file_admin(person_root_id):
+            """
+            把成员根目录下面的所有非根文件同步到一级表 File_Admin
+            person_root_id: 成员根目录 id
+            """
+            member_files = File.select().where(
+                (File.id != File.parent_id)
+                & (File.tenant_id == person_root_id)
+            )
+
+            print(f"开始同步成员文件到一级表，person_root_id={person_root_id}, count={member_files.count()}")
+
+            for item in member_files:
+                data = item.to_dict()
+                file_id = data.get("id")
+
+                exists_file = File_Admin.select().where(
+                    File_Admin.id == file_id
+                ).first()
+
+                if exists_file:
+                    continue
+
+                try:
+                    File_Admin.create(**data)
+                    print(f"成员文件写入 File_Admin 成功: {file_id}")
+                except Exception as e:
+                    print(f"成员文件写入 File_Admin 失败: {file_id}, error={e}")
+
         # 1级表 人员挂到组内
         file = FileAdminService.insert({
             "id": pf_id,  # 昵称的id
@@ -456,6 +485,7 @@ async def add_member_to_my_group():
             "size": 0,
             "type": FileType.FOLDER.value
         })
+
 
         team_id = current_user.id
         # 获取自己的根id
@@ -850,7 +880,7 @@ async def add_all_user_to_group():
                             File_Group.create(**i.to_dict())
                         except Exception:
                             pass
-
+                
     return get_json_result(data={
         "success_count": success_count,
         "msg": f"全量拉取完成，成功拉取 {success_count} 名成员",
@@ -867,31 +897,44 @@ async def add_user_to_group():
     group_id = req["group_id"]
 
     try:
+        from api.db.db_models import File, File_Admin, File_Group
+
         error_response = check_admin(current_user)
         if error_response:
             return error_response
-        
-        # --- 修改开始：在保存前检查组内是否有二级管理员 ---
-        query = (AdminUser
-                .select()
-                .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))
-                .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))
-        
 
-        existing_manager = query.get_or_none()
+        # =====================================================
+        # 查询当前组是否已有二级管理员
+        # =====================================================
+        manager_query = (
+            AdminUser
+            .select()
+            .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))
+            .where(
+                (UserGroup.group_id == group_id)
+                & (AdminUser.role_level == 2)
+            )
+        )
 
-        is_new_user_manager = AdminUser.query(user_id=user_id, role_level=2)
+        existing_manager = manager_query.get_or_none()
 
+        # 判断当前拉入用户是否是二级管理员
+        is_new_user_manager = AdminUser.query(
+            user_id=user_id,
+            role_level=2
+        )
 
-        
+        # 如果当前组没有二级管理员，并且当前拉入的人也不是二级管理员，则不允许拉普通成员
         if not existing_manager and not is_new_user_manager:
-             return get_json_result(
+            return get_json_result(
                 code=RetCode.DATA_ERROR,
                 message="请先拉一个组管理员入组",
             )
 
+        # 判断是否已经在组内
         exists = UserGroup.get_or_none(
-            (UserGroup.user_id == user_id) & (UserGroup.group_id == group_id)
+            (UserGroup.user_id == user_id)
+            & (UserGroup.group_id == group_id)
         )
 
         if exists:
@@ -901,128 +944,529 @@ async def add_user_to_group():
                 data={"id": exists.id},
             )
 
+        # =====================================================
+        # 保存用户入组
+        # =====================================================
         obj = UserGroupService.save(
             user_id=user_id,
             group_id=group_id,
             created_by=current_user.id,
         )
 
-        # 拿到当前用户的根
+        # 当前被拉入用户信息
         add_user = UserService.filter_by_id(user_id)
-        # 从FILE表获取用户的file_id
-        # file = File.select().where((File.parent_id == File.id)
-        #                 & (File.tenant_id == add_user.id)).first()
-        file = FileService.get_root_folder(add_user.id)
 
-        # 直接把人挂到1级表
-        file1 = FileAdminService.insert({
-            "id": file['id'],  # 昵称的id
-            "parent_id": group_id,
-            "tenant_id": current_user.id,
-            "created_by": current_user.id,
-            "name": add_user.nickname,
-            "location": "",
-            "size": 0,
-            "type": FileType.FOLDER.value
-        })
+        if not add_user:
+            raise Exception(f"用户不存在: {user_id}")
 
+        # 当前被拉入用户根目录
+        user_root = FileService.get_root_folder(add_user.id)
 
-        # 判断拉入的用户是否为二级管理员
-        if AdminUser.query(user_id=user_id, role_level=2):
-            # 直接把自己加入到二级表
+        if not user_root:
+            raise Exception(f"用户 {user_id} 没有根目录")
 
-            pf_id = file['id']
-            try:
-                # file2 = FileGroupService.insert({
-                #     "id": pf_id,  # 昵称的id
-                #     "parent_id": pf_id,
-                #     "tenant_id": user_id,
-                #     "created_by": user_id,
-                #     "name": "/",
-                #     "location": "",
-                #     "size": 0,
-                #     "type": FileType.FOLDER.value
-                # })
-                # 把当前组参考库挂载到这个根上 根据组id获取参考库的id
+        user_root_id = user_root["id"]
 
-                cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
-                if group_id and group_id in cfg_map and cfg_map[group_id]:
-                    group_public_id = cfg_map[group_id]
+        # =====================================================
+        # 工具方法：同步某个用户下面的所有文件到一级表 File_Admin
+        # =====================================================
+        def sync_member_files_to_file_admin(member_root_id):
+            member_files = File.select().where(
+                (File.id != File.parent_id)
+                & (File.tenant_id == member_root_id)
+            )
 
-                # 获取当前组参考库的根
-                file_ref = FileService.get_root_folder(group_public_id)
-                pf_id_ref = file_ref['id']
+            print(
+                f"开始同步成员文件到 File_Admin，"
+                f"member_root_id={member_root_id}, count={member_files.count()}"
+            )
 
-                # 把当前组参考库挂载到这个根上 根据组id获取参考库的id
-                file2 = FileGroupService.insert({
-                    "id": pf_id_ref,  # 昵称的id
-                    "parent_id": pf_id,
-                    "tenant_id": user_id,
-                    "created_by": user_id,
-                    "name": "组参考库+文献库",
-                    "location": "",
-                    "size": 0,
-                    "type": FileType.FOLDER.value
-                })
+            for item in member_files:
+                data = item.to_dict()
+                file_id = data.get("id")
 
-                # 把参考库下的所有文件挂载到当前的组参考库下
-                # 把参考库中不是根目录的全部写入二级表
-                from api.db.db_models import File, File_Group
-                file_group_ref = File.select().where((File.id != File.parent_id)
-                                & (File.tenant_id == group_public_id )
-                                )
-                # 将文件全部写入到全局参考库下
-                for i in file_group_ref:
-                    i.to_dict()
-                    print(i.to_dict())
+                if not file_id:
+                    continue
+
+                exists_file = File_Admin.select().where(
+                    File_Admin.id == file_id
+                ).first()
+
+                if exists_file:
+                    continue
+
+                try:
+                    File_Admin.create(**data)
+                    print(f"成员文件写入 File_Admin 成功: {file_id}")
+                except Exception as e:
+                    print(f"成员文件写入 File_Admin 失败: {file_id}, error={e}")
+
+        # =====================================================
+        # 工具方法：把成员挂到一级表 File_Admin，并同步成员文件
+        # =====================================================
+        def mount_member_to_file_admin(member_user_id):
+            member = UserService.filter_by_id(member_user_id)
+
+            if not member:
+                print(f"成员不存在: {member_user_id}")
+                return
+
+            member_root = FileService.get_root_folder(member_user_id)
+
+            if not member_root:
+                print(f"成员 {member_user_id} 没有根目录")
+                return
+
+            member_root_id = member_root["id"]
+
+            exists_root = File_Admin.select().where(
+                File_Admin.id == member_root_id
+            ).first()
+
+            if not exists_root:
+                try:
+                    FileAdminService.insert({
+                        "id": member_root_id,
+                        "parent_id": group_id,
+                        "tenant_id": current_user.id,
+                        "created_by": current_user.id,
+                        "name": member.nickname,
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value,
+                    })
+                    print(f"成员根节点写入 File_Admin 成功: {member_root_id}")
+                except Exception as e:
+                    print(f"成员根节点写入 File_Admin 失败: {member_root_id}, error={e}")
+            else:
+                if exists_root.parent_id != group_id:
                     try:
-                        File_Group.create(**i.to_dict())
-                    except:
-                        pass
+                        File_Admin.update({
+                            File_Admin.parent_id: group_id,
+                            File_Admin.tenant_id: current_user.id,
+                            File_Admin.created_by: current_user.id,
+                            File_Admin.name: member.nickname,
+                        }).where(
+                            File_Admin.id == member_root_id
+                        ).execute()
 
-                pass
-            except Exception as e:
-                pass
+                        print(f"成员根节点更新 File_Admin 成功: {member_root_id}")
+                    except Exception as e:
+                        print(f"成员根节点更新 File_Admin 失败: {member_root_id}, error={e}")
 
+            # 同步成员文件到一级表
+            sync_member_files_to_file_admin(member_root_id)
+
+        # =====================================================
+        # 工具方法：同步某个成员下面所有文件到二级表 File_Group
+        # =====================================================
+        def sync_member_files_to_file_group(member_root_id):
+            member_files = File.select().where(
+                (File.id != File.parent_id)
+                & (File.tenant_id == member_root_id)
+            )
+
+            print(
+                f"开始同步成员文件到 File_Group，"
+                f"member_root_id={member_root_id}, count={member_files.count()}"
+            )
+
+            for item in member_files:
+                data = item.to_dict()
+                file_id = data.get("id")
+
+                if not file_id:
+                    continue
+
+                exists_file = File_Group.select().where(
+                    File_Group.id == file_id
+                ).first()
+
+                if exists_file:
+                    continue
+
+                try:
+                    File_Group.create(**data)
+                    print(f"成员文件写入 File_Group 成功: {file_id}")
+                except Exception as e:
+                    print(f"成员文件写入 File_Group 失败: {file_id}, error={e}")
+
+        # =====================================================
+        # 工具方法：确保二级管理员自己的根目录存在于 File_Group
+        # =====================================================
+        def ensure_manager_root_in_file_group(manager_user_id, manager_root_id):
+            exists_root = File_Group.select().where(
+                File_Group.id == manager_root_id
+            ).first()
+
+            if not exists_root:
+                try:
+                    FileGroupService.insert({
+                        "id": manager_root_id,
+                        "parent_id": manager_root_id,
+                        "tenant_id": manager_user_id,
+                        "created_by": manager_user_id,
+                        "name": "/",
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value,
+                    })
+                    print(f"二级管理员根目录写入 File_Group 成功: {manager_root_id}")
+                except Exception as e:
+                    print(f"二级管理员根目录写入 File_Group 失败: {manager_root_id}, error={e}")
+            else:
+                try:
+                    File_Group.update({
+                        File_Group.parent_id: manager_root_id,
+                        File_Group.tenant_id: manager_user_id,
+                        File_Group.created_by: manager_user_id,
+                        File_Group.name: "/",
+                    }).where(
+                        File_Group.id == manager_root_id
+                    ).execute()
+                    print(f"二级管理员根目录更新 File_Group 成功: {manager_root_id}")
+                except Exception as e:
+                    print(f"二级管理员根目录更新 File_Group 失败: {manager_root_id}, error={e}")
+
+        # =====================================================
+        # 工具方法：把成员挂到二级管理员下面，并同步成员文件
+        # =====================================================
+        def mount_member_to_group_manager(member_user_id, manager_user_id, manager_root_id):
+            member = UserService.filter_by_id(member_user_id)
+
+            if not member:
+                print(f"成员不存在: {member_user_id}")
+                return
+
+            member_root = FileService.get_root_folder(member_user_id)
+
+            if not member_root:
+                print(f"成员 {member_user_id} 没有根目录")
+                return
+
+            member_root_id = member_root["id"]
+
+            exists_root = File_Group.select().where(
+                File_Group.id == member_root_id
+            ).first()
+
+            if not exists_root:
+                try:
+                    FileGroupService.insert({
+                        "id": member_root_id,
+                        "parent_id": manager_root_id,
+                        "tenant_id": manager_user_id,
+                        "created_by": manager_user_id,
+                        "name": member.nickname,
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value,
+                    })
+                    print(f"成员根节点写入 File_Group 成功: {member_root_id}")
+                except Exception as e:
+                    print(f"成员根节点写入 File_Group 失败: {member_root_id}, error={e}")
+            else:
+                if exists_root.parent_id != manager_root_id:
+                    try:
+                        File_Group.update({
+                            File_Group.parent_id: manager_root_id,
+                            File_Group.tenant_id: manager_user_id,
+                            File_Group.created_by: manager_user_id,
+                            File_Group.name: member.nickname,
+                        }).where(
+                            File_Group.id == member_root_id
+                        ).execute()
+
+                        print(f"成员根节点更新 File_Group 成功: {member_root_id}")
+                    except Exception as e:
+                        print(f"成员根节点更新 File_Group 失败: {member_root_id}, error={e}")
+
+            # 同步成员文件到二级表
+            sync_member_files_to_file_group(member_root_id)
+
+        # =====================================================
+        # 工具方法：把参考库挂到一级表 File_Admin
+        # 如果你的一级表已经在别的地方处理参考库，可以不调用这个方法
+        # =====================================================
+        def mount_reference_to_file_admin():
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            group_public_id = cfg_map.get(group_id) or cfg_map.get(str(group_id))
+
+            print("一级表参考库 group_id:", group_id)
+            print("一级表参考库 group_public_id:", group_public_id)
+
+            if not group_public_id:
+                print(f"当前组 {group_id} 没有配置参考库")
+                return
+
+            ref_root = FileService.get_root_folder(group_public_id)
+
+            if not ref_root:
+                print(f"参考库 {group_public_id} 没有根目录")
+                return
+
+            ref_root_id = ref_root["id"]
+
+            exists_ref_root = File_Admin.select().where(
+                File_Admin.id == ref_root_id
+            ).first()
+
+            if not exists_ref_root:
+                try:
+                    FileAdminService.insert({
+                        "id": ref_root_id,
+                        "parent_id": group_id,
+                        "tenant_id": current_user.id,
+                        "created_by": current_user.id,
+                        "name": "组参考库+文献库",
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value,
+                    })
+                    print(f"参考库根节点写入 File_Admin 成功: {ref_root_id}")
+                except Exception as e:
+                    print(f"参考库根节点写入 File_Admin 失败: {ref_root_id}, error={e}")
+            else:
+                if exists_ref_root.parent_id != group_id:
+                    try:
+                        File_Admin.update({
+                            File_Admin.parent_id: group_id,
+                            File_Admin.tenant_id: current_user.id,
+                            File_Admin.created_by: current_user.id,
+                            File_Admin.name: "组参考库+文献库",
+                        }).where(
+                            File_Admin.id == ref_root_id
+                        ).execute()
+                        print(f"参考库根节点更新 File_Admin 成功: {ref_root_id}")
+                    except Exception as e:
+                        print(f"参考库根节点更新 File_Admin 失败: {ref_root_id}, error={e}")
+
+            # 参考库下面文件写入一级表
+            # 保留你的逻辑：File.tenant_id == group_public_id
+            ref_files = File.select().where(
+                (File.id != File.parent_id)
+                & (File.tenant_id == group_public_id)
+            )
+
+            print(f"参考库文件写入 File_Admin 数量: {ref_files.count()}")
+
+            for item in ref_files:
+                data = item.to_dict()
+                file_id = data.get("id")
+
+                if not file_id:
+                    continue
+
+                exists_file = File_Admin.select().where(
+                    File_Admin.id == file_id
+                ).first()
+
+                if exists_file:
+                    continue
+
+                try:
+                    File_Admin.create(**data)
+                    print(f"参考库文件写入 File_Admin 成功: {file_id}")
+                except Exception as e:
+                    print(f"参考库文件写入 File_Admin 失败: {file_id}, error={e}")
+
+        # =====================================================
+        # 工具方法：把参考库挂到二级管理员 File_Group
+        # =====================================================
+        def mount_reference_to_group_manager(manager_user_id, manager_root_id):
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+            group_public_id = cfg_map.get(group_id) or cfg_map.get(str(group_id))
+
+            print("二级表参考库 group_id:", group_id)
+            print("二级表参考库 group_public_id:", group_public_id)
+
+            if not group_public_id:
+                print(f"当前组 {group_id} 没有配置参考库")
+                return
+
+            # 获取参考库根目录
+            ref_root = FileService.get_root_folder(group_public_id)
+
+            if not ref_root:
+                print(f"参考库 {group_public_id} 没有根目录")
+                return
+
+            ref_root_id = ref_root["id"]
+
+            # 1. 参考库根节点写入 File_Group
+            exists_ref_root = File_Group.select().where(
+                File_Group.id == ref_root_id
+            ).first()
+
+            if not exists_ref_root:
+                try:
+                    FileGroupService.insert({
+                        "id": ref_root_id,
+                        "parent_id": manager_root_id,
+                        "tenant_id": manager_user_id,
+                        "created_by": manager_user_id,
+                        "name": "组参考库+文献库",
+                        "location": "",
+                        "size": 0,
+                        "type": FileType.FOLDER.value,
+                    })
+                    print(f"参考库根节点写入 File_Group 成功: {ref_root_id}")
+                except Exception as e:
+                    print(f"参考库根节点写入 File_Group 失败: {ref_root_id}, error={e}")
+            else:
+                if exists_ref_root.parent_id != manager_root_id:
+                    try:
+                        File_Group.update({
+                            File_Group.parent_id: manager_root_id,
+                            File_Group.tenant_id: manager_user_id,
+                            File_Group.created_by: manager_user_id,
+                            File_Group.name: "组参考库+文献库",
+                        }).where(
+                            File_Group.id == ref_root_id
+                        ).execute()
+                        print(f"参考库根节点更新 File_Group 成功: {ref_root_id}")
+                    except Exception as e:
+                        print(f"参考库根节点更新 File_Group 失败: {ref_root_id}, error={e}")
+
+            # 2. 参考库下面所有文件写入 File_Group
+            # 这里保留你的条件：File.tenant_id == group_public_id
+            ref_files = File.select().where(
+                (File.id != File.parent_id)
+                & (File.tenant_id == group_public_id)
+            )
+
+            print(f"参考库文件写入 File_Group 数量: {ref_files.count()}")
+
+            for item in ref_files:
+                data = item.to_dict()
+                file_id = data.get("id")
+
+                if not file_id:
+                    continue
+
+                exists_file = File_Group.select().where(
+                    File_Group.id == file_id
+                ).first()
+
+                if exists_file:
+                    continue
+
+                try:
+                    File_Group.create(**data)
+                    print(f"参考库文件写入 File_Group 成功: {file_id}")
+                except Exception as e:
+                    print(f"参考库文件写入 File_Group 失败: {file_id}, error={e}")
+
+        # =====================================================
+        # 第一步：无论拉入的是普通成员还是二级管理员，
+        # 都先写入一级表 File_Admin，并同步其文件
+        # =====================================================
+        mount_member_to_file_admin(user_id)
+
+        # 如果当前组配置了参考库，也挂到一级表
+        mount_reference_to_file_admin()
+
+        # =====================================================
+        # 第二步：处理二级表 File_Group
+        # =====================================================
+
+        # -----------------------------------------------------
+        # 情况一：当前拉入的是二级管理员
+        # -----------------------------------------------------
+        if is_new_user_manager:
+            manager_user_id = user_id
+            manager_root_id = user_root_id
+
+            # 确保二级管理员自己的根目录存在于 File_Group
+            ensure_manager_root_in_file_group(
+                manager_user_id=manager_user_id,
+                manager_root_id=manager_root_id
+            )
+
+            # 把参考库挂到二级管理员下面
+            mount_reference_to_group_manager(
+                manager_user_id=manager_user_id,
+                manager_root_id=manager_root_id
+            )
+
+            # 把当前组已有普通成员挂到这个二级管理员下面
+            group_members = UserGroup.select().where(
+                UserGroup.group_id == group_id
+            )
+
+            for member_group in group_members:
+                member_user_id = member_group.user_id
+
+                # 跳过二级管理员自己
+                if member_user_id == manager_user_id:
+                    continue
+
+                # 跳过其他二级管理员
+                if AdminUser.query(user_id=member_user_id, role_level=2):
+                    continue
+
+                mount_member_to_group_manager(
+                    member_user_id=member_user_id,
+                    manager_user_id=manager_user_id,
+                    manager_root_id=manager_root_id
+                )
+
+        # -----------------------------------------------------
+        # 情况二：当前拉入的是普通成员
+        # -----------------------------------------------------
         else:
-            try:
-                # 获取当前组的管理员
-                # 1. 构建查询
-                query = (AdminUser
-                        .select()
-                        .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))  # 通过 user_id 进行连接
-                        .where((UserGroup.group_id == group_id) & (AdminUser.role_level == 2)))  # 设置筛选条件
+            # 获取当前组第一个二级管理员
+            group_manager = (
+                AdminUser
+                .select()
+                .join(UserGroup, on=(AdminUser.user_id == UserGroup.user_id))
+                .where(
+                    (UserGroup.group_id == group_id)
+                    & (AdminUser.role_level == 2)
+                )
+                .first()
+            )
 
-                # 2. 获取第一个结果
-                group_user = query.first()
-
-                print(group_user.to_dict())
-                print(group_user.user_id)
-                print("---------------------------------------------------------------")
-                # 3. 将当前用户挂载到管理员
-                # root_folder = FileService.get_root_folder(tenant_id=group_user.user_id)
-
-                root_folder = FileService.model.select().where((FileService.model.tenant_id == group_user.user_id), (FileService.model.parent_id == FileService.model.id)).first()
-                pf_id = root_folder.id
-                file3 = FileGroupService.insert({
-                    "id": file['id'],  # 昵称的id
-                    "parent_id": pf_id,
-                    "tenant_id": group_user.user_id,
-                    "created_by": group_user.user_id,
-                    "name": add_user.nickname,
-                    "location": "",
-                    "size": 0,
-                    "type": FileType.FOLDER.value
-                })
-            except AdminUser.DoesNotExist:
+            if not group_manager:
                 raise Exception("请先拉一个组管理员入组")
 
+            manager_user_id = group_manager.user_id
+
+            # 获取二级管理员根目录
+            manager_root = FileService.model.select().where(
+                (FileService.model.tenant_id == manager_user_id)
+                & (FileService.model.parent_id == FileService.model.id)
+            ).first()
+
+            if not manager_root:
+                raise Exception(f"二级管理员 {manager_user_id} 没有根目录")
+
+            manager_root_id = manager_root.id
+
+            # 确保二级管理员自己的根目录存在于 File_Group
+            ensure_manager_root_in_file_group(
+                manager_user_id=manager_user_id,
+                manager_root_id=manager_root_id
+            )
+
+            # 把当前普通成员挂到二级管理员下面，并同步成员文件
+            mount_member_to_group_manager(
+                member_user_id=user_id,
+                manager_user_id=manager_user_id,
+                manager_root_id=manager_root_id
+            )
+
+            # 确保参考库也挂到二级管理员下面
+            mount_reference_to_group_manager(
+                manager_user_id=manager_user_id,
+                manager_root_id=manager_root_id
+            )
 
         return get_json_result(data={"id": obj.id})
+
     except Exception as e:
         return server_error_response(e)
-
-
+    
 @manager.route("/delete", methods=["POST"])  # noqa: F821
 @login_required
 async def delete_user_group():
