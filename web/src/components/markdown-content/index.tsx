@@ -630,6 +630,101 @@ const MarkdownContent = ({
     return result.replace(/^\n+/, '');
   }, []);
 
+  const normalizeIndentedTextToMarkdown = useCallback((text: string) => {
+    if (!text) return text;
+
+    const normalizeOutsideThink = (segment: string) => {
+      const lines = segment.replace(/\r\n/g, '\n').split('\n');
+
+      const sectionTitles = new Set(['标准', '外文', '文献', '综合总结']);
+
+      return lines
+        .map((line) => {
+          const raw = line;
+          const trimmed = raw.trim();
+
+          if (!trimmed) {
+            return '';
+          }
+
+          // 已经是 Markdown / HTML 的，不处理
+          if (
+            /^(\s*)(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```)/.test(raw) ||
+            /^<source-heading>/i.test(trimmed) ||
+            /^<\/source-heading>/i.test(trimmed)
+          ) {
+            return raw;
+          }
+
+          const indentLength = raw.match(/^\s*/)?.[0]?.length ?? 0;
+
+          // 独立一级标题：标准、外文、文献、综合总结
+          if (indentLength === 0 && sectionTitles.has(trimmed)) {
+            return `## ${trimmed}`;
+          }
+
+          // 无缩进 + 冒号结尾：一级标题
+          if (indentLength === 0 && /[：:]$/.test(trimmed)) {
+            return `## ${trimmed.replace(/[：:]$/, '')}`;
+          }
+
+          // 有缩进 + 冒号结尾：二级标题
+          if (indentLength > 0 && /[：:]$/.test(trimmed)) {
+            return `### ${trimmed.replace(/[：:]$/, '')}`;
+          }
+
+          // 有缩进正文：转成普通段落，不转列表
+          if (indentLength > 0) {
+            return trimmed;
+          }
+
+          // 普通正文
+          return trimmed;
+        })
+        .join('\n\n');
+    };
+
+    let result = '';
+    let cursor = 0;
+    const lowerText = text.toLowerCase();
+
+    while (cursor < text.length) {
+      const thinkStart = lowerText.indexOf('<think', cursor);
+
+      // 后面没有 think，剩余内容正常处理
+      if (thinkStart === -1) {
+        result += normalizeOutsideThink(text.slice(cursor));
+        break;
+      }
+
+      // think 前面的正文正常处理
+      result += normalizeOutsideThink(text.slice(cursor, thinkStart));
+
+      const openTagEnd = text.indexOf('>', thinkStart);
+
+      // 流式场景：<think 标签还没完整，后面全部原样保留
+      if (openTagEnd === -1) {
+        result += text.slice(thinkStart);
+        break;
+      }
+
+      const closeTagStart = lowerText.indexOf('</think>', openTagEnd + 1);
+
+      // 流式场景：think 还没闭合，think 到结尾全部原样保留
+      if (closeTagStart === -1) {
+        result += text.slice(thinkStart);
+        break;
+      }
+
+      // 完整 think 块，原样保留，不做任何 normalize
+      result += text.slice(thinkStart, closeTagStart + '</think>'.length);
+
+      cursor = closeTagStart + '</think>'.length;
+    }
+
+    return result;
+  }, []);
+
   const contentWithCursor = useMemo(() => {
     let text = content || '';
 
@@ -637,6 +732,8 @@ const MarkdownContent = ({
       text = t('chat.searching');
     }
 
+    // 先整理标题和正文段落
+    text = normalizeIndentedTextToMarkdown(text);
     // 只替换 think 外面的来源标题
     text = replaceSourceHeading(text);
 
@@ -684,20 +781,49 @@ const MarkdownContent = ({
     [clickDocumentButton],
   );
 
+  // const rehypeWrapReference = () => {
+  //   return function wrapTextTransform(tree: any) {
+  //     visitParents(tree, 'text', (node, ancestors) => {
+  //       const latestAncestor = ancestors.at(-1);
+
+  //       if (
+  //         latestAncestor.tagName !== 'custom-typography' &&
+  //         latestAncestor.tagName !== 'code'
+  //       ) {
+  //         node.type = 'element';
+  //         node.tagName = 'custom-typography';
+  //         node.properties = {};
+  //         node.children = [{ type: 'text', value: node.value }];
+  //       }
+  //     });
+  //   };
+  // };
+
   const rehypeWrapReference = () => {
     return function wrapTextTransform(tree: any) {
       visitParents(tree, 'text', (node, ancestors) => {
-        const latestAncestor = ancestors.at(-1);
+        const skipTags = new Set([
+          'custom-typography',
+          'code',
+          'pre',
+          'source-heading',
+          'think',
+          'script',
+          'style',
+        ]);
 
-        if (
-          latestAncestor.tagName !== 'custom-typography' &&
-          latestAncestor.tagName !== 'code'
-        ) {
-          node.type = 'element';
-          node.tagName = 'custom-typography';
-          node.properties = {};
-          node.children = [{ type: 'text', value: node.value }];
+        const shouldSkip = ancestors.some((ancestor: any) => {
+          return ancestor?.tagName && skipTags.has(ancestor.tagName);
+        });
+
+        if (shouldSkip) {
+          return;
         }
+
+        node.type = 'element';
+        node.tagName = 'custom-typography';
+        node.properties = {};
+        node.children = [{ type: 'text', value: node.value }];
       });
     };
   };
@@ -834,16 +960,32 @@ const MarkdownContent = ({
           </section>
         ) : (
           <HoverCard key={i}>
-            <HoverCardTrigger>
-              {/* <span
-                className={`inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white rounded-full ${getNumberColor(
-                  docIndex + 1,
-                )}`}
+            <HoverCardTrigger asChild>
+              <span
+                className="
+                  reference-badge
+                  mx-0.5
+                  inline-flex
+                  h-4
+                  w-4
+                  shrink-0
+                  cursor-pointer
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-[#018B8D]
+                  text-[10px]
+                  font-semibold
+                  leading-none
+                  text-white
+                  align-middle
+                  indent-0
+                  [text-indent:0]
+                "
+                style={{
+                  textIndent: 0,
+                }}
               >
-                {docIndex + 1}
-              </span> */}
-
-              <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white rounded-full bg-[#018B8D]">
                 {docIndex + 1}
               </span>
             </HoverCardTrigger>
@@ -871,18 +1013,139 @@ const MarkdownContent = ({
         think: () => null,
 
         // 来源标题
+        // 'source-heading': ({ children }: { children: React.ReactNode }) => (
+        //   <div
+        //     className="
+        //       mt-5 mb-3
+        //       flex items-center gap-3
+        //       text-lg font-extrabold
+        //       text-[#018B8D] dark:text-[#018B8D]
+        //     "
+        //   >
+        //     <HomeIcon name="datasets" width="20" />
+        //     <span>{children}</span>
+        //   </div>
+        // ),
+
         'source-heading': ({ children }: { children: React.ReactNode }) => (
           <div
             className="
-              mt-8 mb-4 
-              flex items-center gap-3
-              text-lg font-extrabold 
-              text-green-900 dark:text-green-500
-            "
+      mt-5 mb-3
+      flex items-center gap-3
+      text-lg font-extrabold
+      text-[#018B8D] dark:text-[#018B8D]
+      indent-0
+      [&_*]:indent-0
+    "
+            style={{ textIndent: 0 }}
           >
-            <HomeIcon name="datasets" width="24" />
-            <span>{children}</span>
+            <HomeIcon name="datasets" width="20" />
+
+            <span className="indent-0" style={{ textIndent: 0 }}>
+              {children}
+            </span>
           </div>
+        ),
+        h2: ({ children }: { children: React.ReactNode }) => (
+          <h2
+            className="
+            mt-5 mb-3
+            border-l-4 border-[#018B8D]
+            pl-3
+            text-lg font-extrabold leading-7
+            text-gray-900 dark:text-gray-100
+            indent-0
+            [&_*]:indent-0
+          "
+            style={{ textIndent: 0 }}
+          >
+            {children}
+          </h2>
+        ),
+
+        h3: ({ children }: { children: React.ReactNode }) => (
+          <h3
+            className="
+            mt-4 mb-2
+            text-base font-bold leading-7
+            text-[#018B8D] dark:text-[#20B2AA]
+            indent-0
+            [&_*]:indent-0
+          "
+            style={{ textIndent: 0 }}
+          >
+            {children}
+          </h3>
+        ),
+
+        p: ({ children }: { children: React.ReactNode }) => (
+          <p
+            className="
+      my-2
+      text-[15px]
+      leading-8
+      text-gray-800
+      indent-[2em]
+      dark:text-gray-200
+    "
+          >
+            {children}
+          </p>
+        ),
+
+        ul: ({ children }: { children: React.ReactNode }) => (
+          <ul
+            className="
+      my-2
+      ml-[2em]
+      list-disc
+      space-y-2
+      pl-4
+      text-gray-800
+      dark:text-gray-200
+      indent-0
+    "
+          >
+            {children}
+          </ul>
+        ),
+
+        ol: ({ children }: { children: React.ReactNode }) => (
+          <ol
+            className="
+      my-2
+      ml-[2em]
+      list-decimal
+      space-y-2
+      pl-4
+      text-gray-800
+      dark:text-gray-200
+      indent-0
+    "
+          >
+            {children}
+          </ol>
+        ),
+
+        li: ({ children }: { children: React.ReactNode }) => (
+          <li
+            className="
+      pl-1
+      text-[15px]
+      leading-8
+      text-gray-800
+      marker:text-[#018B8D]
+      dark:text-gray-200
+
+      indent-0
+      [&_*]:indent-0
+      [&>p]:my-0
+      [&>p]:indent-0
+      [&_p]:indent-0
+    "
+          >
+            {children}
+          </li>
         ),
 
         // 自定义引用包裹

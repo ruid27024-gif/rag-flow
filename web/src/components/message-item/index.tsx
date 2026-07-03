@@ -39,6 +39,7 @@ interface IProps extends Partial<IRemoveMessageById>, IRegenerateMessage {
   showLoudspeaker?: boolean;
   onSuggestionClick?: (text: string) => void;
   onSuggestionDoubleClick?: (text: string) => void;
+  onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
 }
 
 const MessageItem = ({
@@ -49,6 +50,7 @@ const MessageItem = ({
   avatarDialog,
   sendLoading = false,
   clickDocumentButton,
+  onOpenReferencePanel,
   index,
   removeMessageById,
   regenerateMessage,
@@ -79,12 +81,59 @@ const MessageItem = ({
   }, [item?.suggestions, loading]);
 
   // console.log('🔍 原始 Reference 对象:', reference);
+  // const referenceDocumentList = useMemo(() => {
+  //   if (loading) {
+  //     return [];
+  //   }
+  //   return reference?.doc_aggs ?? [];
+  // }, [reference?.doc_aggs, loading]);
+
   const referenceDocumentList = useMemo(() => {
     if (loading) {
       return [];
     }
-    return reference?.doc_aggs ?? [];
-  }, [reference?.doc_aggs, loading]);
+
+    const docAggs = reference?.doc_aggs ?? [];
+    const chunks = reference?.chunks ?? [];
+
+    return docAggs.map((doc: any) => {
+      const docId = doc.doc_id || doc.document_id;
+      const docName = doc.doc_name || doc.document_name || doc.docnm_kwd || '';
+
+      const matchedChunks = chunks.filter((chunk: any) => {
+        const chunkDocId = chunk.document_id || chunk.doc_id;
+        return chunkDocId === docId;
+      });
+
+      const firstChunk = matchedChunks[0] || {};
+
+      return {
+        ...doc,
+
+        // 文档基本信息
+        doc_id: docId,
+        document_id: docId,
+        doc_name: docName,
+        document_name: docName,
+        docnm_kwd: firstChunk.docnm_kwd || docName,
+
+        // 保留原始 chunks
+        chunks: matchedChunks,
+
+        // 合并该文档下所有 chunk 的 positions，用于一次性高亮
+        positions: matchedChunks.flatMap((chunk: any) => chunk.positions || []),
+
+        // 合并内容，用于预览文本
+        content: matchedChunks
+          .map((chunk: any) => chunk.content)
+          .filter(Boolean)
+          .join('\n\n'),
+
+        // url
+        url: doc.url ?? firstChunk.url ?? null,
+      };
+    });
+  }, [reference?.doc_aggs, reference?.chunks, loading]);
 
   // 将 item 转为格式化后的 JSON 字符串打印
   // console.log('🔍 完整的 Item 数据:', JSON.stringify(item, null, 2));
@@ -194,7 +243,7 @@ const MessageItem = ({
               />
             )}
 
-            {messageContent && (
+            {/* {messageContent && (
               <div
                 className={cn(
                   isAssistant
@@ -219,11 +268,50 @@ const MessageItem = ({
                   clickDocumentButton={clickDocumentButton}
                 ></MarkdownContent>
               </div>
+            )} */}
+
+            {messageContent && (
+              <div
+                className={cn(
+                  isAssistant
+                    ? theme === 'dark'
+                      ? styles.messageTextDark
+                      : styles.messageText
+                    : styles.messageUserText,
+                  { '!bg-bg-card': !isAssistant },
+                )}
+                style={{
+                  fontFamily: `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"`,
+                  fontSize: 16,
+                  lineHeight: 1.75,
+                  fontWeight: 400,
+                  letterSpacing: '0.01em',
+                }}
+              >
+                {isAssistant ? (
+                  <MarkdownContent
+                    loading={loading}
+                    content={messageContent}
+                    reference={reference}
+                    clickDocumentButton={clickDocumentButton}
+                  />
+                ) : (
+                  <span className="whitespace-pre-wrap break-words">
+                    {messageContent}
+                  </span>
+                )}
+              </div>
             )}
-            {isAssistant && referenceDocumentList.length > 0 && (
+            {/* {isAssistant && referenceDocumentList.length > 0 && (
               <ReferenceDocumentList
                 list={referenceDocumentList}
               ></ReferenceDocumentList>
+            )} */}
+            {isAssistant && referenceDocumentList.length > 0 && (
+              <ReferenceDocumentList
+                list={referenceDocumentList}
+                onOpenReferencePanel={onOpenReferencePanel}
+              />
             )}
             {/* {isAssistant && suggestionsList.length > 0 && (
               <div className="mt-2.5 flex flex-col gap-2">

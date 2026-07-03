@@ -65,7 +65,7 @@ export function Sessions({
   return (
     <section
       className="
-      pt-1 px-4 w-[296px] flex flex-col
+      pt-1 px-4 w-[266px] flex flex-col
       bg-white dark:bg-zinc-900
       border-r border-gray-200 dark:border-zinc-800
     "
@@ -82,22 +82,14 @@ export function Sessions({
                 <span
                   className="
                   text-2xl font-bold
-                  bg-gradient-to-l from-cyan-400 to-emerald-400
-                  bg-clip-text
-                  text-transparent
-                  [-webkit-text-fill-color:transparent]
-                  group-hover:bg-none
-                  group-hover:text-black
-                  group-hover:[-webkit-text-fill-color:#000]
-                  dark:group-hover:text-black
-                  dark:group-hover:[-webkit-text-fill-color:#000]
+                  text-[#064E3B]
+                  dark:text-[#20B2AA]
                   transition-all duration-300
                 "
                   style={{
                     fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, serif`,
                   }}
                 >
-                  {/* {t('chat.server')} */}
                   {'恒丰纸业'}
                 </span>
 

@@ -9,6 +9,7 @@ interface IProps {
     description?: string;
     avatar?: string;
     update_time?: string | number;
+    color?: number;
   };
   onClick?: () => void;
   moreDropdown: React.ReactNode;
@@ -22,6 +23,8 @@ export function HomeCard({
   sharedBadge,
   icon,
 }: IProps) {
+  console.log('HomeCard data:', data);
+  console.log('HomeCard color:', data?.name, data?.color);
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
     const year = date.getFullYear();

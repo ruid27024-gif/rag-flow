@@ -64,6 +64,8 @@ const DocumentPreviewer = ({ chunk, documentId, visible }: IProps) => {
         beforeLoad={<Skeleton active />}
         workerSrc="/pdfjs-dist/pdf.worker.min.js"
         errorMessage={<FileError>{error}</FileError>}
+        cMapUrl="/cmaps/"
+        cMapPacked={true}
       >
         {(pdfDocument) => {
           pdfDocument.getPage(1).then((page) => {

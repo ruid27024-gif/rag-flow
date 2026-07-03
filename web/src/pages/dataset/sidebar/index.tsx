@@ -73,6 +73,7 @@ export function SideBar({ refreshCount }: PropType) {
         <RAGFlowAvatar
           avatar={data.avatar}
           name={data.name}
+          color={data.color}
           className="size-16"
         ></RAGFlowAvatar>
         <div className=" text-text-secondary text-xs space-y-1 overflow-hidden">

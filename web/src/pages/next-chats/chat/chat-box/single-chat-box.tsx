@@ -1,14 +1,11 @@
 import { NextMessageInput } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
-import PdfSheet from '@/components/pdf-drawer';
-import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { MessageType } from '@/constants/chat';
 import {
   useFetchDialog,
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
-import { IClientConversation } from '@/interfaces/database/chat';
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -20,16 +17,31 @@ import { useCreateConversationBeforeUploadDocument } from '../../hooks/use-creat
 import { useSendMessage } from '../../hooks/use-send-chat-message';
 import { buildMessageItemReference } from '../../utils';
 
+// interface IProps {
+//   controller: AbortController;
+//   stopOutputMessage(): void;
+//   conversation: IClientConversation;
+// }
+
 interface IProps {
-  controller: AbortController;
-  stopOutputMessage(): void;
-  conversation: IClientConversation;
+  controller: any;
+  stopOutputMessage: () => void;
+  conversation: any;
+  clickDocumentButton?: (
+    documentId: string,
+    chunk: any,
+    isPdf?: boolean,
+    documentUrl?: string | null,
+  ) => void;
+  onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
 }
 
 export function SingleChatBox({
   controller,
   stopOutputMessage,
   conversation,
+  clickDocumentButton,
+  onOpenReferencePanel,
 }: IProps) {
   const {
     value,
@@ -54,8 +66,8 @@ export function SingleChatBox({
   const { conversationId } = useGetChatSearchParams();
   const disabled = useGetSendButtonDisabled();
   const sendDisabled = useSendButtonDisabled(value);
-  const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
-    useClickDrawer();
+  // const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
+  //   useClickDrawer();
 
   // console.log('derivedMessages',derivedMessages);
   useEffect(() => {
@@ -189,7 +201,12 @@ export function SingleChatBox({
         : hours >= 18 && hours < 22
           ? MoonIcon
           : StarIcon;
-
+  //   useEffect(() => {
+  //   if (visible) {
+  //     console.log('PdfSheet documentId:', documentId);
+  //     console.log('PdfSheet selectedChunk:', selectedChunk);
+  //   }
+  // }, [visible, documentId, selectedChunk]);
   return (
     // <section className="flex flex-col p-5 h-full">
     //   {/* 消息滚动区域 */}
@@ -372,6 +389,7 @@ export function SingleChatBox({
                   message,
                 )}
                 clickDocumentButton={clickDocumentButton}
+                onOpenReferencePanel={onOpenReferencePanel}
                 index={i}
                 removeMessageById={removeMessageById}
                 regenerateMessage={regenerateMessage}
@@ -411,14 +429,14 @@ export function SingleChatBox({
       </div>
 
       {/* PDF 预览弹窗 */}
-      {visible && (
+      {/* {visible && (
         <PdfSheet
           visible={visible}
           hideModal={hideModal}
           documentId={documentId}
           chunk={selectedChunk}
         />
-      )}
+      )} */}
     </section>
   );
 }

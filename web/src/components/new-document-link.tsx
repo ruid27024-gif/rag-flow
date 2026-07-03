@@ -12,6 +12,9 @@ interface IProps extends React.PropsWithChildren {
   documentId?: string;
   prefix?: string;
   className?: string;
+  showDownloadButton?: boolean;
+  wrapperClassName?: string;
+  ellipsis?: boolean;
 }
 
 const NewDocumentLink = ({
@@ -23,6 +26,9 @@ const NewDocumentLink = ({
   documentName,
   prefix = 'file',
   className,
+  showDownloadButton = true,
+  wrapperClassName,
+  ellipsis = true,
 }: IProps) => {
   let nextLink = link;
   // 获取后缀
@@ -134,9 +140,58 @@ const NewDocumentLink = ({
   //     </div>
   //   );
   // };
+  //   return (
+  //     <div className="flex items-center gap-2 min-w-0 flex-1 w-full max-w-[550px]">
+  //       <div className="min-w-0 flex-1 overflow-hidden">
+  //         <a
+  //           target="_blank"
+  //           onClick={
+  //             !preventDefault || isSupportedPreviewDocumentType(extension)
+  //               ? undefined
+  //               : (e) => e.preventDefault()
+  //           }
+  //           href={nextLink}
+  //           rel="noreferrer"
+  //           title={documentName}
+  //           style={{ color: className ? '' : color }}
+  //           className={`block w-full overflow-hidden text-ellipsis whitespace-nowrap ${className || ''}`}
+  //         >
+  //           {children}
+  //         </a>
+  //       </div>
+
+  //       {isSupportedPreviewDocumentType(extension) && (
+  //         <button
+  //           type="button"
+  //           onClick={handleDownload}
+  //           className="
+  //             flex-shrink-0
+  //             cursor-pointer
+  //             px-2 py-1 text-xs border rounded-md
+  //             bg-gray-100 text-gray-700 border-gray-300
+  //             hover:bg-gray-200
+  //             dark:bg-slate-800 dark:text-gray-200 dark:border-slate-600 dark:hover:bg-slate-700
+  //           "
+  //         >
+  //           下载
+  //         </button>
+  //       )}
+  //     </div>
+  //   );
+  // };
+
   return (
-    <div className="flex items-center gap-2 min-w-0 flex-1 w-full max-w-[550px]">
-      <div className="min-w-0 flex-1 overflow-hidden">
+    <div
+      className={
+        wrapperClassName ??
+        'flex items-center gap-2 min-w-0 flex-1 w-full max-w-[550px]'
+      }
+    >
+      <div
+        className={
+          ellipsis ? 'min-w-0 flex-1 overflow-hidden' : 'min-w-0 w-full'
+        }
+      >
         <a
           target="_blank"
           onClick={
@@ -148,24 +203,28 @@ const NewDocumentLink = ({
           rel="noreferrer"
           title={documentName}
           style={{ color: className ? '' : color }}
-          className={`block w-full overflow-hidden text-ellipsis whitespace-nowrap ${className || ''}`}
+          className={
+            ellipsis
+              ? `block w-full overflow-hidden text-ellipsis whitespace-nowrap ${className || ''}`
+              : `${className || ''}`
+          }
         >
           {children}
         </a>
       </div>
 
-      {isSupportedPreviewDocumentType(extension) && (
+      {showDownloadButton && isSupportedPreviewDocumentType(extension) && (
         <button
           type="button"
           onClick={handleDownload}
           className="
-            flex-shrink-0
-            cursor-pointer
-            px-2 py-1 text-xs border rounded-md
-            bg-gray-100 text-gray-700 border-gray-300
-            hover:bg-gray-200
-            dark:bg-slate-800 dark:text-gray-200 dark:border-slate-600 dark:hover:bg-slate-700
-          "
+          flex-shrink-0
+          cursor-pointer
+          px-2 py-1 text-xs border rounded-md
+          bg-gray-100 text-gray-700 border-gray-300
+          hover:bg-gray-200
+          dark:bg-slate-800 dark:text-gray-200 dark:border-slate-600 dark:hover:bg-slate-700
+        "
         >
           下载
         </button>

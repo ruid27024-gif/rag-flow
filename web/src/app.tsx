@@ -22,7 +22,6 @@ import { ThemeProvider, useTheme } from './components/theme-provider';
 import { SidebarProvider } from './components/ui/sidebar';
 import { TooltipProvider } from './components/ui/tooltip';
 import { ThemeEnum } from './constants/common';
-import { BgSvg } from './pages/login-next/bg';
 import storage from './utils/authorization-util';
 
 dayjs.extend(customParseFormat);
@@ -72,9 +71,9 @@ function Root({ children }: React.PropsWithChildren) {
   return (
     <>
       <div className="fixed inset-0 -z-10 pointer-events-none">
-        <div className="h-full relative overflow-hidden">
+        {/* <div className="h-full relative overflow-hidden">
           <BgSvg isPaused={isUserInteracting} />
-        </div>
+        </div> */}
       </div>
 
       <ConfigProvider

@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 const PREDEFINED_COLORS = [
   { from: '#4F6DEE', to: '#67BDF9' },
   { from: '#633897', to: '#CBA1FF' },
-  { from: '#38A04D', to: '#93DCA2' },
+  { from: '#1e7e34', to: '#18642a' },
 
   { from: '#C35F2B', to: '#EDB395' },
   { from: '#FF6B6B', to: '#FF8E53' }, // 5. 珊瑚红 (活力/醒目)
@@ -14,6 +14,10 @@ const PREDEFINED_COLORS = [
   { from: '#43E97B', to: '#38F9D7' }, // 8. 薄荷绿 (清爽/现代)
   { from: '#FA709A', to: '#FEE140' }, // 9. 落日黄 (温暖/渐变)
   // { from: '#30CFD0', to: '#330867' }, // 10. 赛博朋克 (深色/酷炫)
+  { from: '#0D3A69', to: '#6ECC54' },
+  { from: '#D34947', to: '#018B8D' },
+  { from: '#C8161D', to: '#470125' },
+  { from: '#102535', to: '#0A3549' },
 ];
 
 const getStringHash = (str: string): number => {
@@ -74,35 +78,59 @@ export const RAGFlowAvatar = memo(
     // 2. 颜色逻辑修改
     let from, to;
 
-    // 判断 color 是否为数字 (1, 2, 3...)
+    // // 判断 color 是否为数字 (1, 2, 3...)
+    // if (color === 6) {
+    //   from = '#064E3B';
+    //   to = '#047857';
+    // } else if (typeof color === 'number') {
+    //   // 获取对应的颜色配置
+    //   // 注意：数组索引是从 0 开始的，所以用 color - 1
+    //   console.log(color);
+    //   const colorConfig = PREDEFINED_COLORS[color - 1];
+
+    //   if (colorConfig) {
+    //     from = colorConfig.from;
+    //     to = colorConfig.to;
+    //   } else {
+    //     // 如果数字超出了数组范围（比如传了 99），给个默认兜底色
+    //     from = 'hsl(0, 0%, 30%)';
+    //     to = 'hsl(0, 0%, 80%)';
+    //   }
+    // }
+    // // 如果没有 color 数字，但有 name，走原来的随机颜色逻辑
+    // else if (name) {
+    //   const colors = getColorForName(name);
+    //   from = colors.from;
+    //   to = colors.to;
+    // }
+    // // 都没有，走默认灰色
+    // else {
+    //   from = 'hsl(0, 0%, 30%)';
+    //   to = 'hsl(0, 0%, 80%)';
+    // }
+
     if (color === 6) {
       from = '#064E3B';
       to = '#047857';
+    } else if (color === 99) {
+      // color 传入 99 时，使用深蓝色
+      from = '#4ADE80';
+      to = '#4ADE80';
     } else if (typeof color === 'number') {
-      // 获取对应的颜色配置
-      // 注意：数组索引是从 0 开始的，所以用 color - 1
-      console.log(color);
       const colorConfig = PREDEFINED_COLORS[color - 1];
 
       if (colorConfig) {
         from = colorConfig.from;
         to = colorConfig.to;
       } else {
-        // 如果数字超出了数组范围（比如传了 99），给个默认兜底色
-        from = 'hsl(0, 0%, 30%)';
-        to = 'hsl(0, 0%, 80%)';
+        // 传入了数字，但是不在预设范围内
+        from = '#035a2d';
+        to = '#048a44';
       }
-    }
-    // 如果没有 color 数字，但有 name，走原来的随机颜色逻辑
-    else if (name) {
-      const colors = getColorForName(name);
-      from = colors.from;
-      to = colors.to;
-    }
-    // 都没有，走默认灰色
-    else {
-      from = 'hsl(0, 0%, 30%)';
-      to = 'hsl(0, 0%, 80%)';
+    } else {
+      // color 是 undefined / null / 没传时
+      from = '#3baa51';
+      to = '#38A04D';
     }
 
     const fallbackRef = useRef<HTMLElement>(null);
@@ -170,9 +198,9 @@ export const RAGFlowAvatar = memo(
           className={cn(
             'flex items-center justify-center overflow-hidden',
             isGreenSvgIcon
-              ? 'bg-emerald-50 text-emerald-900 border border-emerald-100'
+              ? 'rounded-none bg-transparent'
               : 'bg-gradient-to-b text-white',
-            { 'rounded-md': !isPerson },
+            { 'rounded-md': !isPerson && !isGreenSvgIcon },
           )}
           style={{
             backgroundImage: isGreenSvgIcon
@@ -185,7 +213,7 @@ export const RAGFlowAvatar = memo(
             <img
               src="/hf-remove-bg-io.png"
               alt="恒丰纸业"
-              className="h-[72%] w-[72%] object-contain"
+              className="h-full w-full rounded-none object-contain"
             />
           ) : (
             initials

@@ -357,6 +357,8 @@ class KnowledgebaseService(CommonService):
 
         for kb in res:
             tenant_id = kb["tenant_id"]
+            kb["color"] = 99
+            kb.setdefault("group_name", None)
 
             if tenant_id == public_id:
                 kb["group_name"] = "全局参考库"
@@ -600,6 +602,9 @@ class KnowledgebaseService(CommonService):
             # 1. 获取租户ID
             tenant_id = kb["tenant_id"]
                 # 全局库的id
+            # 默认值：普通库
+            kb["color"] = 99
+            kb.setdefault("group_name", None)
 
             if tenant_id == public_id:
                 kb["group_name"] = "全局参考库"
@@ -759,6 +764,7 @@ class KnowledgebaseService(CommonService):
         #     Dictionary containing dataset details
         fields = [
             cls.model.id,
+            cls.model.tenant_id,  # 加这个
             cls.model.embd_id,
             cls.model.avatar,
             cls.model.name,

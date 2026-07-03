@@ -45,6 +45,7 @@ from rag.utils.doc_store_conn import OrderByExpr
 from common.constants import RetCode, PipelineTaskType, StatusEnum, VALID_TASK_STATUS, FileSource, LLMType, PAGERANK_FLD
 from common import settings
 from api.apps import login_required, current_user
+from api.db.db_models import Group
 
 
 @manager.route('/create', methods=['post'])  # noqa: F821
@@ -229,30 +230,116 @@ async def update():
         return server_error_response(e)
 
 
+# @manager.route('/detail', methods=['GET'])  # noqa: F821
+# @login_required
+# def detail():
+#     kb_id = request.args["kb_id"]
+#     try:
+#         if not KnowledgebaseService.accessible(kb_id, current_user.id):
+#             return get_json_result(
+#                 data=False, message='Only owner of dataset authorized for this operation.',
+#                 code=RetCode.OPERATING_ERROR)
+
+#         kb = KnowledgebaseService.get_detail(kb_id)
+#         if not kb:
+#             return get_json_result(data=False, message='Knowledgebase not found', code=RetCode.DATA_NOT_FOUND)
+
+#         kb["size"] = DocumentService.get_total_size_by_kb_id(kb_id=kb["id"],keywords="", run_status=[], types=[])
+#         kb["connectors"] = Connector2KbService.list_connectors(kb_id)
+
+#         for key in ["graphrag_task_finish_at", "raptor_task_finish_at", "mindmap_task_finish_at"]:
+#             if finish_at := kb.get(key):
+#                 kb[key] = finish_at.strftime("%Y-%m-%d %H:%M:%S")
+
+#         if AdminUser.query(user_id=current_user.id):
+#             kb['is_admin'] = True
+#         return get_json_result(data=kb)
+#     except Exception as e:
+#         return server_error_response(e)
+
 @manager.route('/detail', methods=['GET'])  # noqa: F821
 @login_required
 def detail():
     kb_id = request.args["kb_id"]
+
     try:
         if not KnowledgebaseService.accessible(kb_id, current_user.id):
             return get_json_result(
-                data=False, message='Only owner of dataset authorized for this operation.',
-                code=RetCode.OPERATING_ERROR)
+                data=False,
+                message='Only owner of dataset authorized for this operation.',
+                code=RetCode.OPERATING_ERROR,
+            )
 
         kb = KnowledgebaseService.get_detail(kb_id)
         if not kb:
-            return get_json_result(data=False, message='Knowledgebase not found', code=RetCode.DATA_NOT_FOUND)
+            return get_json_result(
+                data=False,
+                message='Knowledgebase not found',
+                code=RetCode.DATA_NOT_FOUND,
+            )
 
-        kb["size"] = DocumentService.get_total_size_by_kb_id(kb_id=kb["id"],keywords="", run_status=[], types=[])
+        # 颜色逻辑开始
+        tenant_id = kb.get("tenant_id")
+
+        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+        reversed_map = {v: k for k, v in cfg_map.items()}
+
+        public_id = settings.REFERENCE_TENANT_ID
+
+        # 默认颜色：一级管理员/普通库
+        kb["color"] = 99
+
+        # 全局参考库
+        if tenant_id == public_id:
+            kb["group_name"] = "全局参考库"
+            kb["color"] = 3
+
+        # 一级管理员创建
+        if AdminUser.query(user_id=tenant_id, role_level=1):
+            kb["color"] = 1
+
+        # 二级管理员创建
+        if AdminUser.query(user_id=tenant_id, role_level=2):
+            kb["color"] = 2
+
+        # 分组参考库
+        if tenant_id in reversed_map:
+            group_id = reversed_map[tenant_id]
+
+            group_obj = Group.select(Group.group_name).where(
+                Group.group_id == group_id
+            ).first()
+
+            kb["group_id"] = group_id
+            kb["group_name"] = group_obj.group_name if group_obj else None
+            kb["color"] = 3
+
+            
+        # 颜色逻辑结束
+
+        kb["size"] = DocumentService.get_total_size_by_kb_id(
+            kb_id=kb["id"],
+            keywords="",
+            run_status=[],
+            types=[],
+        )
+
         kb["connectors"] = Connector2KbService.list_connectors(kb_id)
+        print(kb['color'])
 
-        for key in ["graphrag_task_finish_at", "raptor_task_finish_at", "mindmap_task_finish_at"]:
+        for key in [
+            "graphrag_task_finish_at",
+            "raptor_task_finish_at",
+            "mindmap_task_finish_at",
+        ]:
             if finish_at := kb.get(key):
                 kb[key] = finish_at.strftime("%Y-%m-%d %H:%M:%S")
 
         if AdminUser.query(user_id=current_user.id):
             kb['is_admin'] = True
+
         return get_json_result(data=kb)
+
     except Exception as e:
         return server_error_response(e)
 

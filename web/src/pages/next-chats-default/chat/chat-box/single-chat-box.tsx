@@ -1,14 +1,11 @@
 import { NextMessageInput } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
-import PdfSheet from '@/components/pdf-drawer';
-import { useClickDrawer } from '@/components/pdf-drawer/hooks';
 import { MessageType } from '@/constants/chat';
 import {
   useFetchDialog,
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
-import { IClientConversation } from '@/interfaces/database/chat';
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -21,15 +18,24 @@ import { useSendMessage } from '../../hooks/use-send-chat-message';
 import { buildMessageItemReference } from '../../utils';
 
 interface IProps {
-  controller: AbortController;
-  stopOutputMessage(): void;
-  conversation: IClientConversation;
+  controller: any;
+  stopOutputMessage: () => void;
+  conversation: any;
+  clickDocumentButton?: (
+    documentId: string,
+    chunk: any,
+    isPdf?: boolean,
+    documentUrl?: string | null,
+  ) => void;
+  onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
 }
 
 export function SingleChatBox({
   controller,
   stopOutputMessage,
   conversation,
+  clickDocumentButton,
+  onOpenReferencePanel,
 }: IProps) {
   const {
     value,
@@ -54,8 +60,8 @@ export function SingleChatBox({
   const { conversationId } = useGetChatSearchParams();
   const disabled = useGetSendButtonDisabled();
   const sendDisabled = useSendButtonDisabled(value);
-  const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
-    useClickDrawer();
+  // const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
+  //   useClickDrawer();
 
   // console.log(derivedMessages);
   useEffect(() => {
@@ -345,6 +351,7 @@ export function SingleChatBox({
                   message,
                 )}
                 clickDocumentButton={clickDocumentButton}
+                onOpenReferencePanel={onOpenReferencePanel}
                 index={i}
                 removeMessageById={removeMessageById}
                 regenerateMessage={regenerateMessage}
@@ -362,7 +369,7 @@ export function SingleChatBox({
       </div>
 
       {/* 底部输入框：固定在底部，不参与滚动 */}
-      <div className="shrink-0 w-full bg-background px-5 pb-4">
+      <div className="shrink-0 w-full px-5 pb-4">
         <div className="max-w-[860px] mx-auto w-full">
           <NextMessageInput
             disabled={disabled}
@@ -402,14 +409,14 @@ export function SingleChatBox({
       /> */}
 
       {/* PDF 预览弹窗 */}
-      {visible && (
+      {/* {visible && (
         <PdfSheet
           visible={visible}
           hideModal={hideModal}
           documentId={documentId}
           chunk={selectedChunk}
         />
-      )}
+      )} */}
     </section>
   );
 }
