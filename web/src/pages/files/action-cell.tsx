@@ -29,7 +29,8 @@ import {
   UseRenameCurrentFileReturnType,
 } from './hooks';
 import { useHandleDeleteFile } from './use-delete-file';
-import { isFolderType } from './util';
+// import { isFolderType } from './util';
+import { isAdminownerType, isFolderType } from './util';
 
 // type IProps = Pick<CellContext<IFile, unknown>, 'row'> &
 //   Pick<UseHandleConnectToKnowledgeReturnType, 'showConnectToKnowledgeModal'> &
@@ -61,8 +62,8 @@ export function ActionCell({
   const { downloadFile } = useDownloadFile();
   const isFolder = isFolderType(record.type);
   const extension = getExtension(record.name);
-  // const isKnowledgeBase = isKnowledgeBaseType(record.source_type);
-  const isKnowledgeBase = false; // 👈 强制设为 false，绕过原本的判断逻辑
+  const isKnowledgeBase = isAdminownerType(record.source_type);
+  // const isKnowledgeBase = false; // 👈 强制设为 false，绕过原本的判断逻辑
 
   const handleShowConnectToKnowledgeModal = useCallback(() => {
     showConnectToKnowledgeModal(record);
@@ -91,7 +92,7 @@ export function ActionCell({
   }, [handleRemoveFile, documentId]);
 
   return (
-    <section className="flex gap-4 items-center text-text-sub-title-invert opacity-0 group-hover:opacity-100 transition-opacity">
+    <section className="flex gap-4 items-center text-text-sub-title-invert">
       {isKnowledgeBase || (
         <Tooltip
           title="链接知识库"

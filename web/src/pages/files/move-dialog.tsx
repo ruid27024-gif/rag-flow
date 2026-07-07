@@ -386,6 +386,181 @@ import { useTranslation } from 'react-i18next';
 //   );
 // }
 
+// export function MoveDialog({
+//   hideModal,
+//   onOk,
+//   loading,
+//   currentFile,
+// }: IModalProps<any>) {
+//   const { t } = useTranslation();
+
+//   const { fetchList } = useFetchPureFileList();
+//   const { fetchListUP } = useFetchPureFileListUP();
+//   const { fetchListRoot } = useFetchPureFileListRoot();
+
+//   const [treeValue, setTreeValue] = useState<number | string>('');
+
+//   const [sameLevelTreeData, setSameLevelTreeData] = useState<any[]>([]);
+//   const [upLevelTreeData, setUpLevelTreeData] = useState<any[]>([]);
+//   const [externalTreeData, setExternalTreeData] = useState<any[]>([]);
+
+//   const toTreeNodes = useCallback(
+//     (files: IFile[]) =>
+//       files
+//         .filter((x: IFile) => x.type === 'folder' && x.id !== currentFile.id)
+//         .map((x: IFile) => {
+//           const isRootNode = x.id === x.parent_id;
+
+//           return {
+//             id: x.id,
+//             parentId: isRootNode ? undefined : x.parent_id,
+//             title: isRootNode && x.name === '/' ? '根目录' : x.name,
+//             isLeaf: false,
+//           };
+//         }),
+//     [currentFile.id],
+//   );
+
+//   const appendUniqueNodes = useCallback((tree: any[], nodes: any[]) => {
+//     const existingIds = new Set(tree.map((item) => item.id));
+
+//     return tree.concat(nodes.filter((item) => !existingIds.has(item.id)));
+//   }, []);
+
+//   const onLoadSameLevelData = useCallback(
+//     async ({ id }: TreeNodeType) => {
+//       const parentId = (id || currentFile.parent_id) as string;
+//       const ret = await fetchList(parentId);
+
+//       if (ret.code === 0) {
+//         const nodes = toTreeNodes(ret.data.files);
+//         setSameLevelTreeData((tree) => appendUniqueNodes(tree, nodes));
+//       }
+//     },
+//     [fetchList, currentFile.parent_id, toTreeNodes, appendUniqueNodes],
+//   );
+
+//   const onLoadUpLevelData = useCallback(
+//     async ({ id }: TreeNodeType) => {
+//       const parentId = (id || currentFile.parent_id) as string;
+//       const ret = await fetchListUP(parentId);
+
+//       if (ret.code === 0) {
+//         const nodes = toTreeNodes(ret.data.files);
+//         setUpLevelTreeData((tree) => appendUniqueNodes(tree, nodes));
+//       }
+//     },
+//     [fetchListUP, currentFile.parent_id, toTreeNodes, appendUniqueNodes],
+//   );
+
+//   const onLoadRootData = useCallback(async () => {
+//     const ret = await fetchListRoot();
+
+//     if (ret.code === 0) {
+//       const nodes = toTreeNodes(ret.data.files);
+//       setExternalTreeData((tree) => appendUniqueNodes(tree, nodes));
+//     }
+//   }, [fetchListRoot, toTreeNodes, appendUniqueNodes]);
+
+//   const onLoadExternalData = useCallback(
+//     async ({ id }: TreeNodeType) => {
+//       if (!id) {
+//         await onLoadRootData();
+//         return;
+//       }
+
+//       const ret = await fetchList(id as string);
+
+//       if (ret.code === 0) {
+//         const nodes = toTreeNodes(ret.data.files);
+//         setExternalTreeData((tree) => appendUniqueNodes(tree, nodes));
+//       }
+//     },
+//     [fetchList, toTreeNodes, appendUniqueNodes, onLoadRootData],
+//   );
+
+//   useEffect(() => {
+//     if (!currentFile.parent_id) return;
+
+//     // onLoadSameLevelData({ id: currentFile.parent_id } as TreeNodeType);
+//     // onLoadUpLevelData({ id: currentFile.parent_id } as TreeNodeType);
+//     onLoadRootData();
+//   }, [
+//     currentFile.parent_id,
+//     // onLoadSameLevelData,
+//     // onLoadUpLevelData,
+//     onLoadRootData,
+//   ]);
+
+//   const handleSubmit = useCallback(() => {
+//     onOk?.(treeValue);
+//   }, [onOk, treeValue]);
+
+//   const tabItems = [
+//     // {
+//     //   key: 'same-level',
+//     //   label: '同级目录',
+//     //   children: (
+//     //     <AsyncTreeSelect
+//     //       treeData={sameLevelTreeData}
+//     //       value={treeValue}
+//     //       onChange={setTreeValue}
+//     //       loadData={onLoadSameLevelData}
+//     //     />
+//     //   ),
+//     // },
+//     // {
+//     //   key: 'up-level',
+//     //   label: '上级目录',
+//     //   children: (
+//     //     <AsyncTreeSelect
+//     //       treeData={upLevelTreeData}
+//     //       value={treeValue}
+//     //       onChange={setTreeValue}
+//     //       loadData={onLoadUpLevelData}
+//     //     />
+//     //   ),
+//     // },
+//     {
+//       key: 'external',
+//       label: '路径',
+//       children: (
+//         <AsyncTreeSelect
+//           treeData={externalTreeData}
+//           value={treeValue}
+//           onChange={setTreeValue}
+//           loadData={onLoadExternalData}
+//         />
+//       ),
+//     },
+//   ];
+
+//   return (
+//     <Dialog open onOpenChange={hideModal}>
+//       <DialogContent>
+//         <DialogHeader>
+//           <DialogTitle>{t('common.move')}</DialogTitle>
+//         </DialogHeader>
+
+//         <div>
+//           <Tabs defaultActiveKey="same-level" items={tabItems} />
+//         </div>
+
+//         <DialogFooter>
+//           <ButtonLoading
+//             type="submit"
+//             onClick={handleSubmit}
+//             disabled={treeValue === ''}
+//             loading={loading}
+//           >
+//             {t('common.save')}
+//           </ButtonLoading>
+//         </DialogFooter>
+//       </DialogContent>
+//     </Dialog>
+//   );
+// }
+
 export function MoveDialog({
   hideModal,
   onOk,
@@ -404,10 +579,16 @@ export function MoveDialog({
   const [upLevelTreeData, setUpLevelTreeData] = useState<any[]>([]);
   const [externalTreeData, setExternalTreeData] = useState<any[]>([]);
 
+  // 关键：先安全取值
+  const currentFileId = currentFile?.id;
+  const currentParentId = currentFile?.parent_id;
+
   const toTreeNodes = useCallback(
     (files: IFile[]) =>
       files
-        .filter((x: IFile) => x.type === 'folder' && x.id !== currentFile.id)
+        .filter((x: IFile) => {
+          return x.type === 'folder' && x.id !== currentFileId;
+        })
         .map((x: IFile) => {
           const isRootNode = x.id === x.parent_id;
 
@@ -418,7 +599,7 @@ export function MoveDialog({
             isLeaf: false,
           };
         }),
-    [currentFile.id],
+    [currentFileId],
   );
 
   const appendUniqueNodes = useCallback((tree: any[], nodes: any[]) => {
@@ -429,7 +610,10 @@ export function MoveDialog({
 
   const onLoadSameLevelData = useCallback(
     async ({ id }: TreeNodeType) => {
-      const parentId = (id || currentFile.parent_id) as string;
+      const parentId = (id || currentParentId) as string;
+
+      if (!parentId) return;
+
       const ret = await fetchList(parentId);
 
       if (ret.code === 0) {
@@ -437,12 +621,15 @@ export function MoveDialog({
         setSameLevelTreeData((tree) => appendUniqueNodes(tree, nodes));
       }
     },
-    [fetchList, currentFile.parent_id, toTreeNodes, appendUniqueNodes],
+    [fetchList, currentParentId, toTreeNodes, appendUniqueNodes],
   );
 
   const onLoadUpLevelData = useCallback(
     async ({ id }: TreeNodeType) => {
-      const parentId = (id || currentFile.parent_id) as string;
+      const parentId = (id || currentParentId) as string;
+
+      if (!parentId) return;
+
       const ret = await fetchListUP(parentId);
 
       if (ret.code === 0) {
@@ -450,7 +637,7 @@ export function MoveDialog({
         setUpLevelTreeData((tree) => appendUniqueNodes(tree, nodes));
       }
     },
-    [fetchListUP, currentFile.parent_id, toTreeNodes, appendUniqueNodes],
+    [fetchListUP, currentParentId, toTreeNodes, appendUniqueNodes],
   );
 
   const onLoadRootData = useCallback(async () => {
@@ -480,47 +667,16 @@ export function MoveDialog({
   );
 
   useEffect(() => {
-    if (!currentFile.parent_id) return;
+    if (!currentFileId) return;
 
-    // onLoadSameLevelData({ id: currentFile.parent_id } as TreeNodeType);
-    // onLoadUpLevelData({ id: currentFile.parent_id } as TreeNodeType);
     onLoadRootData();
-  }, [
-    currentFile.parent_id,
-    // onLoadSameLevelData,
-    // onLoadUpLevelData,
-    onLoadRootData,
-  ]);
+  }, [currentFileId, onLoadRootData]);
 
   const handleSubmit = useCallback(() => {
     onOk?.(treeValue);
   }, [onOk, treeValue]);
 
   const tabItems = [
-    // {
-    //   key: 'same-level',
-    //   label: '同级目录',
-    //   children: (
-    //     <AsyncTreeSelect
-    //       treeData={sameLevelTreeData}
-    //       value={treeValue}
-    //       onChange={setTreeValue}
-    //       loadData={onLoadSameLevelData}
-    //     />
-    //   ),
-    // },
-    // {
-    //   key: 'up-level',
-    //   label: '上级目录',
-    //   children: (
-    //     <AsyncTreeSelect
-    //       treeData={upLevelTreeData}
-    //       value={treeValue}
-    //       onChange={setTreeValue}
-    //       loadData={onLoadUpLevelData}
-    //     />
-    //   ),
-    // },
     {
       key: 'external',
       label: '路径',
@@ -543,7 +699,7 @@ export function MoveDialog({
         </DialogHeader>
 
         <div>
-          <Tabs defaultActiveKey="same-level" items={tabItems} />
+          <Tabs defaultActiveKey="external" items={tabItems} />
         </div>
 
         <DialogFooter>

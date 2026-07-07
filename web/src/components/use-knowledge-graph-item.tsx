@@ -14,7 +14,7 @@ export function UseKnowledgeGraphFormField({
     <SwitchFormField
       name={name}
       label={t('chat.useKnowledgeGraph')}
-      // tooltip={t('chat.useKnowledgeGraphTip')}
+      tooltip={t('chat.useKnowledgeGraphTip')}
     ></SwitchFormField>
   );
 }

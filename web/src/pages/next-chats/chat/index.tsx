@@ -46,23 +46,50 @@ import { useSwitchDebugMode } from './use-switch-debug-mode';
 import DocumentPreviewer from '@/components/pdf-previewer';
 
 export default function Chat() {
+  // 来源列表
   const [referenceVisible, setReferenceVisible] = useState(false);
   const [referenceList, setReferenceList] = useState<ReferenceDocumentItem[]>(
     [],
   );
+
   // 溯源高亮预览右侧栏
   const [sourcePreviewVisible, setSourcePreviewVisible] = useState(false);
   const [sourcePreviewDocumentId, setSourcePreviewDocumentId] = useState('');
   const [sourcePreviewChunk, setSourcePreviewChunk] = useState<any>(null);
 
-  // 打开来源列表
-  const openReferencePanel = useCallback((list: ReferenceDocumentItem[]) => {
-    setReferenceList(list);
-    setReferenceVisible(true);
+  // 聊天设置
+  const { visible: settingVisible, switchVisible: switchSettingVisible } =
+    useSetModalState(false);
 
-    // 打开来源列表时，关闭高亮预览栏
-    setSourcePreviewVisible(false);
-  }, []);
+  // 打开聊天设置时，关闭来源列表和溯源预览
+  useEffect(() => {
+    if (settingVisible) {
+      setReferenceVisible(false);
+
+      setSourcePreviewVisible(false);
+      setSourcePreviewDocumentId('');
+      setSourcePreviewChunk(null);
+    }
+  }, [settingVisible]);
+
+  // 打开来源列表
+  const openReferencePanel = useCallback(
+    (list: ReferenceDocumentItem[]) => {
+      setReferenceList(list);
+      setReferenceVisible(true);
+
+      // 打开来源列表时，关闭高亮预览栏
+      setSourcePreviewVisible(false);
+      setSourcePreviewDocumentId('');
+      setSourcePreviewChunk(null);
+
+      // 打开来源列表时，关闭设置面板
+      if (settingVisible) {
+        switchSettingVisible();
+      }
+    },
+    [settingVisible, switchSettingVisible],
+  );
 
   // 关闭来源列表
   const closeReferencePanel = useCallback(() => {
@@ -76,11 +103,15 @@ export default function Chat() {
       setSourcePreviewChunk(chunk);
       setSourcePreviewVisible(true);
 
-      // 重点：打开高亮预览后关闭来源列表
-      // 这样主内容和预览可以各占一半
+      // 打开高亮预览后关闭来源列表
       setReferenceVisible(false);
+
+      // 打开高亮预览时，关闭设置面板
+      if (settingVisible) {
+        switchSettingVisible();
+      }
     },
-    [],
+    [settingVisible, switchSettingVisible],
   );
 
   // 关闭溯源高亮预览右侧栏
@@ -89,6 +120,49 @@ export default function Chat() {
     setSourcePreviewDocumentId('');
     setSourcePreviewChunk(null);
   }, []);
+  // const [referenceVisible, setReferenceVisible] = useState(false);
+  // const [referenceList, setReferenceList] = useState<ReferenceDocumentItem[]>(
+  //   [],
+  // );
+  // // 溯源高亮预览右侧栏
+  // const [sourcePreviewVisible, setSourcePreviewVisible] = useState(false);
+  // const [sourcePreviewDocumentId, setSourcePreviewDocumentId] = useState('');
+  // const [sourcePreviewChunk, setSourcePreviewChunk] = useState<any>(null);
+
+  // // 打开来源列表
+  // const openReferencePanel = useCallback((list: ReferenceDocumentItem[]) => {
+  //   setReferenceList(list);
+  //   setReferenceVisible(true);
+
+  //   // 打开来源列表时，关闭高亮预览栏
+  //   setSourcePreviewVisible(false);
+  // }, []);
+
+  // // 关闭来源列表
+  // const closeReferencePanel = useCallback(() => {
+  //   setReferenceVisible(false);
+  // }, []);
+
+  // // 打开溯源高亮预览右侧栏
+  // const openSourcePreviewPanel = useCallback(
+  //   (documentId: string, chunk: any) => {
+  //     setSourcePreviewDocumentId(documentId);
+  //     setSourcePreviewChunk(chunk);
+  //     setSourcePreviewVisible(true);
+
+  //     // 重点：打开高亮预览后关闭来源列表
+  //     // 这样主内容和预览可以各占一半
+  //     setReferenceVisible(false);
+  //   },
+  //   [],
+  // );
+
+  // // 关闭溯源高亮预览右侧栏
+  // const closeSourcePreviewPanel = useCallback(() => {
+  //   setSourcePreviewVisible(false);
+  //   setSourcePreviewDocumentId('');
+  //   setSourcePreviewChunk(null);
+  // }, []);
 
   const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
     useClickDrawer();
@@ -107,9 +181,6 @@ export default function Chat() {
 
   const { handleConversationCardClick, controller, stopOutputMessage } =
     useHandleClickConversationCard();
-
-  const { visible: settingVisible, switchVisible: switchSettingVisible } =
-    useSetModalState(false);
 
   const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
 

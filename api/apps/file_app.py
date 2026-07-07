@@ -1171,6 +1171,20 @@ def list_files_root():
                 keywords
             )
 
+            # 按 id 去重
+            unique_files = []
+            seen_ids = set()
+
+            for f in files:
+                fid = f.get("id") if isinstance(f, dict) else getattr(f, "id", None)
+
+                if fid and fid not in seen_ids:
+                    seen_ids.add(fid)
+                    unique_files.append(f)
+
+            files = unique_files
+            total = len(files)
+
             parent_folder = FileGroupService.get_parent_folder(pf_id)
             if not parent_folder:
                 return get_json_result(message="根目录不存在！")

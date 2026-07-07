@@ -54,8 +54,9 @@ export const CrossLanguageFormField = ({
             'items-center': !vertical,
           })}
         >
-          {/* <FormLabel tooltip={t('chat.crossLanguageTip')}> */}
-          <FormLabel>{label || t('chat.crossLanguage')}</FormLabel>
+          <FormLabel tooltip={t('chat.crossLanguageTip')}>
+            {label || t('chat.crossLanguage')}
+          </FormLabel>
           <FormControl>
             <MultiSelect
               options={crossLanguageOptions}

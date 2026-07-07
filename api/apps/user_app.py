@@ -713,7 +713,7 @@ async def group_admins():
     except Exception as e:
         return server_error_response(e)
 
-# 任命为组管理员
+# 任命为组管理员 先1键拉在取，再任命
 @manager.route("/group_admin/new_all", methods=["POST"])  # noqa: F821
 @login_required
 async def add_group_admin_all():
@@ -749,17 +749,22 @@ async def add_group_admin_all():
             "name": "/",
             "location": "",
             "size": 0,
-            "type": FileType.FOLDER.value
+            "type": FileType.FOLDER.value,
+            "source_type":FileType.Adminowner.value
         })
 
         # 将参考库挂载到当前人员(二级表)
         from api.db.db_models import File, File_Group
-        # 全局参考库id
         file_ref = File.select().where((File.parent_id == File.id)
-                                       & (File.tenant_id == settings.REFERENCE_TENANT_ID)).first()
-        file_ref.parent_id = pf_id
-        file_ref.name = '全局参考库'
-        File_Group.create(**file_ref.to_dict())
+                        & (File.tenant_id == settings.REFERENCE_TENANT_ID )).first()
+        # 全局参考库id
+        file_ref_dict = file_ref.to_dict()
+        file_ref_dict["parent_id"] = pf_id
+        file_ref_dict["name"] = "全局参考库"
+        file_ref_dict["type"] = FileType.FOLDER.value
+        file_ref_dict["source_type"] = FileType.Adminowner.value
+
+        File_Group.create(**file_ref_dict)
 
         file_group = File_Group.select().where((File_Group.parent_id == file_ref.id)
                                                & (File_Group.tenant_id == settings.REFERENCE_TENANT_ID)
@@ -797,7 +802,8 @@ async def add_group_admin_all():
                 "name": "组参考库+文献库",
                 "location": "",
                 "size": 0,
-                "type": FileType.FOLDER.value
+                "type": FileType.FOLDER.value,
+                "source_type":FileType.Adminowner.value
             })
 
             # 把参考库下的所有非根文件挂载到当前的组参考库下
@@ -866,7 +872,8 @@ async def add_group_admin_all():
                         "name": name,
                         "location": "",
                         "size": 0,
-                        "type": FileType.FOLDER.value
+                        "type": FileType.FOLDER.value,
+                        "source_type":FileType.Adminowner.value
                     })
                 except:
                     print("任命：组员写入二级表失败")
@@ -1036,16 +1043,21 @@ async def add_group_admin():
         "name": "/",
         "location": "",
         "size": 0,
-        "type": FileType.FOLDER.value
+        "type": FileType.FOLDER.value,
+        "source_type":FileType.Adminowner.value
     })
         # 将参考库挂载到当前人员(二级表)
         from api.db.db_models import File, File_Group
         # 全局参考库id
         file_ref = File.select().where((File.parent_id == File.id)
                             & (File.tenant_id == settings.REFERENCE_TENANT_ID )).first()
-        file_ref.parent_id = pf_id
-        file_ref.name = '全局参考库'
-        File_Group.create(**file_ref.to_dict()) 
+        file_ref_dict = file_ref.to_dict()
+        file_ref_dict["parent_id"] = pf_id
+        file_ref_dict["name"] = "全局参考库"
+        file_ref_dict["type"] = FileType.FOLDER.value
+        file_ref_dict["source_type"] = FileType.Adminowner.value
+
+        File_Group.create(**file_ref_dict)
 
         file_group = File_Group.select().where((File_Group.parent_id == file_ref.id)
                            & (File_Group.tenant_id == settings.REFERENCE_TENANT_ID )

@@ -19,7 +19,7 @@ export function TopNFormField({ max = 30 }: SimilaritySliderFormFieldProps) {
       name={'top_n'}
       label={t('topN')}
       max={max}
-      // tooltip={t('topNTip')}
+      tooltip={t('topNTip')}
       layout={FormLayout.Vertical}
     ></SliderInputFormField>
   );

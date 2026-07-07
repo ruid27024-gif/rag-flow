@@ -61,7 +61,7 @@ export function SimilaritySliderFormField({
         max={1}
         step={0.01}
         layout={FormLayout.Vertical}
-        // tooltip={isTooltipShown && t('similarityThresholdTip')}
+        tooltip={isTooltipShown && t('similarityThresholdTip')}
         numberInputClassName={numberInputClassName}
       ></SliderInputFormField>
       <FormField
@@ -72,7 +72,7 @@ export function SimilaritySliderFormField({
           <FormItem
           // className={cn({ 'flex items-center gap-1 space-y-0': isHorizontal })}
           >
-            {/* <FormLabel
+            <FormLabel
               tooltip={
                 isTooltipShown &&
                 t(
@@ -80,8 +80,8 @@ export function SimilaritySliderFormField({
                     ? 'vectorSimilarityWeightTip'
                     : 'keywordSimilarityWeightTip',
                 )
-              } */}
-            <FormLabel>
+              }
+            >
               {t(
                 isVector ? 'vectorSimilarityWeight' : 'keywordSimilarityWeight',
               )}

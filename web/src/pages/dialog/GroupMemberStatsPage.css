@@ -428,6 +428,76 @@
 .page-switch-right .page-switch-slider {
   transform: translateX(100%);
 }
+
+/* ==============================
+    组折叠标题样式：必须放在 @media 外面
+    ============================== */
+
+.group-list .ant-collapse {
+  background: transparent !important;
+}
+
+.group-list .ant-collapse-item {
+  border-bottom: none !important;
+}
+
+.group-list .ant-collapse-header {
+  padding: 10px 8px !important;
+  align-items: center !important;
+}
+
+.group-list .ant-collapse-header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.group-collapse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.group-collapse-icon {
+  color: #065f46 !important;
+}
+
+.group-collapse-name {
+  color: #064e3b !important;
+  font-weight: 700;
+}
+
+.group-member-count-text {
+  color: #059669 !important;
+}
+
+/* 防止 antd 样式覆盖 */
+.group-list .ant-collapse-header-text .group-collapse-name {
+  color: #065f46 !important;
+}
+
+.group-list .ant-collapse-header-text .group-member-count-text {
+  color: #047857 !important;
+}
+
+/* 成员列表 */
+.group-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 10px;
+}
+
+/* 左侧滚动区域，保证最后一个人能看到 */
+.group-list {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 8px 120px !important;
+  box-sizing: border-box;
+}
 @media screen and (max-width: 768px) {
   .stats-page {
     height: auto;

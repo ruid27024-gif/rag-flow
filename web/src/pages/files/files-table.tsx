@@ -48,7 +48,7 @@ import { KnowledgeCell } from './knowledge-cell';
 import { LinkToDatasetDialog } from './link-to-dataset-dialog';
 import { UseMoveDocumentShowType } from './use-move-file';
 import { useNavigateToOtherFolder } from './use-navigate-to-folder';
-import { isFolderType } from './util';
+import { isAdminownerType, isFolderType } from './util';
 
 // type FilesTableProps = Pick<
 //   ReturnType<typeof useFetchFileList>,
@@ -136,25 +136,50 @@ export function FilesTable({
   const columns: ColumnDef<IFile>[] = [
     {
       id: 'select',
-      header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && 'indeterminate')
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Select row"
-          disabled={!row.getCanSelect()}
-          onClick={(e) => e.stopPropagation()} // ✅ 阻止点击复选框时触发整行点击
-        />
-      ),
+      header: ({ table }) => {
+        const hasSelectableRows = table
+          .getRowModel()
+          .rows.some((row) => row.getCanSelect());
+
+        if (!hasSelectableRows) {
+          return null;
+        }
+
+        return (
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && 'indeterminate')
+            }
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(!!value)
+            }
+            aria-label="Select all"
+          />
+        );
+      },
+      cell: ({ row }) => {
+        const record = row.original;
+        const sourceType = record?.source_type;
+
+        const shouldHideCheckbox = sourceType
+          ? isAdminownerType(sourceType)
+          : false;
+
+        if (shouldHideCheckbox) {
+          return null;
+        }
+
+        return (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+            disabled={!row.getCanSelect()}
+            onClick={(e) => e.stopPropagation()}
+          />
+        );
+      },
       enableSorting: false,
       enableHiding: false,
     },
@@ -333,17 +358,23 @@ export function FilesTable({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    // getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
 
-    manualPagination: true, //we're doing manual "server-side" pagination
-    // enableRowSelection(row) {
-    //   return !isKnowledgeBaseType(row.original.source_type);
-    // },
-    enableRowSelection: true, // 直接设为 true，允许所有行被选中
+    manualPagination: true,
+
+    enableRowSelection: (row) => {
+      const sourceType = row.original?.source_type;
+
+      if (!sourceType) {
+        return true;
+      }
+
+      return !isAdminownerType(sourceType);
+    },
+
     state: {
       sorting,
       columnFilters,
@@ -382,40 +413,6 @@ export function FilesTable({
               <TableSkeleton columnsLength={columns.length}></TableSkeleton>
             ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                // <TableRow
-                //   key={row.id}
-                //   data-state={row.getIsSelected() && 'selected'}
-                //   className="group"
-                //   draggable
-                //   onDragStart={(e) => onDragStart?.(e, row.original)}
-                //   // 只有当前行是文件夹时，才允许作为“放置目标”
-                //   onDragOver={row.original.type === 'folder' ? onDragOver : undefined}
-                //   onDrop={row.original.type === 'folder' ? (e) => onDrop?.(e, row.original) : undefined}
-
-                //   // 💡 视觉优化：如果是文件夹，鼠标放上去显示可拖入的样式
-                //   style={{
-                //     cursor: row.original.type === 'folder' ? 'copy' : 'default'
-                //   }}
-                //   // ✅ 核心修改：绑定整行点击事件，如果是文件夹则跳转
-                //   onClick={() => {
-                //     if (isFolderType(row.original.type)) {
-                //       navigateToOtherFolder(row.original.id);
-                //     }
-                //   }}
-                // >
-                //   {row.getVisibleCells().map((cell) => (
-                //     <TableCell
-                //       key={cell.id}
-                //       className={cell.column.columnDef.meta?.cellClassName}
-                //     >
-                //       {flexRender(
-                //         cell.column.columnDef.cell,
-                //         cell.getContext(),
-                //       )}
-                //     </TableCell>
-                //   ))}
-                // </TableRow>
-
                 <Tooltip key={row.id} delayDuration={200}>
                   <TooltipTrigger asChild>
                     <TableRow

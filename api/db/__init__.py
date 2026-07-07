@@ -46,8 +46,9 @@ class FileType(StrEnum):
     VIRTUAL = 'virtual'
     FOLDER = 'folder'
     OTHER = "other"
+    Adminowner = "adminowner"
 
-VALID_FILE_TYPES = {FileType.PDF, FileType.DOC, FileType.VISUAL, FileType.AURAL, FileType.VIRTUAL, FileType.FOLDER, FileType.OTHER}
+VALID_FILE_TYPES = {FileType.PDF, FileType.DOC, FileType.VISUAL, FileType.AURAL, FileType.VIRTUAL, FileType.FOLDER, FileType.OTHER, FileType.Adminowner}
 
 
 class InputType(StrEnum):

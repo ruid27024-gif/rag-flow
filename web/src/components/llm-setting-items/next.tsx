@@ -140,7 +140,9 @@ export function LlmSettingFieldItems({
         name={getFieldWithPrefix('parameter')}
         render={({ field }) => (
           <FormItem className="flex justify-between items-center">
-            <FormLabel className="flex-1">{t('freedom')}</FormLabel>
+            <FormLabel className="flex-1" tooltip={t('freedomTip')}>
+              {t('freedom')}
+            </FormLabel>
             <FormControl>
               <Select
                 {...field}

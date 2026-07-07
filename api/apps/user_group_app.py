@@ -316,7 +316,8 @@ async def add_member_to_my_group_all():
                         "name": user.nickname,
                         "location": "",
                         "size": 0,
-                        "type": FileType.FOLDER.value
+                        "type": FileType.FOLDER.value,
+                        "source_type":FileType.Adminowner.value
                     })
 
                     # 将非根目录全部写入到一级表
@@ -370,7 +371,8 @@ async def add_member_to_my_group_all():
                             "name": add_user.nickname,
                             "location": "",
                             "size": 0,
-                            "type": FileType.FOLDER.value
+                            "type": FileType.FOLDER.value,
+                            "source_type":FileType.Adminowner.value
                         })
 
                         # 将非根目录全部写入到二级表
@@ -483,7 +485,8 @@ async def add_member_to_my_group():
             "name": user.nickname,
             "location": "",
             "size": 0,
-            "type": FileType.FOLDER.value
+            "type": FileType.FOLDER.value,
+            "source_type":FileType.Adminowner.value
         })
 
 
@@ -493,7 +496,7 @@ async def add_member_to_my_group():
         root_id = root_folder["id"]        
 
         # 二级表
-        # todo : 人员挂到自己身上
+        # : 人员挂到自己身上
         file = FileGroupService.insert({
             "id": pf_id,  # 昵称的id
             "parent_id": root_id,
@@ -502,7 +505,8 @@ async def add_member_to_my_group():
             "name": user.nickname,
             "location": "",
             "size": 0,
-            "type": FileType.FOLDER.value
+            "type": FileType.FOLDER.value,
+            "source_type":FileType.Adminowner.value
         })
 
         return get_json_result(data={"id": obj.id})
@@ -736,6 +740,7 @@ async def add_all_user_to_group():
                     "location": ref_root.location or "",
                     "size": ref_root.size or 0,
                     "type": ref_root.type or FileType.FOLDER.value,
+                    "source_type":FileType.Adminowner.value
                 })
             elif exists_ref.parent_id != group_id:
                 File_Admin.update({
@@ -800,6 +805,7 @@ async def add_all_user_to_group():
                 "location": "",
                 "size": 0,
                 "type": FileType.FOLDER.value,
+                "source_type":FileType.Adminowner.value
             })
 
             # 获取当前人员的根
@@ -870,6 +876,7 @@ async def add_all_user_to_group():
                     "location": "",
                     "size": 0,
                     "type": FileType.FOLDER.value,
+                    "source_type":FileType.Adminowner.value
                 })
 
                 # 文件全部写入到2级表
@@ -1034,6 +1041,7 @@ async def add_user_to_group():
                         "location": "",
                         "size": 0,
                         "type": FileType.FOLDER.value,
+                        "source_type":FileType.Adminowner.value
                     })
                     print(f"成员根节点写入 File_Admin 成功: {member_root_id}")
                 except Exception as e:
@@ -1110,6 +1118,7 @@ async def add_user_to_group():
                         "location": "",
                         "size": 0,
                         "type": FileType.FOLDER.value,
+                        "source_type":FileType.Adminowner.value
                     })
                     print(f"二级管理员根目录写入 File_Group 成功: {manager_root_id}")
                 except Exception as e:
@@ -1161,6 +1170,7 @@ async def add_user_to_group():
                         "location": "",
                         "size": 0,
                         "type": FileType.FOLDER.value,
+                        "source_type":FileType.Adminowner.value
                     })
                     print(f"成员根节点写入 File_Group 成功: {member_root_id}")
                 except Exception as e:
@@ -1222,6 +1232,7 @@ async def add_user_to_group():
                         "location": "",
                         "size": 0,
                         "type": FileType.FOLDER.value,
+                        "source_type":FileType.Adminowner.value
                     })
                     print(f"参考库根节点写入 File_Admin 成功: {ref_root_id}")
                 except Exception as e:
@@ -1309,6 +1320,7 @@ async def add_user_to_group():
                         "location": "",
                         "size": 0,
                         "type": FileType.FOLDER.value,
+                        "source_type":FileType.Adminowner.value
                     })
                     print(f"参考库根节点写入 File_Group 成功: {ref_root_id}")
                 except Exception as e:

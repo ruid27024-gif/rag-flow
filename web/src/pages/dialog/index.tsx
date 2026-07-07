@@ -13,6 +13,7 @@ import {
   Button,
   Card,
   Col,
+  Collapse,
   Empty,
   Layout,
   Row,
@@ -89,9 +90,16 @@ const periodOptions = [
 /**
  * 页面外壳 (纯净版)
  */
+// const DashboardShell = ({ children }) => {
+//   return (
+//     <div className="relative h-screen overflow-y-auto p-6">{children}</div>
+//   );
+// };
 const DashboardShell = ({ children }) => {
   return (
-    <div className="relative h-screen overflow-y-auto p-6">{children}</div>
+    <div className="relative flex h-screen min-h-0 flex-col overflow-hidden p-6">
+      {children}
+    </div>
   );
 };
 
@@ -325,7 +333,12 @@ const GroupMemberStatsPage: React.FC = () => {
       fetchingRef.current = false;
     }
   }, []);
-
+  const [activeGroupKeys, setActiveGroupKeys] = useState<string[]>([]);
+  //   useEffect(() => {
+  //   if (groups.length > 0) {
+  //     setActiveGroupKeys(groups.map((group) => group.group_id));
+  //   }
+  // }, [groups]);
   /**
    * 【新增】根据用户 ID 获取对话列表
    */
@@ -495,7 +508,7 @@ const GroupMemberStatsPage: React.FC = () => {
               dark:text-white
             "
           >
-            <TeamOutlined className="text-[#00BEB4]" />
+            <TeamOutlined className="text-green-700" />
             团队数据仪表盘
           </h1>
           <div
@@ -593,7 +606,7 @@ const GroupMemberStatsPage: React.FC = () => {
           <Sider width={300} className="stats-sider">
             <div className="sider-header">
               <div className="sider-title">
-                <FileTextOutlined />
+                <FileTextOutlined className="text-green-700" />
                 <span>用户日志</span>
               </div>
             </div>
@@ -608,45 +621,75 @@ const GroupMemberStatsPage: React.FC = () => {
               </div>
             ) : (
               <div className="group-list">
-                {groups.map((group) => (
-                  <div key={group.group_id} className="group-block">
-                    <div className="group-title">
-                      <TeamOutlined />
-                      <span>{group.group_name || '未命名组'}</span>
-                    </div>
+                <Collapse
+                  ghost
+                  activeKey={activeGroupKeys}
+                  onChange={(keys) => {
+                    setActiveGroupKeys(
+                      Array.isArray(keys) ? keys.map(String) : [String(keys)],
+                    );
+                  }}
+                  items={groups.map((group) => {
+                    const members = Array.isArray(group.members)
+                      ? group.members
+                      : [];
 
-                    {Array.isArray(group.members) &&
-                    group.members.length > 0 ? (
-                      group.members.map((member) => {
-                        const active =
-                          selectedMember?.user_id === member.user_id &&
-                          selectedMember?.group_id === group.group_id;
+                    return {
+                      key: group.group_id,
+                      label: (
+                        <div className="group-collapse-row">
+                          <TeamOutlined className="group-collapse-icon" />
 
-                        return (
-                          <div
-                            key={`${group.group_id}_${member.user_id}`}
-                            className={`member-item ${active ? 'member-item-active' : ''}`}
-                            onClick={() => handleSelectMember(group, member)}
-                          >
-                            <div className="member-name">
-                              {/* 图标大小恢复为 16px，颜色可以跟随文字或保持灰色 */}
-                              <UserOutlined
-                                style={{
-                                  fontSize: '16px',
-                                  marginRight: '8px',
-                                  color: '#999',
-                                }}
-                              />
-                              <span>{member.nickname || '未命名用户'}</span>
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="no-member">暂无成员</div>
-                    )}
-                  </div>
-                ))}
+                          <span className="group-collapse-name">
+                            {group.group_name || '未命名组'}
+                          </span>
+
+                          <span className="group-member-count-text">
+                            {members.length}人
+                          </span>
+                        </div>
+                      ),
+                      children: (
+                        <div className="group-member-list">
+                          {members.length > 0 ? (
+                            members.map((member) => {
+                              const active =
+                                selectedMember?.user_id === member.user_id &&
+                                selectedMember?.group_id === group.group_id;
+
+                              return (
+                                <div
+                                  key={`${group.group_id}_${member.user_id}`}
+                                  className={`member-item ${
+                                    active ? 'member-item-active' : ''
+                                  }`}
+                                  onClick={() =>
+                                    handleSelectMember(group, member)
+                                  }
+                                >
+                                  <div className="member-name">
+                                    <UserOutlined
+                                      style={{
+                                        fontSize: '16px',
+                                        marginRight: '8px',
+                                        color: active ? '#00BEB4' : '#999',
+                                      }}
+                                    />
+                                    <span>
+                                      {member.nickname || '未命名用户'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="no-member">暂无成员</div>
+                          )}
+                        </div>
+                      ),
+                    };
+                  })}
+                />
               </div>
             )}
           </Sider>

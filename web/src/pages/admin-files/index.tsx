@@ -135,6 +135,7 @@ const AdminFiles = () => {
   const { data: userInfo } = useFetchUserInfo();
   const isGroupAdmin = userInfo?.role_level === 2;
   // const isSuperAdmin = userInfo?.role_level === 1 || userInfo?.is_admin_user;
+  const canOperateAdmin = userInfo?.role_level === 1;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -1448,12 +1449,20 @@ const AdminFiles = () => {
                           {/* 6. 操作列：合并后的管理员状态按钮 */}
                           <TableCell>
                             {m.is_admin ? (
-                              // 状态1：已经是管理员，显示绿色的徽章，点击后触发“撤销”逻辑
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-green-600 bg-green-50 hover:bg-green-100 hover:text-green-700"
+                                className={`
+                                  h-8 w-8 text-green-600 bg-green-50
+                                  ${
+                                    canOperateAdmin
+                                      ? 'hover:bg-green-100 hover:text-green-700 cursor-pointer'
+                                      : 'cursor-default hover:bg-green-50 hover:text-green-600'
+                                  }
+                                `}
                                 onClick={() => {
+                                  if (!canOperateAdmin) return;
+
                                   if (
                                     window.confirm(
                                       `确定要撤销 ${m.nickname} 的管理员权限吗？`,
@@ -1462,17 +1471,29 @@ const AdminFiles = () => {
                                     handleCancelAdmin(m.user_id);
                                   }
                                 }}
-                                title="点击撤销管理员权限"
+                                title={
+                                  canOperateAdmin
+                                    ? '点击撤销管理员权限'
+                                    : '该用户是管理员'
+                                }
                               >
                                 <ShieldCheck className="h-4 w-4" />
                               </Button>
                             ) : (
-                              // 状态2：不是管理员，显示灰色的任命按钮，点击后触发“任命”逻辑
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-gray-400 hover:text-green-600 hover:bg-green-50"
+                                className={`
+                                  h-8 w-8
+                                  ${
+                                    canOperateAdmin
+                                      ? 'text-gray-400 hover:text-green-600 hover:bg-green-50 cursor-pointer'
+                                      : 'text-gray-300 cursor-default hover:bg-transparent'
+                                  }
+                                `}
                                 onClick={() => {
+                                  if (!canOperateAdmin) return;
+
                                   if (
                                     window.confirm(
                                       `确定要将 ${m.nickname} 设置为管理员吗？`,
@@ -1481,7 +1502,11 @@ const AdminFiles = () => {
                                     handleSetAdmin(m.user_id);
                                   }
                                 }}
-                                title="点击任命为管理员"
+                                title={
+                                  canOperateAdmin
+                                    ? '点击任命为管理员'
+                                    : '只有一级管理员可以操作'
+                                }
                               >
                                 <ShieldCheck className="h-4 w-4" />
                               </Button>

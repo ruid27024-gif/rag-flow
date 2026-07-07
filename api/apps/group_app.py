@@ -111,7 +111,8 @@ async def create_my_group():
             "name": group_name,
             "location": "",
             "size": 0,
-            "type": FileType.FOLDER.value
+            "type": FileType.FOLDER.value,
+            "source_type":FileType.Adminowner.value
         })
 
         # 2. 把自己挂到组id上
@@ -127,7 +128,8 @@ async def create_my_group():
             "name": user.nickname,
             "location": "",
             "size": 0,
-            "type": FileType.FOLDER.value
+            "type": FileType.FOLDER.value,
+            "source_type":FileType.Adminowner.value
         })
 
         # 3. 把自己挂到二级表
@@ -139,7 +141,8 @@ async def create_my_group():
             "name": "/",
             "location": "",
             "size": 0,
-            "type": FileType.FOLDER.value
+            "type": FileType.FOLDER.value,
+            "source_type":FileType.Adminowner.value
         })
         from api.db.db_models import File, File_Group,File_Admin
 
@@ -168,7 +171,7 @@ async def create_my_group():
     except Exception as e:
         return server_error_response(e)
 
-
+# 1级别管理员建组
 @manager.route('/new', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("group_name")
@@ -197,7 +200,8 @@ async def new_group():
             "name": group_name,
             "location": "",
             "size": 0,
-            "type": FileType.FOLDER.value
+            "type": FileType.FOLDER.value,
+            "source_type":FileType.Adminowner.value
         })
 
         return get_json_result(data=True)

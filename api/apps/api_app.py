@@ -353,6 +353,7 @@ async def get_user_dialogs_and_conversations():
 
     except Exception as e:
         return server_error_response(e)
+    
 @manager.route('/group_member_stats', methods=['POST'])
 # @login_required
 async def group_member_stats():
@@ -605,6 +606,7 @@ async def group_member_stats():
 
     except Exception as e:
         return server_error_response(e)
+
 
 @manager.route('/new_token', methods=['POST'])  # noqa: F821
 @login_required

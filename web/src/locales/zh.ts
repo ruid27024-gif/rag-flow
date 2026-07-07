@@ -547,6 +547,7 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       imageUploaderTitle: '上传图片',
     },
     chat: {
+      modelTip: '请选择你的模型',
       metadataTip:
         '元数据过滤是使用元数据属性（例如标签、类别或访问权限）来优化和控制系统内相关信息检索的过程。',
 
@@ -606,13 +607,13 @@ General：实体和关系提取提示来自 GitHub - microsoft/graphrag：基于
       variable: '变量',
       variableTip: `你可以通过对话 API，并配合变量设置来动态调整大模型的系统提示词。
       {knowledge}为系统预留变量，代表从指定知识库召回的文本块。
-      “系统提示词”中的所有变量都必须用大括号{}括起来。详见 https://ragflow.io/docs/dev/set_chat_variables。`,
+      “系统提示词”中的所有变量都必须用大括号{}括起来。`,
       add: '新增',
       key: '关键字',
       optional: '可选的',
       operation: '操作',
       model: '模型',
-      modelTip: '大语言聊天模型',
+      // modelTip: '大语言聊天模型',
       modelMessage: '请选择',
       modelEnabledTools: '可用的工具',
       modelEnabledToolsTip:

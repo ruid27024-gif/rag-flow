@@ -43,7 +43,9 @@ function AdminChatBasicSetting() {
         name="name"
         render={({ field }) => (
           <FormItem>
-            <FormLabel required>{t('chat.assistantName')}</FormLabel>
+            <FormLabel tooltip={t('chat.assistantNameTip')} required>
+              {t('chat.assistantName')}
+            </FormLabel>
             <FormControl>
               <Input {...field}></Input>
             </FormControl>
@@ -56,7 +58,9 @@ function AdminChatBasicSetting() {
         name="description"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>{t('chat.description')}</FormLabel>
+            <FormLabel tooltip={t('chat.descriptionTip')}>
+              {t('chat.description')}
+            </FormLabel>
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
@@ -69,8 +73,10 @@ function AdminChatBasicSetting() {
         name={'prompt_config.empty_response'}
         render={({ field }) => (
           <FormItem>
-            {/* <FormLabel tooltip={t('chat.emptyResponseTip')}> */}
-            <FormLabel>{t('chat.emptyResponse')}</FormLabel>
+            <FormLabel tooltip={t('chat.emptyResponseTip')}>
+              {t('chat.emptyResponse')}
+            </FormLabel>
+            {/* <FormLabel>{t('chat.emptyResponse')}</FormLabel> */}
             <FormControl>
               <Textarea {...field}></Textarea>
             </FormControl>
@@ -83,8 +89,8 @@ function AdminChatBasicSetting() {
         name={'prompt_config.prologue'}
         render={({ field }) => (
           <FormItem>
-            <FormLabel>
-              {/* <FormLabel tooltip={t('chat.setAnOpenerTip')}> */}
+            {/* <FormLabel> */}
+            <FormLabel tooltip={t('chat.setAnOpenerTip')}>
               {t('chat.setAnOpener')}
             </FormLabel>
             <FormControl>
@@ -97,18 +103,18 @@ function AdminChatBasicSetting() {
       <SwitchFormField
         name={'prompt_config.quote'}
         label={t('chat.quote')}
-        // tooltip={t('chat.quoteTip')}
+        tooltip={t('chat.quoteTip')}
       ></SwitchFormField>
       <SwitchFormField
         name={'prompt_config.keyword'}
         label={t('chat.keyword')}
-        // tooltip={t('chat.keywordTip')}
+        tooltip={t('chat.keywordTip')}
       ></SwitchFormField>
-      <SwitchFormField
+      {/* <SwitchFormField
         name={'prompt_config.tts'}
         label={t('chat.tts')}
-        // tooltip={t('chat.ttsTip')}
-      ></SwitchFormField>
+        tooltip={t('chat.ttsTip')}
+      ></SwitchFormField> */}
       <TOCEnhanceFormField name="prompt_config.toc_enhance"></TOCEnhanceFormField>
       {/* <TavilyFormField></TavilyFormField> */}
       <KnowledgeBaseFormField></KnowledgeBaseFormField>
