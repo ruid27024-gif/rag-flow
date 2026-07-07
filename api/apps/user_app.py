@@ -752,6 +752,24 @@ async def add_group_admin_all():
             "type": FileType.FOLDER.value,
             "source_type":FileType.Adminowner.value
         })
+        # 把二级管理员本人非根目录/文件写入二级表
+        from api.db.db_models import File, File_Group
+
+        admin_files = File.select().where(
+            (File.id != File.parent_id) &
+            (File.tenant_id == user_id)
+        )
+
+        for f in admin_files:
+            if File_Group.select().where(File_Group.id == f.id).exists():
+                continue
+
+            file_dict = f.to_dict()
+
+            try:
+                File_Group.create(**file_dict)
+            except Exception as e:
+                print("二级管理员本人非根文件写入二级表失败:", f.id, e)
 
         # 将参考库挂载到当前人员(二级表)
         from api.db.db_models import File, File_Group
@@ -1046,6 +1064,25 @@ async def add_group_admin():
         "type": FileType.FOLDER.value,
         "source_type":FileType.Adminowner.value
     })
+        # 把二级管理员本人非根目录/文件写入二级表
+        from api.db.db_models import File, File_Group
+
+        admin_files = File.select().where(
+            (File.id != File.parent_id) &
+            (File.tenant_id == user_id)
+        )
+
+        for f in admin_files:
+            if File_Group.select().where(File_Group.id == f.id).exists():
+                continue
+
+            file_dict = f.to_dict()
+
+            try:
+                File_Group.create(**file_dict)
+            except Exception as e:
+                print("二级管理员本人非根文件写入二级表失败:", f.id, e)
+                
         # 将参考库挂载到当前人员(二级表)
         from api.db.db_models import File, File_Group
         # 全局参考库id
