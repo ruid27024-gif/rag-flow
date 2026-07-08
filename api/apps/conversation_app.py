@@ -23,6 +23,7 @@ from quart import Response, request
 from api.apps import current_user, login_required
 from api.db.db_models import APIToken
 from api.db.services.conversation_service import ConversationService, structure_answer
+from api.db.services.conversation_share_service import ConversationShareService
 from api.db.services.dialog_service import DialogService, async_ask, async_chat, gen_mindmap
 from api.db.services.llm_service import LLMBundle
 from api.db.services.search_service import SearchService
@@ -479,3 +480,466 @@ Related search terms:
         gen_conf,
     )
     return get_json_result(data=[re.sub(r"^[0-9]\. ", "", a) for a in ans.split("\n") if re.match(r"^[0-9]\. ", a)])
+
+
+import copy
+
+def normalize_role(role):
+    return str(role or "").lower()
+
+
+def is_assistant_msg(msg):
+    return normalize_role(msg.get("role")) == "assistant"
+
+
+def is_user_msg(msg):
+    return normalize_role(msg.get("role")) == "user"
+
+
+def is_opening_assistant_message(index, msg):
+    """
+    第 0 条 assistant 是开场白，不消耗 reference
+    """
+    return index == 0 and is_assistant_msg(msg)
+
+
+def build_share_messages_for_assistant_reference(
+    messages,
+    references,
+    target_message_id,
+):
+    """
+    reference 只对应真正的 assistant 回复，不包含第 0 条 assistant 开场白。
+
+    后端兼容逻辑：
+    如果 user 和 assistant 共用同一个 id，
+    优先选择 assistant 那条作为分享截止消息。
+    """
+
+    if not isinstance(messages, list):
+        messages = []
+
+    if not isinstance(references, list):
+        references = []
+
+    # 1. 找到点击分享的消息位置
+    #    如果同一个 id 同时出现在 user 和 assistant 上，优先选 assistant
+    target_index = -1
+    fallback_index = -1
+
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+
+        if msg.get("id") != target_message_id:
+            continue
+
+        # 先记录第一个匹配的，作为兜底
+        if fallback_index < 0:
+            fallback_index = idx
+
+        # 如果匹配到 assistant，优先使用 assistant
+        if is_assistant_msg(msg):
+            target_index = idx
+            break
+
+    # 如果没有找到 assistant，但找到同 id 的其他消息，就用兜底
+    if target_index < 0:
+        target_index = fallback_index
+
+    if target_index < 0:
+        return None
+
+    # 2. 截取当前消息以及上面的所有消息
+    selected_messages = messages[: target_index + 1]
+
+    result = []
+
+    # 3. 给真正的 assistant 回复依次挂 reference
+    #    第 0 条 assistant 开场白不消耗 reference
+    assistant_ref_index = 0
+
+    for idx, msg in enumerate(selected_messages):
+        if not isinstance(msg, dict):
+            continue
+
+        role = msg.get("role")
+        ref = None
+
+        is_opening = is_opening_assistant_message(idx, msg)
+
+        if is_assistant_msg(msg) and not is_opening:
+            if assistant_ref_index < len(references):
+                # 用 deepcopy，避免 chunks_format 改到 conv.reference 原数据
+                ref = copy.deepcopy(references[assistant_ref_index])
+
+            assistant_ref_index += 1
+
+        if ref and isinstance(ref, dict):
+            try:
+                ref["chunks"] = chunks_format(ref)
+            except Exception:
+                pass
+
+        item = {
+            "id": msg.get("id"),
+            "role": role,
+            "content": msg.get("content"),
+            "reference": ref if is_assistant_msg(msg) and not is_opening else None,
+        }
+
+        if msg.get("prompt"):
+            item["prompt"] = msg.get("prompt")
+
+        if msg.get("created_at"):
+            item["created_at"] = msg.get("created_at")
+
+        if msg.get("create_time"):
+            item["create_time"] = msg.get("create_time")
+
+        result.append(item)
+
+    return result
+
+
+@manager.route("/share", methods=["POST"])
+@login_required
+async def create_share():
+    """
+    创建分享快照
+
+    前端传:
+    {
+        "conversation_id": "xxx",
+        "message_id": "xxx"
+    }
+    """
+    try:
+        req = await get_request_json()
+
+
+        conversation_id = req.get("conversation_id")
+        message_id = req.get("message_id")
+
+        if not conversation_id:
+            return get_json_result(
+                data=False,
+                message="conversation_id is required",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        if not message_id:
+            return get_json_result(
+                data=False,
+                message="message_id is required",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        e, conv = ConversationService.get_by_id(conversation_id)
+        if not e:
+            return get_data_error_result(message="Conversation not found!")
+
+        # 权限校验，模仿你原来的 get 接口
+        tenants = UserTenantService.query(user_id=current_user.id)
+
+        for tenant in tenants:
+            dialog = DialogService.query(
+                tenant_id=tenant.tenant_id,
+                id=conv.dialog_id,
+            )
+            if dialog and len(dialog) > 0:
+                break
+        else:
+            return get_json_result(
+                data=False,
+                message="Only owner of conversation authorized for this operation.",
+                code=RetCode.OPERATING_ERROR,
+            )
+
+        messages = conv.message or []
+        references = conv.reference or []
+
+        share_messages = build_share_messages_for_assistant_reference(
+            messages=messages,
+            references=references,
+            target_message_id=message_id,
+        )
+
+        if share_messages is None:
+            return get_json_result(
+                data=False,
+                message="Message not found in conversation.",
+                code=RetCode.DATA_ERROR,
+            )
+
+        # 过滤空内容
+        share_messages = [
+            item for item in share_messages
+            if item.get("content")
+        ]
+
+        snapshot = {
+            "conversation_id": conv.id,
+            "dialog_id": conv.dialog_id,
+            "name": conv.name,
+            "messages": share_messages,
+        }
+
+        share = ConversationShareService.create_share(
+            conversation_id=conv.id,
+            dialog_id=conv.dialog_id,
+            name=conv.name,
+            user_id=current_user.id,
+            snapshot=snapshot,
+        )
+
+        web_url = os.environ.get("WEB_URL", "").rstrip("/")
+        if not web_url:
+            web_url = request.host_url.rstrip("/")
+        web_url = "http://localhost:9222"
+        share_url = f"{web_url}/share/chat/{share.id}"
+
+        return get_json_result(
+            data={
+                "share_id": share.id,
+                "url": share_url,
+            }
+        )
+
+    except Exception as e:
+        return server_error_response(e)
+
+# 获取分享快照接口
+@manager.route("/share/<share_id>", methods=["GET"])
+async def get_share(share_id):
+    try:
+        share = ConversationShareService.get_share_by_id(share_id)
+
+        if not share:
+            return get_json_result(
+                data=False,
+                message="Share not found.",
+                code=RetCode.DATA_ERROR,
+            )
+
+        return get_json_result(
+            data={
+                "id": share.get("id"),
+                "conversation_id": share.get("conversation_id"),
+                "dialog_id": share.get("dialog_id"),
+                "name": share.get("name"),
+                "snapshot": share.get("snapshot"),
+            }
+        )
+
+    except Exception as e:
+        return server_error_response(e)
+    
+def normalize_role(role):
+    return str(role or "").lower()
+
+
+def is_assistant_msg(msg):
+    role = normalize_role(msg.get("role"))
+    return role == "assistant"
+
+
+def is_user_msg(msg):
+    role = normalize_role(msg.get("role"))
+    return role == "user"
+
+
+def is_opening_assistant_message(index, msg):
+    """
+    第 0 条 assistant 是开场白，不消耗 reference
+    """
+    return index == 0 and is_assistant_msg(msg)
+
+
+def build_rebase_messages_and_references(
+    messages,
+    references,
+    target_message_id,
+):
+    """
+    用于变基 / 分支会话。
+
+    返回:
+    - new_messages: 截取后的 message
+    - new_references: 截取后的 reference
+
+    注意:
+    你的 reference 只对应真正的 assistant 回复，
+    不包含第 0 条 assistant 开场白。
+
+    如果 user 和 assistant 共用同一个 id，
+    优先选择 assistant 那条作为截止消息。
+    """
+
+    if not isinstance(messages, list):
+        messages = []
+
+    if not isinstance(references, list):
+        references = []
+
+    # 1. 找到点击消息位置
+    # 如果同一个 id 同时出现在 user 和 assistant 上，优先选 assistant
+    target_index = -1
+    fallback_index = -1
+
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+
+        if msg.get("id") != target_message_id:
+            continue
+
+        # 先记录第一个匹配的，兜底用
+        if fallback_index < 0:
+            fallback_index = idx
+
+        # 优先使用 assistant
+        if is_assistant_msg(msg):
+            target_index = idx
+            break
+
+    if target_index < 0:
+        target_index = fallback_index
+
+    if target_index < 0:
+        return None, None
+
+    # 2. 截取当前消息以及上面的所有消息
+    new_messages = copy.deepcopy(messages[: target_index + 1])
+
+    # 3. 截取对应 reference
+    new_references = []
+
+    assistant_ref_index = 0
+
+    for idx, msg in enumerate(new_messages):
+        if not isinstance(msg, dict):
+            continue
+
+        # 第 0 条 assistant 开场白不消耗 reference
+        is_opening = is_opening_assistant_message(idx, msg)
+
+        if is_assistant_msg(msg) and not is_opening:
+            if assistant_ref_index < len(references):
+                new_references.append(copy.deepcopy(references[assistant_ref_index]))
+            else:
+                # 保持 reference 数量和 assistant 回复数量一致
+                new_references.append({"chunks": []})
+
+            assistant_ref_index += 1
+
+    return new_messages, new_references
+
+@manager.route("/rebase", methods=["POST"])
+@login_required
+async def rebase_conversation():
+    """
+    从某条消息处分支新会话。
+
+    前端传:
+    {
+        "conversation_id": "xxx",
+        "message_id": "xxx"
+    }
+
+    返回:
+    {
+        "conversation_id": "新的 conversation id"
+    }
+    """
+    try:
+        req = await get_request_json()
+
+        conversation_id = req.get("conversation_id")
+        message_id = req.get("message_id")
+
+        if not conversation_id:
+            return get_json_result(
+                data=False,
+                message="conversation_id is required",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        if not message_id:
+            return get_json_result(
+                data=False,
+                message="message_id is required",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        e, conv = ConversationService.get_by_id(conversation_id)
+        if not e:
+            return get_data_error_result(message="Conversation not found!")
+
+        # 权限校验，和 share/get 保持一致
+        tenants = UserTenantService.query(user_id=current_user.id)
+
+        for tenant in tenants:
+            dialog = DialogService.query(
+                tenant_id=tenant.tenant_id,
+                id=conv.dialog_id,
+            )
+            if dialog and len(dialog) > 0:
+                break
+        else:
+            return get_json_result(
+                data=False,
+                message="Only owner of conversation authorized for this operation.",
+                code=RetCode.OPERATING_ERROR,
+            )
+
+        messages = conv.message or []
+        references = conv.reference or []
+
+        new_messages, new_references = build_rebase_messages_and_references(
+            messages=messages,
+            references=references,
+            target_message_id=message_id,
+        )
+
+        if new_messages is None:
+            return get_json_result(
+                data=False,
+                message="Message not found in conversation.",
+                code=RetCode.DATA_ERROR,
+            )
+
+        # 不建议这里过滤空内容，否则可能导致 message/reference 对不上
+        # 如果你确实要过滤，需要同步重新计算 reference
+        # 所以这里保持原样最安全
+
+        old_name = conv.name or "新会话"
+        new_name = ConversationService.generate_branch_name(
+            dialog_id=conv.dialog_id,
+            base_name=conv.name or "新会话",
+            user_id=current_user.id,
+        )
+
+        # 防止 name 超长
+        if len(new_name) > 255:
+            new_name = new_name[:255]
+
+        new_conv = ConversationService.create_branch_conversation(
+            dialog_id=conv.dialog_id,
+            name=new_name,
+            message=new_messages,
+            reference=new_references,
+            user_id=current_user.id,
+        )
+
+        return get_json_result(
+            data={
+                "conversation_id": new_conv["id"],
+                "id": new_conv["id"],
+                "name": new_conv.get("name"),
+                "dialog_id": new_conv.get("dialog_id"),
+            }
+        )
+
+    except Exception as e:
+        return server_error_response(e)

@@ -559,6 +559,7 @@ export const useSelectDerivedMessages = () => {
                   content: '',
                   reference: undefined,
                   prompt: undefined,
+                  suggestions: undefined, // 🌟 新增这一行：清空旧的建议，防止残留
                 },
               ]
             : nextMessages;

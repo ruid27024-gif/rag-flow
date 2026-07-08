@@ -3,10 +3,12 @@ import CopyToClipboard from '@/components/copy-to-clipboard';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { IRemoveMessageById } from '@/hooks/logic-hooks';
 import {
+  BranchesOutlined,
   DeleteOutlined,
   DislikeOutlined,
   LikeOutlined,
   PauseCircleOutlined,
+  ShareAltOutlined,
   SoundOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
@@ -16,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import FeedbackDialog from '../feedback-dialog';
 import { PromptDialog } from '../prompt-dialog';
 import { useRemoveMessage, useSendFeedback, useSpeech } from './hooks';
+import styles from './index.less';
 
 interface IProps {
   messageId: string;
@@ -24,6 +27,8 @@ interface IProps {
   showLikeButton: boolean;
   audioBinary?: string;
   showLoudspeaker?: boolean;
+  onShareMessage?: () => void;
+  onRebaseMessage?: () => void;
 }
 
 export const AssistantGroupButton = ({
@@ -33,6 +38,8 @@ export const AssistantGroupButton = ({
   audioBinary,
   showLikeButton,
   showLoudspeaker = true,
+  onShareMessage,
+  onRebaseMessage,
 }: IProps) => {
   const { visible, hideModal, showModal, onFeedbackOk, loading } =
     useSendFeedback(messageId);
@@ -50,10 +57,31 @@ export const AssistantGroupButton = ({
 
   return (
     <>
-      <Radio.Group size="small">
+      <Radio.Group
+        size="small"
+        value={null}
+        className={styles.messageActionRadio}
+      >
         <Radio.Button value="a">
-          <CopyToClipboard text={content}></CopyToClipboard>
+          <CopyToClipboard text={content} />
         </Radio.Button>
+
+        {onShareMessage && (
+          <Radio.Button value="share" onClick={onShareMessage}>
+            <Tooltip title="分享">
+              <ShareAltOutlined />
+            </Tooltip>
+          </Radio.Button>
+        )}
+
+        {onRebaseMessage && (
+          <Radio.Button value="rebase" onClick={onRebaseMessage}>
+            <Tooltip title="分支">
+              <BranchesOutlined />
+            </Tooltip>
+          </Radio.Button>
+        )}
+
         {showLoudspeaker && (
           <Radio.Button value="b" onClick={handleRead}>
             <Tooltip title={t('chat.read')}>
@@ -62,39 +90,92 @@ export const AssistantGroupButton = ({
             <audio src="" ref={ref}></audio>
           </Radio.Button>
         )}
+
         {showLikeButton && (
           <>
             <Radio.Button value="c" onClick={handleLike}>
               <LikeOutlined />
             </Radio.Button>
+
             <Radio.Button value="d" onClick={showModal}>
               <DislikeOutlined />
             </Radio.Button>
           </>
         )}
+
         {prompt && (
           <Radio.Button value="e" onClick={showPromptModal}>
             <PromptIcon style={{ fontSize: '16px' }} />
           </Radio.Button>
         )}
       </Radio.Group>
+
       {visible && (
         <FeedbackDialog
           visible={visible}
           hideModal={hideModal}
           onOk={onFeedbackOk}
           loading={loading}
-        ></FeedbackDialog>
+        />
       )}
+
       {promptVisible && (
         <PromptDialog
           visible={promptVisible}
           hideModal={hidePromptModal}
           prompt={prompt}
-        ></PromptDialog>
+        />
       )}
     </>
   );
+
+  // return (
+  //   <>
+  //     <Radio.Group size="small">
+  //       <Radio.Button value="a">
+  //         <CopyToClipboard text={content}></CopyToClipboard>
+  //       </Radio.Button>
+  //       {showLoudspeaker && (
+  //         <Radio.Button value="b" onClick={handleRead}>
+  //           <Tooltip title={t('chat.read')}>
+  //             {isPlaying ? <PauseCircleOutlined /> : <SoundOutlined />}
+  //           </Tooltip>
+  //           <audio src="" ref={ref}></audio>
+  //         </Radio.Button>
+  //       )}
+  //       {showLikeButton && (
+  //         <>
+  //           <Radio.Button value="c" onClick={handleLike}>
+  //             <LikeOutlined />
+  //           </Radio.Button>
+  //           <Radio.Button value="d" onClick={showModal}>
+  //             <DislikeOutlined />
+  //           </Radio.Button>
+  //         </>
+  //       )}
+  //       {prompt && (
+  //         <Radio.Button value="e" onClick={showPromptModal}>
+  //           <PromptIcon style={{ fontSize: '16px' }} />
+  //         </Radio.Button>
+  //       )}
+  //     </Radio.Group>
+  //     {visible && (
+  //       <FeedbackDialog
+  //         visible={visible}
+  //         hideModal={hideModal}
+  //         onOk={onFeedbackOk}
+  //         loading={loading}
+  //       ></FeedbackDialog>
+  //     )}
+  //     {promptVisible && (
+  //       <PromptDialog
+  //         visible={promptVisible}
+  //         hideModal={hidePromptModal}
+  //         prompt={prompt}
+  //       ></PromptDialog>
+  //     )}
+  //   </>
+  // );
 };
 
 interface UserGroupButtonProps extends Partial<IRemoveMessageById> {

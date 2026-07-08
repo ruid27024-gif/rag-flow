@@ -954,6 +954,17 @@ class Conversation(DataBaseModel):
     class Meta:
         db_table = "conversation"
 
+class ConversationShare(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)
+    conversation_id = CharField(max_length=32, null=False, index=True)
+    dialog_id = CharField(max_length=32, null=False, index=True)
+    name = CharField(max_length=255, null=True, help_text="share conversation name", index=True)
+    snapshot = JSONField(null=True)
+    user_id = CharField(max_length=255, null=True, help_text="user_id", index=True)
+
+    class Meta:
+        db_table = "conversation_share"
+
 
 class APIToken(DataBaseModel):
     tenant_id = CharField(max_length=32, null=False, index=True)
@@ -1353,6 +1364,91 @@ class SyncPerson(Model):
         database = DB
         db_table = 'sync_person'
 
+# 知识库侧用户权限申请表
+class KnowledgePermissionApply(Model):
+    id = CharField(max_length=32, primary_key=True)
+
+    user_id = CharField(max_length=32, null=False, index=True, help_text="Applicant user id")
+    user_name = CharField(max_length=255, null=True, help_text="Applicant user name")
+
+    kb_id = CharField(max_length=32, null=False, index=True, help_text="Knowledge base id")
+    kb_name = CharField(max_length=255, null=True, help_text="Knowledge base name")
+
+    permissions = TextField(null=False, help_text="Requested permissions json")
+    reason = TextField(null=True, help_text="Apply reason")
+
+    status = CharField(max_length=32, null=False, default="pending", index=True, help_text="pending/approved/rejected")
+
+    oa_process_id = CharField(max_length=64, null=True, index=True, help_text="OA process id")
+    oa_task_id = CharField(max_length=64, null=True, index=True, help_text="OA task id")
+    oa_push_status = CharField(max_length=32, null=False, default="pending", help_text="pending/success/failed")
+    oa_push_error = TextField(null=True, help_text="OA push error message")
+
+    approver_id = CharField(max_length=32, null=True, index=True, help_text="Approver user id")
+    approver_name = CharField(max_length=255, null=True, help_text="Approver user name")
+    approve_comment = TextField(null=True, help_text="Approve comment")
+    approve_time = BigIntegerField(null=True, help_text="Approve time timestamp")
+
+    created_by = CharField(max_length=32, null=False, index=True)
+    created_time = BigIntegerField(null=True)
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        database = DB
+        db_table = "knowledge_permission_apply"
+
+# 知识库实际权限表
+class KnowledgePermission(Model):
+    id = CharField(max_length=32, primary_key=True)
+
+    user_id = CharField(max_length=32, null=False, index=True, help_text="User id")
+    kb_id = CharField(max_length=32, null=False, index=True, help_text="Knowledge base id")
+
+    can_preview = BooleanField(null=False, default=False, help_text="Can preview")
+    can_upload = BooleanField(null=False, default=False, help_text="Can upload")
+    can_delete = BooleanField(null=False, default=False, help_text="Can delete")
+    can_edit = BooleanField(null=False, default=False, help_text="Can edit")
+
+    apply_id = CharField(max_length=32, null=True, index=True, help_text="Permission apply id")
+    source = CharField(max_length=32, null=False, default="oa", help_text="oa/admin/system")
+
+    created_by = CharField(max_length=32, null=False, index=True)
+    created_time = BigIntegerField(null=True)
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        database = DB
+        db_table = "knowledge_permission"
+
+# OA侧申请单
+class OaApproval(Model):
+    id = CharField(max_length=32, primary_key=True)
+
+    business_id = CharField(max_length=32, null=False, index=True, help_text="Business id")
+    business_type = CharField(max_length=64, null=False, index=True, help_text="Business type")
+
+    title = CharField(max_length=255, null=True, help_text="Approval title")
+
+    applicant_id = CharField(max_length=32, null=False, index=True, help_text="Applicant user id")
+    applicant_name = CharField(max_length=255, null=True, help_text="Applicant user name")
+
+    payload = TextField(null=True, help_text="Original request payload json")
+    callback_url = CharField(max_length=512, null=True, help_text="Callback url")
+
+    status = CharField(max_length=32, null=False, default="pending", index=True, help_text="pending/approved/rejected")
+
+    approver_id = CharField(max_length=32, null=True, index=True, help_text="Approver user id")
+    approver_name = CharField(max_length=255, null=True, help_text="Approver user name")
+    approve_comment = TextField(null=True, help_text="Approve comment")
+    approve_time = BigIntegerField(null=True, help_text="Approve time timestamp")
+
+    created_by = CharField(max_length=32, null=True, index=True)
+    created_time = BigIntegerField(null=True)
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        database = DB
+        db_table = "oa_approval"
 
 
 def migrate_db():

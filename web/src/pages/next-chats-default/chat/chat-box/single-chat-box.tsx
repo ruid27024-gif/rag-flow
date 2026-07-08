@@ -6,7 +6,9 @@ import {
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
+import { getAuthorization } from '@/utils/authorization-util';
 import { buildMessageUuidWithRole } from '@/utils/chat';
+import { message } from 'antd';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
@@ -93,6 +95,105 @@ export function SingleChatBox({
     handlePressEnter(suggestion);
   };
 
+  const handleShareMessage = async (messageId: string) => {
+    const conversationId = conversation?.id;
+
+    if (!conversationId) {
+      message.error('conversation_id 不存在');
+      return;
+    }
+
+    if (!messageId) {
+      message.error('message_id 不存在');
+      return;
+    }
+
+    try {
+      const response = await fetch('/v1/conversation/share', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: getAuthorization() || '',
+        },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message_id: messageId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.code !== 0) {
+        message.error(result.message || '创建分享失败');
+        return;
+      }
+
+      const shareUrl = result.data?.url;
+
+      if (!shareUrl) {
+        message.error('后端未返回分享链接');
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+
+      message.success('分享链接已复制');
+    } catch (error) {
+      console.error(error);
+      message.error('分享失败');
+    }
+  };
+
+  const handleRebaseMessage = async (messageId: string) => {
+    if (!conversationId) {
+      message.error('conversation_id 不存在');
+      return;
+    }
+
+    if (!messageId) {
+      message.error('message_id 不存在');
+      return;
+    }
+
+    try {
+      const response = await fetch('/v1/conversation/rebase', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: getAuthorization() || '',
+        },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message_id: messageId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.code !== 0) {
+        message.error(result.message || '创建分支会话失败');
+        return;
+      }
+
+      const newConversationId = result.data?.conversation_id || result.data?.id;
+
+      if (!newConversationId) {
+        message.error('后端未返回新的 conversation_id');
+        return;
+      }
+
+      message.success('已创建新的分支会话');
+
+      const currentPath = window.location.pathname;
+
+      window.location.href = `${currentPath}?conversationId=${newConversationId}&isNew=false`;
+    } catch (error) {
+      console.error(error);
+      message.error('创建分支会话失败');
+    }
+  };
   // import { SunIcon, SmileIcon, MoonIcon, StarIcon } from 'lucide-react';
 
   // 或者用简单 SVG：
@@ -359,6 +460,8 @@ export function SingleChatBox({
                 visibleAvatar={false}
                 onSuggestionClick={handleSuggestionClick}
                 onSuggestionDoubleClick={handleSuggestionDoubleClick}
+                onShareMessage={handleShareMessage}
+                onRebaseMessage={handleRebaseMessage}
               />
             ))
           )}

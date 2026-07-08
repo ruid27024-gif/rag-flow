@@ -40,6 +40,10 @@ interface IProps extends Partial<IRemoveMessageById>, IRegenerateMessage {
   onSuggestionClick?: (text: string) => void;
   onSuggestionDoubleClick?: (text: string) => void;
   onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
+  onShareMessage?: (messageId: string) => void;
+  isLastMessage?: boolean;
+  hideAssistantButton?: boolean;
+  onRebaseMessage?: (messageId: string) => void;
 }
 
 const MessageItem = ({
@@ -59,10 +63,16 @@ const MessageItem = ({
   visibleAvatar = true,
   onSuggestionClick,
   onSuggestionDoubleClick,
+  onShareMessage,
+  onRebaseMessage,
+  isLastMessage,
+  hideAssistantButton = false,
 }: IProps) => {
   const { theme } = useTheme();
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
+  // 最后一条 assistant 消息，并且生成结束
+  const showAssistantActions = isAssistant && !sendLoading && index !== 0;
 
   console.log('🔍 item:', item);
   console.log('🔍 reference:', reference);
@@ -209,7 +219,7 @@ const MessageItem = ({
               'items-end': item.role === MessageType.User,
             })}
           >
-            {isAssistant ? (
+            {/* {isAssistant ? (
               index !== 0 && (
                 <AssistantGroupButton
                   messageId={item.id}
@@ -229,6 +239,16 @@ const MessageItem = ({
                 regenerateMessage={regenerateMessage && handleRegenerateMessage}
                 sendLoading={sendLoading}
               ></UserGroupButton>
+            )} */}
+
+            {!isAssistant && (
+              <UserGroupButton
+                content={item.content}
+                messageId={item.id}
+                removeMessageById={removeMessageById}
+                regenerateMessage={regenerateMessage && handleRegenerateMessage}
+                sendLoading={sendLoading}
+              />
             )}
 
             {/* <PDFDownloadButton
@@ -302,6 +322,25 @@ const MessageItem = ({
                 )}
               </div>
             )}
+
+            {!hideAssistantButton &&
+              isAssistant &&
+              index !== 0 &&
+              !sendLoading && (
+                <div className="mt-1 flex justify-start">
+                  <AssistantGroupButton
+                    messageId={item.id}
+                    content={item.content}
+                    prompt={item.prompt}
+                    showLikeButton={showLikeButton}
+                    audioBinary={item.audio_binary}
+                    showLoudspeaker={false}
+                    onShareMessage={() => onShareMessage?.(item.id)}
+                    onRebaseMessage={() => onRebaseMessage?.(item.id)}
+                  />
+                </div>
+              )}
+
             {/* {isAssistant && referenceDocumentList.length > 0 && (
               <ReferenceDocumentList
                 list={referenceDocumentList}

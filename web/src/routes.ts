@@ -182,6 +182,11 @@ const routes = [
     component: `@/pages${Routes.ChatsDefault}/chat`,
   },
   {
+    path: '/share/chat/:shareId',
+    layout: false,
+    component: '@/pages/share/chat',
+  },
+  {
     path: Routes.Searches,
     layout: false,
     component: '@/layouts/next',

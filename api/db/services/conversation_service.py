@@ -24,7 +24,7 @@ from common.misc_utils import get_uuid
 import json
 
 from rag.prompts.generator import chunks_format
-
+import uuid
 
 class ConversationService(CommonService):
     model = Conversation
@@ -63,6 +63,69 @@ class ConversationService(CommonService):
             res.extend(_temp)
             offset += limit
         return res
+    
+    @classmethod
+    @DB.connection_context()
+    def generate_branch_name(cls, dialog_id, base_name, user_id=None):
+        base_name = base_name or "新会话"
+
+        suffix = " - 分支"
+        max_base_len = 255 - len(suffix) - 8
+        safe_base_name = base_name[:max_base_len]
+
+        prefix = f"{safe_base_name}{suffix}"
+
+        query = cls.model.select().where(
+            cls.model.dialog_id == dialog_id,
+            cls.model.name.startswith(prefix),
+        )
+
+        if user_id:
+            query = query.where(cls.model.user_id == user_id)
+
+        existing_names = [item.name for item in query]
+
+        if prefix not in existing_names:
+            return prefix
+
+        index = 2
+        while True:
+            name = f"{prefix} {index}"
+
+            if len(name) > 255:
+                extra_len = len(name) - 255
+                name = f"{prefix[:-extra_len]} {index}"
+
+            if name not in existing_names:
+                return name
+
+            index += 1
+
+    @classmethod
+    @DB.connection_context()
+    def create_branch_conversation(
+        cls,
+        dialog_id,
+        name,
+        message,
+        reference,
+        user_id=None,
+    ):
+        """
+        创建分支 conversation
+        """
+        conversation_id = uuid.uuid4().hex
+
+        conv = cls.model.create(
+            id=conversation_id,
+            dialog_id=dialog_id,
+            name=name,
+            message=message,
+            reference=reference,
+            user_id=user_id,
+        )
+
+        return conv.to_dict()
 
 def structure_answer(conv, ans, message_id, session_id):
     reference = ans["reference"]
@@ -244,3 +307,5 @@ async def async_iframe_completion(dialog_id, question, session_id=None, stream=T
             API4ConversationService.append_message(conv.id, conv.to_dict())
             break
         yield answer
+
+    

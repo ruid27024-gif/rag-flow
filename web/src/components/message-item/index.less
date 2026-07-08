@@ -151,3 +151,72 @@
 .messageItemRight {
   text-align: right;
 }
+.messageActionRadio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  // 整体往左退 2 格
+  margin-left: 8px;
+
+  :global {
+    .ant-radio-button-wrapper {
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      max-width: 24px;
+
+      padding: 0 !important;
+      margin: 0 !important;
+
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+
+      background: transparent !important;
+      color: #8a8f99 !important;
+
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+
+      line-height: 1 !important;
+      border-radius: 4px !important;
+    }
+
+    .ant-radio-button-wrapper::before {
+      display: none !important;
+    }
+
+    .ant-radio-button-wrapper:hover {
+      color: #1677ff !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+
+    .ant-radio-button-wrapper-checked {
+      color: #8a8f99 !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+
+    .anticon {
+      width: 16px;
+      height: 16px;
+      font-size: 15px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: inherit !important;
+    }
+
+    svg {
+      width: 1em;
+      height: 1em;
+      display: block;
+      color: inherit !important;
+    }
+  }
+}
