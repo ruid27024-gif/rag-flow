@@ -19,7 +19,6 @@ import {
 import { useCreateConversationBeforeUploadDocument } from '../../hooks/use-create-conversation';
 import { useSendMessage } from '../../hooks/use-send-chat-message';
 import { buildMessageItemReference } from '../../utils';
-
 // interface IProps {
 //   controller: AbortController;
 //   stopOutputMessage(): void;
@@ -37,6 +36,9 @@ interface IProps {
     documentUrl?: string | null,
   ) => void;
   onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
+  reasoning?: boolean;
+  onEnableDeepReasoning?: () => void;
+  onEnableMultiKbReasoning?: () => void;
 }
 
 export function SingleChatBox({
@@ -45,6 +47,9 @@ export function SingleChatBox({
   conversation,
   clickDocumentButton,
   onOpenReferencePanel,
+  reasoning,
+  onEnableDeepReasoning,
+  onEnableMultiKbReasoning,
 }: IProps) {
   const {
     value,
@@ -515,6 +520,17 @@ export function SingleChatBox({
 
       {/* 底部输入框：固定在底部，不参与滚动 */}
       <div className="shrink-0 w-full px-5 pb-4">
+        {/* 深度推理开关 */}
+        {/* <div className="mb-2 flex justify-start">
+          <Button
+            type="button"
+            variant={reasoning ? 'default' : 'outline'}
+            onClick={onToggleReasoning}
+            className={reasoning ? 'bg-blue-600 text-white' : ''}
+          >
+            {reasoning ? '深度推理：开' : '深度推理：关'}
+          </Button>
+        </div> */}
         <div className="max-w-[860px] mx-auto w-full">
           <NextMessageInput
             disabled={disabled}
@@ -531,6 +547,9 @@ export function SingleChatBox({
             onUpload={handleUploadFile}
             isUploading={isUploading}
             removeFile={removeFile}
+            reasoning={reasoning}
+            onEnableDeepReasoning={onEnableDeepReasoning}
+            onEnableMultiKbReasoning={onEnableMultiKbReasoning}
           />
         </div>
       </div>

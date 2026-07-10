@@ -276,6 +276,44 @@ export default function Chat() {
     }
   }
 
+  const reasoning = !!form.watch('prompt_config.reasoning');
+
+  const setReasoningMode = useCallback(
+    async (nextReasoning: boolean) => {
+      const current = !!form.getValues('prompt_config.reasoning');
+
+      // 如果已经是当前模式，不重复提交
+      if (current === nextReasoning) {
+        return;
+      }
+
+      form.setValue('prompt_config.reasoning', nextReasoning, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+
+      const values = form.getValues();
+
+      await onSubmit({
+        ...values,
+        prompt_config: {
+          ...values.prompt_config,
+          reasoning: nextReasoning,
+        },
+      });
+    },
+    [form, onSubmit],
+  );
+
+  const onEnableDeepReasoning = useCallback(() => {
+    return setReasoningMode(true);
+  }, [setReasoningMode]);
+
+  const onEnableMultiKbReasoning = useCallback(() => {
+    return setReasoningMode(false);
+  }, [setReasoningMode]);
+
   function onInvalid(errors: any) {
     console.log('Form validation failed:', errors);
   }
@@ -484,6 +522,9 @@ export default function Chat() {
                   conversation={currentConversation}
                   clickDocumentButton={clickDocumentButton}
                   onOpenReferencePanel={openReferencePanel}
+                  reasoning={reasoning}
+                  onEnableDeepReasoning={onEnableDeepReasoning}
+                  onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                 />
               </div>
 

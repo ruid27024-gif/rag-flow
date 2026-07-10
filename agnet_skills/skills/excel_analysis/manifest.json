@@ -1,0 +1,5 @@
+{
+  "name": "excel_analysis",
+  "description": "Analyze Excel, CSV, spreadsheets, workbook sheets, formulas, and table data.",
+  "tools": ["excel_processor"]
+}

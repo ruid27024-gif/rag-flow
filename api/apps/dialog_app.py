@@ -526,7 +526,7 @@ async def set_dialog_by_config():
     # 只允许前端修改这几个 prompt_config 字段
     req_prompt_config = ensure_dict(req.get("prompt_config", {}))
 
-    for field in ["quote", "keyword", "toc_enhance"]:
+    for field in ["quote", "keyword", "toc_enhance", "reasoning"]:
         if field in req_prompt_config:
             prompt_config[field] = req_prompt_config[field]
 

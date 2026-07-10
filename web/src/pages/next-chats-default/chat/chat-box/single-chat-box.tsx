@@ -30,6 +30,9 @@ interface IProps {
     documentUrl?: string | null,
   ) => void;
   onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
+  reasoning?: boolean;
+  onEnableDeepReasoning?: () => void;
+  onEnableMultiKbReasoning?: () => void;
 }
 
 export function SingleChatBox({
@@ -38,6 +41,9 @@ export function SingleChatBox({
   conversation,
   clickDocumentButton,
   onOpenReferencePanel,
+  reasoning,
+  onEnableDeepReasoning,
+  onEnableMultiKbReasoning,
 }: IProps) {
   const {
     value,
@@ -489,6 +495,9 @@ export function SingleChatBox({
             onUpload={handleUploadFile}
             isUploading={isUploading}
             removeFile={removeFile}
+            reasoning={reasoning}
+            onEnableDeepReasoning={onEnableDeepReasoning}
+            onEnableMultiKbReasoning={onEnableMultiKbReasoning}
           />
         </div>
       </div>

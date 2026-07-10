@@ -402,6 +402,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         knowledges = []
         #  Deep Research（推理型）启动深度推理
         if prompt_config.get("reasoning", False):
+        # if True:
             reasoner = DeepResearcher(
                 chat_mdl,
                 prompt_config,
@@ -417,13 +418,49 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     doc_ids=attachments,
                 ),
             )
-            # 流式返回思考过程
-            async for think in reasoner.thinking(kbinfos, attachments_ + " ".join(questions)):
-                if isinstance(think, str):
-                    thought = think
-                    knowledges = [t for t in think.split("\n") if t]
-                elif stream:
-                    yield think
+            # # 流式返回思考过程
+            # async for think in reasoner.thinking(kbinfos, attachments_ + " ".join(questions)):
+            #     if isinstance(think, str):
+            #         thought = think
+            #         knowledges = [t for t in think.split("\n") if t]
+            #     elif stream:
+            #         yield think
+
+            async for think in reasoner.thinking(
+                kbinfos,
+                attachments_ + " ".join(questions)
+            ):
+                if isinstance(think, dict):
+                    snapshot = think.get("answer", "")
+
+                    # 重点：DeepResearcher 现在是快照模式，所以这里必须覆盖
+                    # 不能 +=
+                    if snapshot:
+                        thought = snapshot
+
+                    if stream:
+                        yield think
+
+                elif isinstance(think, str):
+                    if think:
+                        thought = think
+
+                    if stream:
+                        yield {
+                            "answer": think,
+                            "reference": {},
+                            "audio_binary": None,
+                        }
+
+            # thinking 结束后，再统一生成 knowledges
+            thought_without_tag = re.sub(r"</?think\b[^>]*>", "", thought, flags=re.I)
+
+            knowledges = [
+                t.strip()
+                for t in thought_without_tag.split("\n")
+                if t.strip()
+            ]
+
         # 普通 RAG 检索
         else:
             # 向量检索 重排序 TOC 增强 KG 检索 Tavily 搜索
@@ -775,7 +812,21 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             answer, idx = repair_bad_citation_formats(answer, kbinfos, idx)
 
             # chunk序号 --> doc_id
-            idx = set([kbinfos["chunks"][int(i)]["doc_id"] for i in idx])
+            # idx = set([kbinfos["chunks"][int(i)]["doc_id"] for i in idx])
+            doc_ids = set()
+
+            for i in idx:
+                try:
+                    chunk = kbinfos["chunks"][int(i)]
+                except Exception:
+                    continue
+
+                doc_id = chunk.get("doc_id") or chunk.get("document_id")
+
+                if doc_id:
+                    doc_ids.add(doc_id)
+
+            idx = doc_ids
 
             # 从召回中过滤 引用的文档
             recall_docs = [d for d in kbinfos["doc_aggs"] if d["doc_id"] in idx]
@@ -1105,7 +1156,11 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             }
 
         # 最终交付仍然用原始 answer 做 decorate，避免影响引用解析
-        final_package = await decorate_answer(thought + answer)
+        # final_package = await decorate_answer(thought + answer)
+        final_package = await decorate_answer(answer)
+
+        if isinstance(final_package, dict):
+            final_package["answer"] = thought + final_package.get("answer", "")
 
         # 最终展示也替换一下 THINK 里的 ID
         final_package["answer"] = replace_think_ids_with_doc_names(

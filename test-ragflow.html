@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAGFlow Agent 测试页面</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: #f5f7fb;
+      color: #222;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 80px auto;
+      padding: 32px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+      color: #1677ff;
+    }
+
+    p {
+      line-height: 1.8;
+      font-size: 16px;
+    }
+
+    .tip {
+      margin-top: 24px;
+      padding: 16px;
+      background: #eef6ff;
+      border-left: 4px solid #1677ff;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>RAGFlow Agent 本地测试页面</h1>
+    <p>
+      这是一个普通 HTML 页面，用来测试 RAGFlow 的悬浮聊天窗口。
+    </p>
+    <p>
+      如果配置正确，页面右下角会出现一个聊天按钮，点击后就能和 Agent 对话。
+    </p>
+
+    <div class="tip">
+      请确认 RAGFlow 前端服务正在运行，并且可以访问：
+      <strong>http://localhost:9222</strong>
+    </div>
+  </div>
+
+  <!-- RAGFlow Agent 嵌入代码 -->
+  <iframe src="http://localhost:9222/next-chats/widget?shared_id=16b84e447b6c11f194ec28952976d72a&from=agent&auth=UUzXFEVPSZwsUW7zBUolhNbibHRPwsCK&visible_avatar=1&locale=zh&streaming=true&mode=master&streaming=true"
+  style="position:fixed;bottom:0;right:0;width:100px;height:100px;border:none;background:transparent;z-index:9999"
+  frameborder="0" allow="microphone;camera"></iframe>
+<script>
+window.addEventListener('message', e => {
+  if (e.origin !== 'http://localhost:9222') return;
+
+  console.log('RAGFlow message:', e.data);
+
+  if (e.data.type === 'CREATE_CHAT_WINDOW') {
+    console.log('聊天窗口 page:', e.data.src);
+
+    if (document.getElementById('chat-win')) return;
+
+    const i = document.createElement('iframe');
+    i.id = 'chat-win';
+    i.src = e.data.src;
+
+    console.log('创建的 iframe src:', i.src);
+
+    i.style.cssText =
+      'position:fixed;bottom:104px;right:24px;width:380px;height:500px;border:none;background:transparent;z-index:9998;display:none';
+    i.frameBorder = '0';
+    i.allow = 'microphone;camera';
+    document.body.appendChild(i);
+  } else if (e.data.type === 'TOGGLE_CHAT') {
+    const w = document.getElementById('chat-win');
+    if (w) {
+      console.log('当前聊天 iframe src:', w.src);
+      w.style.display = e.data.isOpen ? 'block' : 'none';
+    }
+  }
+});
+</script>
+</body>
+</html>

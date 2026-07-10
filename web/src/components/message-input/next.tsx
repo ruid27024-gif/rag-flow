@@ -37,6 +37,9 @@ interface IProps {
   stopOutputMessage?(): void;
   onUpload?: NonNullable<FileUploadProps['onUpload']>;
   removeFile?(file: File): void;
+  reasoning?: boolean;
+  onEnableDeepReasoning?: () => void;
+  onEnableMultiKbReasoning?: () => void;
 }
 
 export function NextMessageInput({
@@ -51,6 +54,9 @@ export function NextMessageInput({
   stopOutputMessage,
   onPressEnter,
   removeFile,
+  reasoning = false,
+  onEnableDeepReasoning,
+  onEnableMultiKbReasoning,
 }: IProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
@@ -220,7 +226,171 @@ export function NextMessageInput({
           disabled={isUploading || disabled || sendLoading}
           onKeyDown={handleKeyDown}
         />
-        <div
+        <div className="flex items-center justify-between gap-1.5">
+          {/* 左侧工具区 */}
+          <div className="flex items-center gap-2">
+            {showUploadIcon && (
+              <FileUploadTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 rounded-sm"
+                  disabled={isUploading || sendLoading}
+                >
+                  <Paperclip className="size-3.5" />
+                  <span className="sr-only">Attach file</span>
+                </Button>
+              </FileUploadTrigger>
+            )}
+
+            <div className="flex items-center gap-2">
+              {/* 多库并行推理 */}
+              <Button
+                type="button"
+                title="精确度高，速度快"
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onEnableMultiKbReasoning?.();
+                }}
+                disabled={isUploading || sendLoading || disabled}
+                className={cn(
+                  `
+                    h-7
+                    rounded-full
+                    border
+                    px-3
+                    text-xs
+                    font-medium
+                    transition-all
+                    duration-200
+                    shadow-none
+                    hover:bg-emerald-50
+                    hover:text-emerald-600
+                    hover:border-emerald-300
+                    dark:hover:bg-emerald-950/30
+                  `,
+                  !reasoning
+                    ? `
+                      border-emerald-300
+                      bg-emerald-50
+                      text-emerald-600
+                      dark:border-emerald-700
+                      dark:bg-emerald-950/30
+                      dark:text-emerald-400
+                    `
+                    : `
+                      border-gray-200
+                      bg-transparent
+                      text-gray-500
+                      dark:border-gray-700
+                      dark:text-gray-400
+                    `,
+                )}
+              >
+                <span
+                  className={cn(
+                    'mr-0.5 inline-block h-1.5 w-1.5 rounded-full transition-colors',
+                    !reasoning
+                      ? 'bg-emerald-500'
+                      : 'bg-gray-300 dark:bg-gray-600',
+                  )}
+                />
+                多库并行
+              </Button>
+
+              {/* 深度推理 */}
+              <Button
+                type="button"
+                size="sm"
+                title="海量查询，速度慢"
+                variant="outline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onEnableDeepReasoning?.();
+                }}
+                disabled={isUploading || sendLoading || disabled}
+                className={cn(
+                  `
+                    h-7
+                    rounded-full
+                    border
+                    px-3
+                    text-xs
+                    font-medium
+                    transition-all
+                    duration-200
+                    shadow-none
+                    hover:bg-blue-50
+                    hover:text-blue-600
+                    hover:border-blue-300
+                    dark:hover:bg-blue-950/30
+                  `,
+                  reasoning
+                    ? `
+                      border-blue-300
+                      bg-blue-50
+                      text-blue-600
+                      dark:border-blue-700
+                      dark:bg-blue-950/30
+                      dark:text-blue-400
+                    `
+                    : `
+                      border-gray-200
+                      bg-transparent
+                      text-gray-500
+                      dark:border-gray-700
+                      dark:text-gray-400
+                    `,
+                )}
+              >
+                <span
+                  className={cn(
+                    'mr-0.5 inline-block h-1.5 w-1.5 rounded-full transition-colors',
+                    reasoning ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600',
+                  )}
+                />
+                深度推理
+              </Button>
+            </div>
+          </div>
+
+          {/* 右侧发送/停止区 */}
+          <div className="flex items-center gap-3">
+            {sendLoading ? (
+              <Button
+                type="button"
+                onClick={stopOutputMessage}
+                className="size-7 rounded-sm"
+              >
+                <CircleStop className="size-4" />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={submit}
+                className="size-7 rounded-sm"
+                disabled={
+                  sendDisabled || isUploading || sendLoading || !value.trim()
+                }
+              >
+                <Send className="size-4" />
+                <span className="sr-only">Send message</span>
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </FileUpload>
+  );
+}
+
+{
+  /* <div
           className={cn('flex items-center justify-between gap-1.5', {
             'justify-end': !showUploadIcon,
           })}
@@ -249,28 +419,27 @@ export function NextMessageInput({
             </Button>
           ) : (
             <div className="flex items-center gap-3">
-              {/* <div className="bg-bg-input rounded-md hover:bg-bg-card p-1"> */}
-              {/* <AudioButton
+              {/* <div className="bg-bg-input rounded-md hover:bg-bg-card p-1"> */
+}
+{
+  /* <AudioButton
                 onOk={(value) => {
                   setAudioInputValue(value);
                 }}
-              /> */}
-              {/* </div> */}
-              <Button
-                type="button"
-                onClick={submit}
-                className="size-5 rounded-sm"
-                disabled={
-                  sendDisabled || isUploading || sendLoading || !value.trim()
-                }
-              >
-                <Send />
-                <span className="sr-only">Send message</span>
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-    </FileUpload>
-  );
+              /> */
 }
+//       {/* </div> */}
+//       <Button
+//         type="button"
+//         onClick={submit}
+//         className="size-5 rounded-sm"
+//         disabled={
+//           sendDisabled || isUploading || sendLoading || !value.trim()
+//         }
+//       >
+//         <Send />
+//         <span className="sr-only">Send message</span>
+//       </Button>
+//     </div>
+//   )}
+// </div> */}

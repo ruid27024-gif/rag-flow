@@ -18,7 +18,7 @@ BEGIN_SEARCH_QUERY = "<|begin_search_query|>"
 END_SEARCH_QUERY = "<|end_search_query|>"
 BEGIN_SEARCH_RESULT = "<|begin_search_result|>"
 END_SEARCH_RESULT = "<|end_search_result|>"
-MAX_SEARCH_LIMIT = 6
+MAX_SEARCH_LIMIT = 3
 
 REASON_PROMPT = f"""You are an advanced reasoning agent. Your goal is to answer the user's question by breaking it down into a series of verifiable steps.
 

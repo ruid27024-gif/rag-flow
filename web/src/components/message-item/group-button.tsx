@@ -94,11 +94,15 @@ export const AssistantGroupButton = ({
         {showLikeButton && (
           <>
             <Radio.Button value="c" onClick={handleLike}>
-              <LikeOutlined />
+              <Tooltip title="喜欢">
+                <LikeOutlined />
+              </Tooltip>
             </Radio.Button>
 
             <Radio.Button value="d" onClick={showModal}>
-              <DislikeOutlined />
+              <Tooltip title="不喜欢">
+                <DislikeOutlined />
+              </Tooltip>
             </Radio.Button>
           </>
         )}
