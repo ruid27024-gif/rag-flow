@@ -82,30 +82,39 @@ class Agent(LLM, ToolBase):
     component_name = "Agent"
 
     def __init__(self, canvas, id, param: LLMParam):
+        # 调用父类的LLM初始化函数
         LLM.__init__(self, canvas, id, param)
+        # 工具字典
         self.tools = {}
+        # 加载内部工具：遍历参数中配置的工具，通过_load_tool_obj实例化工具，存储到字典
         for cpn in self._param.tools:
             cpn = self._load_tool_obj(cpn)
             self.tools[cpn.get_meta()["function"]["name"]] = cpn
 
+        # 初始化聊天模型
         self.chat_mdl = LLMBundle(self._canvas.get_tenant_id(), TenantLLMService.llm_id2llm_type(self._param.llm_id), self._param.llm_id,
                                   max_retries=self._param.max_retries,
                                   retry_interval=self._param.delay_after_error,
                                   max_rounds=self._param.max_rounds,
                                   verbose_tool_use=True
                                   )
+        # 加载工具的元数据
         self.tool_meta = [v.get_meta() for _,v in self.tools.items()]
 
+        # 加载mcp
         for mcp in self._param.mcp:
             _, mcp_server = MCPServerService.get_by_id(mcp["mcp_id"])
             tool_call_session = MCPToolCallSession(mcp_server, mcp_server.variables)
             for tnm, meta in mcp["tools"].items():
                 self.tool_meta.append(mcp_tool_metadata_to_openai_tool(meta))
                 self.tools[tnm] = tool_call_session
+        # 绑定工具使用的回调函数
         self.callback = partial(self._canvas.tool_use_callback, id)
+        # LLMToolPluginCallSession 用于统一管理工具的调用。
         self.toolcall_session = LLMToolPluginCallSession(self.tools, self.callback)
         #self.chat_mdl.bind_tools(self.toolcall_session, self.tool_metas)
 
+    # 作用：动态加载并实例化单个工具对象
     def _load_tool_obj(self, cpn: dict) -> object:
         from agent.component import component_class
         param = component_class(cpn["component_name"] + "Param")()
@@ -118,6 +127,7 @@ class Agent(LLM, ToolBase):
         cpn_id = f"{self._id}-->" + cpn.get("name", "").replace(" ", "_")
         return component_class(cpn["component_name"])(self._canvas, cpn_id, param)
 
+    # 作用：获取该 Agent 作为“工具”被其他组件调用时的元数据。
     def get_meta(self) -> dict[str, Any]:
         self._param.function_name= self._id.split("-->")[-1]
         m = super().get_meta()
@@ -125,19 +135,22 @@ class Agent(LLM, ToolBase):
             m["function"]["parameters"]["properties"]["user_prompt"] = self._param.user_prompt
         return m
 
+    # 作用：获取 Agent 的输入表单结构（通常用于前端渲染）。
     def get_input_form(self) -> dict[str, dict]:
         res = {}
+        # 遍历 Agent 自身的输入元素，生成包含类型（line）和名称的字典。
         for k, v in self.get_input_elements().items():
             res[k] = {
                 "type": "line",
                 "name": v["name"]
             }
+        # 遍历 Agent 内部配置的非 LLM 类工具，递归获取它们的输入表单并合并到结果中返回。
         for cpn in self._param.tools:
             if not isinstance(cpn, LLM):
                 continue
             res.update(cpn.get_input_form())
         return res
-
+    # 
     def _get_output_schema(self):
         try:
             cand = self._param.outputs.get("structured")
@@ -152,7 +165,7 @@ class Agent(LLM, ToolBase):
                     return cand[k]
 
         return None
-
+    
     async def _force_format_to_schema_async(self, text: str, schema_prompt: str) -> str:
         fmt_msgs = [
             {"role": "system", "content": schema_prompt + "\nIMPORTANT: Output ONLY valid JSON. No markdown, no extra text."},
@@ -161,38 +174,50 @@ class Agent(LLM, ToolBase):
         _, fmt_msgs = message_fit_in(fmt_msgs, int(self.chat_mdl.max_length * 0.97))
         return await self._generate_async(fmt_msgs)
 
+    
+    # Agent 的核心执行入口（同步包装器）。
     def _invoke(self, **kwargs):
         return asyncio.run(self._invoke_async(**kwargs))
 
+    # 超时控制20分钟
     @timeout(int(os.environ.get("COMPONENT_EXEC_TIMEOUT", 20*60)))
     async def _invoke_async(self, **kwargs):
+        # 是否被取消了
         if self.check_if_canceled("Agent processing"):
             return
 
         if kwargs.get("user_prompt"):
             usr_pmt = ""
+            # 推理原因
             if kwargs.get("reasoning"):
                 usr_pmt += "\nREASONING:\n{}\n".format(kwargs["reasoning"])
+            # 背景上下文
             if kwargs.get("context"):
                 usr_pmt += "\nCONTEXT:\n{}\n".format(kwargs["context"])
+            # 用户问题
             if usr_pmt:
                 usr_pmt += "\nQUERY:\n{}\n".format(str(kwargs["user_prompt"]))
+            # 用户指令
             else:
                 usr_pmt = str(kwargs["user_prompt"])
             self._param.prompts = [{"role": "user", "content": usr_pmt}]
-
+        # 纯对话模式
         if not self.tools:
             if self.check_if_canceled("Agent processing"):
                 return
             return await LLM._invoke_async(self, **kwargs)
-
+        
+        # 系统的提示词
         prompt, msg, user_defined_prompt = self._prepare_prompt_variables()
         output_schema = self._get_output_schema()
+
+        # 结构化输出（JSON Schema）准备
         schema_prompt = ""
         if output_schema:
             schema = json.dumps(output_schema, ensure_ascii=False, indent=2)
             schema_prompt = structured_output_prompt(schema)
-
+            
+        # 检查下游节点是否包含 message（消息）组件，且没有配置异常跳转，也没有要求结构化输出。
         downstreams = self._canvas.get_component(self._id)["downstream"] if self._canvas.get_component(self._id) else []
         ex = self.exception_handler()
         if any([self._canvas.get_component_obj(cid).component_name.lower()=="message" for cid in downstreams]) and not (ex and ex["goto"]) and not output_schema:

@@ -24,6 +24,7 @@ from timeit import default_timer as timer
 from langfuse import Langfuse
 from peewee import fn
 from agentic_reasoning import DeepResearcher
+from agnet_skills.agent_chat import async_chat_agent_mode
 from api.db.services.file_service import FileService
 from common.constants import LLMType, ParserType, StatusEnum
 from api.db.db_models import DB, Dialog
@@ -280,9 +281,21 @@ def repair_bad_citation_formats(answer: str, kbinfos: dict, idx: set):
 
 async def async_chat(dialog, messages, stream=True, **kwargs):
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
-    # 无kb搜索的情况
-    if not dialog.kb_ids and not dialog.prompt_config.get("tavily_api_key"):
-        # 直接走纯对话
+    # # 无kb搜索的情况
+    # if not dialog.kb_ids and not dialog.prompt_config.get("tavily_api_key"):
+    #     # 直接走纯对话
+    #     async for ans in async_chat_solo(dialog, messages, stream):
+    #         yield ans
+    #     return
+
+    # 统一拷贝 prompt_config，兼容旧数据没有 agent_mod 的情况
+    prompt_config = dict(dialog.prompt_config or {})
+
+    reasoning_enabled = prompt_config.get("reasoning", False)
+    agent_mod_enabled = prompt_config.get("agent_mod", False) or kwargs.get("agent_mod", False)
+
+    # 无 kb 且非 Agent 模式，才走纯对话
+    if not agent_mod_enabled and not dialog.kb_ids and not prompt_config.get("tavily_api_key"):
         async for ans in async_chat_solo(dialog, messages, stream):
             yield ans
         return
@@ -337,14 +350,14 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         attachments_ = "\n\n".join(FileService.get_files(messages[-1]["files"]))
 
     # Prompt 参数处理
-    prompt_config = dialog.prompt_config
+    # prompt_config = dialog.prompt_config
 
-    print(prompt_config)
+    # print(prompt_config)
     # 选择了哪些知识库
     field_map = KnowledgebaseService.get_field_map(dialog.kb_ids)
     # 尝试 SQL 检索（优先）
     # try to use sql if field mapping is good to go
-    if field_map:
+    if field_map and not agent_mod_enabled:
         logging.debug("Use SQL to retrieval:{}".format(questions[-1]))
         ans = await use_sql(questions[-1], field_map, dialog.tenant_id, chat_mdl, prompt_config.get("quote", True), dialog.kb_ids)
         if ans:
@@ -358,7 +371,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         if p["key"] not in kwargs and not p["optional"]:
             raise KeyError("Miss parameter: " + p["key"])
         if p["key"] not in kwargs:
-            prompt_config["system"] = prompt_config["system"].replace("{%s}" % p["key"], " ")
+            # prompt_config["system"] = prompt_config["system"].replace("{%s}" % p["key"], " ")
+            prompt_config["system"] = prompt_config.get("system", "").replace("{%s}" % p["key"], " ")
     # 把多轮对话整合成一个完整的问题
     if len(questions) > 1 and prompt_config.get("refine_multiturn"):
         questions = [await full_question(dialog.tenant_id, dialog.llm_id, messages)]
@@ -395,131 +409,102 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     thought = ""
     kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
     knowledges = []
+    has_knowledge_param = "knowledge" in [
+        p["key"] for p in prompt_config.get("parameters", [])
+    ]
 
     # 知识库检索核心
     if attachments is not None and "knowledge" in [p["key"] for p in prompt_config["parameters"]]:
         tenant_ids = list(set([kb.tenant_id for kb in kbs]))
         knowledges = []
         #  Deep Research（推理型）启动深度推理
+        # if prompt_config.get("reasoning", False):
+        # # if True:
+        #     reasoner = DeepResearcher(
+        #         chat_mdl,
+        #         prompt_config,
+        #         partial(
+        #             retriever.retrieval,
+        #             embd_mdl=embd_mdl,
+        #             tenant_ids=tenant_ids,
+        #             kb_ids=dialog.kb_ids,
+        #             page=1,
+        #             page_size=dialog.top_n,
+        #             similarity_threshold=0.2,
+        #             vector_similarity_weight=0.3,
+        #             doc_ids=attachments,
+        #         ),
+        #     )
+        #     # # 流式返回思考过程
+        #     # async for think in reasoner.thinking(kbinfos, attachments_ + " ".join(questions)):
+        #     #     if isinstance(think, str):
+        #     #         thought = think
+        #     #         knowledges = [t for t in think.split("\n") if t]
+        #     #     elif stream:
+        #     #         yield think
+        #
+        #     async for think in reasoner.thinking(
+        #         kbinfos,
+        #         attachments_ + " ".join(questions)
+        #     ):
+        #         if isinstance(think, dict):
+        #             snapshot = think.get("answer", "")
+        #
+        #             # 重点：DeepResearcher 现在是快照模式，所以这里必须覆盖
+        #             # 不能 +=
+        #             if snapshot:
+        #                 thought = snapshot
+        #
+        #             if stream:
+        #                 yield think
+        #
+        #         elif isinstance(think, str):
+        #             if think:
+        #                 thought = think
+        #
+        #             if stream:
+        #                 yield {
+        #                     "answer": think,
+        #                     "reference": {},
+        #                     "audio_binary": None,
+        #                 }
+        #
+        #     # thinking 结束后，再统一生成 knowledges
+        #     thought_without_tag = re.sub(r"</?think\b[^>]*>", "", thought, flags=re.I)
+        #
+        #     knowledges = [
+        #         t.strip()
+        #         for t in thought_without_tag.split("\n")
+        #         if t.strip()
+        #     ]
+
+        # 2. Agent 模式，新加
+        # elif agent_mod_enabled:
         if prompt_config.get("reasoning", False):
-        # if True:
-            reasoner = DeepResearcher(
-                chat_mdl,
-                prompt_config,
-                partial(
-                    retriever.retrieval,
+            async for ans in async_chat_agent_mode(
+                    dialog=dialog,
+                    messages=messages,
+                    questions=questions,
+                    attachments=attachments,
+                    attachments_text=attachments_,
+                    kbs=kbs,
                     embd_mdl=embd_mdl,
-                    tenant_ids=tenant_ids,
-                    kb_ids=dialog.kb_ids,
-                    page=1,
-                    page_size=dialog.top_n,
-                    similarity_threshold=0.2,
-                    vector_similarity_weight=0.3,
-                    doc_ids=attachments,
-                ),
-            )
-            # # 流式返回思考过程
-            # async for think in reasoner.thinking(kbinfos, attachments_ + " ".join(questions)):
-            #     if isinstance(think, str):
-            #         thought = think
-            #         knowledges = [t for t in think.split("\n") if t]
-            #     elif stream:
-            #         yield think
-
-            async for think in reasoner.thinking(
-                kbinfos,
-                attachments_ + " ".join(questions)
+                    rerank_mdl=rerank_mdl,
+                    chat_mdl=chat_mdl,
+                    retriever=retriever,
+                    prompt_config=prompt_config,
+                    stream=stream,
+                    **kwargs
             ):
-                if isinstance(think, dict):
-                    snapshot = think.get("answer", "")
+                yield ans
 
-                    # 重点：DeepResearcher 现在是快照模式，所以这里必须覆盖
-                    # 不能 +=
-                    if snapshot:
-                        thought = snapshot
-
-                    if stream:
-                        yield think
-
-                elif isinstance(think, str):
-                    if think:
-                        thought = think
-
-                    if stream:
-                        yield {
-                            "answer": think,
-                            "reference": {},
-                            "audio_binary": None,
-                        }
-
-            # thinking 结束后，再统一生成 knowledges
-            thought_without_tag = re.sub(r"</?think\b[^>]*>", "", thought, flags=re.I)
-
-            knowledges = [
-                t.strip()
-                for t in thought_without_tag.split("\n")
-                if t.strip()
-            ]
+            return
 
         # 普通 RAG 检索
         else:
             # 向量检索 重排序 TOC 增强 KG 检索 Tavily 搜索
             print("===============================检索的知识库id为===================================")
             print(dialog.kb_ids)
-            
-            #Todo 对知识库进行分类 动态提示词语
-            # print(dialog.kb_ids)
-            # if embd_mdl:
-            #     query = " ".join(questions)
-            #     selected_kbs = list(kbs)
-            #     total_top_n = max(1, int(dialog.top_n or 1))
-            #     # 每个知识库都按 top_n 取召回片段；例如 top_n=8 时，每个选中的知识库最多取 8 条。
-            #     per_kb_top_n = total_top_n
-            #     doc_aggs_by_id = {}
-
-            #     # 逐库检索：让前端选中的每个知识库都有机会进入回答来源。
-            #     # 这里只改变普通 RAG 的召回组织方式，不改变 answer/reference 的返回结构。
-            #     kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
-            #     for kb in selected_kbs:
-            #         kb_tenant_ids = [kb.tenant_id]
-            #         kb_result = retriever.retrieval(
-            #             query,
-            #             embd_mdl,
-            #             kb_tenant_ids,
-            #             [kb.id],
-            #             1,
-            #             per_kb_top_n,
-            #             dialog.similarity_threshold,
-            #             dialog.vector_similarity_weight,
-            #             doc_ids=attachments,
-            #             top=dialog.top_k,
-            #             aggs=False,
-            #             rerank_mdl=rerank_mdl,
-            #             rank_feature=label_question(query, [kb]),
-            #         )
-            #         kb_chunks = kb_result.get("chunks", [])
-            #         if prompt_config.get("toc_enhance"):
-            #             cks = retriever.retrieval_by_toc(query, kb_chunks, kb_tenant_ids, chat_mdl, per_kb_top_n)
-            #             if cks:
-            #                 kb_chunks = cks
-            #         kb_chunks = retriever.retrieval_by_children(kb_chunks, kb_tenant_ids)
-            #         for chunk in kb_chunks:
-            #             if not chunk.get("kb_id"):
-            #                 chunk["kb_id"] = kb.id
-            #             kbinfos["chunks"].append(chunk)
-            #         kbinfos["total"] += kb_result.get("total", len(kb_chunks))
-            #         for doc_agg in kb_result.get("doc_aggs", []):
-            #             doc_id = doc_agg.get("doc_id")
-            #             if not doc_id:
-            #                 continue
-            #             if doc_id not in doc_aggs_by_id:
-            #                 doc_aggs_by_id[doc_id] = dict(doc_agg)
-            #             else:
-            #                 doc_aggs_by_id[doc_id]["count"] = doc_aggs_by_id[doc_id].get("count", 0) + doc_agg.get("count", 0)
-
-            #     kbinfos["doc_aggs"] = list(doc_aggs_by_id.values())
-            #     print("改写后的问题为：")
-            #     print(questions)
 
             import asyncio
             import traceback
@@ -654,9 +639,6 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 if ck["content_with_weight"]:
                     kbinfos["chunks"].insert(0, ck)
             
-            print("最终的召回结果为：============================================================\n")
-            print("最终的召回结果为：============================================================\n")
-            print("最终的召回结果为：============================================================\n")
             print("最终的召回结果为：============================================================\n")
             print(kbinfos)
             # 组装 Prompt

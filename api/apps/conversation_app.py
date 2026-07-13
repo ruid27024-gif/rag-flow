@@ -204,8 +204,15 @@ async def completion():
         e, dia = DialogService.get_by_id(conv.dialog_id)
         if not e:
             return get_data_error_result(message="Dialog not found!")
+        # del req["conversation_id"]
+        # del req["messages"]
+        conversation_id = req["conversation_id"]
+
         del req["conversation_id"]
         del req["messages"]
+
+        req["conversation_id"] = conversation_id
+        req["message_id"] = message_id
 
         if not conv.reference:
             conv.reference = []

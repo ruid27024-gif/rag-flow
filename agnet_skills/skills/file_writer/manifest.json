@@ -1,0 +1,7 @@
+{
+  "name": "file_writer",
+  "description": "Create and write text files.",
+  "tools": [
+    "write_file"
+  ]
+}

@@ -1,19 +1,19 @@
-面给你一套完整的 Runtime 方案代码：不用真实 Canvas，而是用 AgentRuntimeContext 作为 Agent 的运行上下文。这样 Chat 页面可以直接初始化和调用 Agent。
+# 面给你一套完整的 Runtime 方案代码：不用真实 Canvas，而是用 AgentRuntimeContext 作为 Agent 的运行上下文。这样 Chat 页面可以直接初始化和调用 Agent。
 
-这个方案特点：
+# 这个方案特点：
 
-Chat 页面 / API
-  ↓
-create_agent_runtime(...)
-  ↓
-AgentRuntimeContext 替代 Canvas
-  ↓
-Agent(canvas_like_runtime, agent_id, param)
-  ↓
-Agent 内部照旧使用 self._canvas.get_tenant_id()
-  ↓
-但 self._canvas 实际是 runtime，不是真 Canvas
-1. 新增文件：agent/runtime/context.py
+# Chat 页面 / API
+#   ↓
+# create_agent_runtime(...)
+#   ↓
+# AgentRuntimeContext 替代 Canvas
+#   ↓
+# Agent(canvas_like_runtime, agent_id, param)
+#   ↓
+# Agent 内部照旧使用 self._canvas.get_tenant_id()
+#   ↓
+# 但 self._canvas 实际是 runtime，不是真 Canvas
+# 1. 新增文件：agent/runtime/context.py
 import asyncio
 import base64
 import json
@@ -499,3 +499,473 @@ def create_agent_runtime(
     )
 
     return agent, runtime
+3. 修改你的 Agent __init__
+你现在 __init__ 里重复初始化了两遍：
+
+self.skill_registry = SkillRegistry(...)
+self.read_skill_meta = self._build_read_skill_meta()
+...
+self.skill_registry = SkillRegistry(...)
+self.read_skill_meta = self._build_read_skill_meta()
+请改成下面这种，只保留一遍。
+
+class Agent(LLM, ToolBase):
+    component_name = "Agent"
+
+    def __init__(self, canvas, id, param: LLMParam):
+        LLM.__init__(self, canvas, id, param)
+
+        self.tools = {}
+
+        # 1. 加载 Agent 自身配置的真实工具
+        for cpn in self._param.tools:
+            cpn = self._load_tool_obj(cpn)
+            self.tools[cpn.get_meta()["function"]["name"]] = cpn
+
+        # 2. 初始化 LLM
+        self.chat_mdl = LLMBundle(
+            self._canvas.get_tenant_id(),
+            TenantLLMService.llm_id2llm_type(self._param.llm_id),
+            self._param.llm_id,
+            max_retries=self._param.max_retries,
+            retry_interval=self._param.delay_after_error,
+            max_rounds=self._param.max_rounds,
+            verbose_tool_use=True
+        )
+
+        # 3. 工具 metadata
+        self.tool_meta = [v.get_meta() for _, v in self.tools.items()]
+
+        # 4. 加载 MCP 工具
+        for mcp in self._param.mcp:
+            _, mcp_server = MCPServerService.get_by_id(mcp["mcp_id"])
+            tool_call_session = MCPToolCallSession(mcp_server, mcp_server.variables)
+            for tnm, meta in mcp["tools"].items():
+                self.tool_meta.append(mcp_tool_metadata_to_openai_tool(meta))
+                self.tools[tnm] = tool_call_session
+
+        # 5. callback + tool call session
+        self.callback = partial(self._canvas.tool_use_callback, id)
+        self.toolcall_session = LLMToolPluginCallSession(
+            self.tools,
+            self.callback
+        )
+
+        # 6. Skill runtime
+        self.skill_registry = SkillRegistry(
+            os.environ.get("AGENT_SKILL_ROOT", "skills")
+        )
+        self.read_skill_meta = self._build_read_skill_meta()
+4. Chat/API 直接调用示例：无工具 Skill
+用于测试 report_writer。
+
+文件：examples/run_agent_runtime_no_tool.py
+
+import asyncio
+
+from common import settings
+from agent.runtime.factory import create_agent_runtime
+
+
+async def main():
+    # 初始化项目配置。LLMBundle/TenantLLMService 需要它。
+    settings.init_settings()
+
+    agent, runtime = create_agent_runtime(
+        tenant_id="你的_tenant_id",
+        llm_id="你的_llm_id",
+        agent_id="chat_report_agent",
+        skill_root="./skills",
+        system_prompt="You are a helpful assistant. Use skills when needed.",
+        tools=[],
+        max_rounds=5,
+        cite=False
+    )
+
+    result = await agent._invoke_async(
+        user_prompt="请根据以下信息写一份正式报告。",
+        context="本季度销售额同比增长 18%，华东区域表现最好，第三季度出现一次异常波动。",
+        reasoning="用户需要正式报告，应使用 report_writer skill。"
+    )
+
+    print("\n========== FINAL RESULT ==========")
+    print(result)
+
+    print("\n========== TOOL TRACES ==========")
+    print(runtime.get_tool_traces())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+5. Chat/API 直接调用示例：带 ExeSQL 工具
+文件：examples/run_agent_runtime_sql.py
+
+import asyncio
+
+from common import settings
+from agent.runtime.factory import create_agent_runtime
+
+
+async def main():
+    settings.init_settings()
+
+    tools = [
+        {
+            "component_name": "ExeSQL",
+            "name": "exesql",
+            "params": {
+                "database": "rag_flow",
+                "username": "root",
+                "host": "mysql",
+                "port": 3306,
+                "password": "infini_rag_flow",
+                "top_n": 3
+            }
+        }
+    ]
+
+    agent, runtime = create_agent_runtime(
+        tenant_id="你的_tenant_id",
+        llm_id="你的_llm_id",
+        agent_id="chat_sql_agent",
+        skill_root="./skills",
+        system_prompt="You are a helpful SQL analysis agent. Use skills when needed.",
+        tools=tools,
+        max_rounds=5,
+        cite=False
+    )
+
+    print("Loaded tools:", list(agent.tools.keys()))
+    print("Skill index:")
+    print(agent.skill_registry.load_index())
+
+    result = await agent._invoke_async(
+        user_prompt="查询数据库中最近的 3 条记录，并总结结果。",
+        context="数据库是 rag_flow。",
+        reasoning="需要使用 sql_analysis skill 调用 SQL 工具。"
+    )
+
+    print("\n========== FINAL RESULT ==========")
+    print(result)
+
+    print("\n========== TOOL TRACES ==========")
+    for trace in runtime.get_tool_traces():
+        print(trace)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+6. skills 示例
+6.1 skills/index.md
+# Skill Index
+
+Available skills:
+
+## sql_analysis
+Use this skill when the user asks questions that require querying the SQL database.
+Tools: exesql
+
+## report_writer
+Use this skill to write formal reports, executive summaries, business memos, polished analysis documents, and final deliverables.
+Tools: none
+6.2 skills/sql_analysis/manifest.json
+注意：这里的 exesql 必须和工具 get_meta()["function"]["name"] 一致。
+
+{
+  "name": "sql_analysis",
+  "description": "Query SQL database and summarize SQL results.",
+  "tools": ["exesql"]
+}
+6.3 skills/sql_analysis/skill.md
+# SQL Analysis Skill
+
+You are temporarily operating as a SQL analysis specialist.
+
+Use the SQL execution tool to answer questions that require querying the database.
+
+Rules:
+- Prefer SELECT queries.
+- Do not modify, delete, update, or insert data unless explicitly allowed.
+- Generate safe and relevant SQL.
+- Summarize query results clearly.
+- If the result is empty, say so.
+6.4 skills/report_writer/manifest.json
+{
+  "name": "report_writer",
+  "description": "Write formal reports and polished final documents.",
+  "tools": []
+}
+6.5 skills/report_writer/skill.md
+# Report Writer Skill
+
+You are temporarily operating as a professional report writer.
+
+Use all prior gathered information to write a clear, polished, formal report.
+
+Default structure:
+1. Title
+2. Executive Summary
+3. Key Findings
+4. Detailed Analysis
+5. Recommendations
+6. Notes or Appendix if needed
+
+Style:
+- Professional
+- Clear
+- Evidence-based
+- Concise
+- Do not mention internal skill switching.
+7. Chat API 中如何使用
+比如 FastAPI：
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+from common import settings
+from agent.runtime.factory import create_agent_runtime
+
+
+router = APIRouter()
+
+
+class ChatAgentRequest(BaseModel):
+    tenant_id: str
+    llm_id: str
+    message: str
+    conversation_id: str | None = None
+    files: list[dict] | None = None
+
+
+@router.post("/chat/agent")
+async def chat_agent(req: ChatAgentRequest):
+    # 生产环境不建议前端传 llm_id/tools。
+    # 更推荐根据 agent_id 从后端配置表查。
+    tools = [
+        {
+            "component_name": "ExeSQL",
+            "name": "exesql",
+            "params": {
+                "database": "rag_flow",
+                "username": "root",
+                "host": "mysql",
+                "port": 3306,
+                "password": "infini_rag_flow",
+                "top_n": 3
+            }
+        }
+    ]
+
+    agent, runtime = create_agent_runtime(
+        tenant_id=req.tenant_id,
+        llm_id=req.llm_id,
+        agent_id="chat_sql_agent",
+        skill_root="./skills",
+        system_prompt="You are a helpful SQL analysis agent. Use skills when needed.",
+        tools=tools,
+        conversation_id=req.conversation_id,
+        files=req.files,
+        max_rounds=5,
+        cite=False
+    )
+
+    context = ""
+
+    if req.files:
+        context += "Attached files:\n"
+        for f in req.files:
+            context += f"- file_id={f.get('id')}, name={f.get('name')}, mime_type={f.get('mime_type')}\n"
+
+    answer = await agent._invoke_async(
+        user_prompt=req.message,
+        context=context,
+        reasoning="Use skills if needed."
+    )
+
+    return {
+        "answer": answer,
+        "tool_traces": runtime.get_tool_traces(),
+        "events": runtime.get_events()
+    }
+8. Chat API 流式输出示例
+如果你要 SSE 流式，不建议走 _invoke_async，可以直接调用状态机。
+
+示例：
+
+from fastapi.responses import StreamingResponse
+import json
+
+
+async def stream_agent_response(agent, message: str, context: str = "", reasoning: str = ""):
+    """
+    直接使用 Agent 内部 prompt 准备逻辑，再调用 skill state machine。
+    """
+
+    usr_pmt = ""
+
+    if reasoning:
+        usr_pmt += f"\nREASONING:\n{reasoning}\n"
+
+    if context:
+        usr_pmt += f"\nCONTEXT:\n{context}\n"
+
+    if usr_pmt:
+        usr_pmt += f"\nQUERY:\n{message}\n"
+    else:
+        usr_pmt = message
+
+    agent._param.prompts = [
+        {
+            "role": "user",
+            "content": usr_pmt
+        }
+    ]
+
+    prompt, msg, user_defined_prompt = agent._prepare_prompt_variables()
+
+    use_tools = []
+
+    async for delta, _ in agent._react_with_skill_state_machine_async(
+        prompt,
+        msg,
+        use_tools,
+        user_defined_prompt,
+        schema_prompt=""
+    ):
+        if not delta:
+            continue
+
+        yield "data: " + json.dumps(
+            {
+                "event": "message",
+                "content": delta
+            },
+            ensure_ascii=False
+        ) + "\n\n"
+
+    yield "data: " + json.dumps(
+        {
+            "event": "message_end",
+            "use_tools": use_tools
+        },
+        ensure_ascii=False
+    ) + "\n\n"
+FastAPI endpoint：
+
+@router.post("/chat/agent/stream")
+async def chat_agent_stream(req: ChatAgentRequest):
+    tools = [
+        {
+            "component_name": "ExeSQL",
+            "name": "exesql",
+            "params": {
+                "database": "rag_flow",
+                "username": "root",
+                "host": "mysql",
+                "port": 3306,
+                "password": "infini_rag_flow",
+                "top_n": 3
+            }
+        }
+    ]
+
+    agent, runtime = create_agent_runtime(
+        tenant_id=req.tenant_id,
+        llm_id=req.llm_id,
+        agent_id="chat_sql_agent",
+        skill_root="./skills",
+        system_prompt="You are a helpful SQL analysis agent. Use skills when needed.",
+        tools=tools,
+        conversation_id=req.conversation_id,
+        files=req.files,
+        max_rounds=5,
+        cite=False
+    )
+
+    return StreamingResponse(
+        stream_agent_response(
+            agent,
+            message=req.message,
+            context="",
+            reasoning="Use skills if needed."
+        ),
+        media_type="text/event-stream"
+    )
+9. 需要注意的地方
+9.1 工具名必须一致
+如果 ExeSQL.get_meta() 返回：
+
+{
+  "function": {
+    "name": "exesql"
+  }
+}
+那么 skill manifest 必须是：
+
+"tools": ["exesql"]
+如果返回的是：
+
+"name": "exe_sql"
+那就必须写：
+
+"tools": ["exe_sql"]
+初始化后可检查：
+
+print(list(agent.tools.keys()))
+9.2 API key 不从 Runtime 传
+这里仍然是：
+
+tenant_id + llm_id
+  ↓
+TenantLLMService / LLMBundle
+  ↓
+查模型配置和 API key
+所以 runtime 只需要：
+
+tenant_id
+param 只需要：
+
+llm_id
+9.3 Runtime 不是 Canvas
+Runtime 不负责：
+
+downstream
+workflow
+node_started
+node_finished
+它只负责：
+
+tenant_id
+callback
+reference
+files
+tool traces
+这正适合 Chat 页面。
+
+10. 最终使用方式
+from agent.runtime.factory import create_agent_runtime
+
+agent, runtime = create_agent_runtime(
+    tenant_id="tenant_xxx",
+    llm_id="llm_xxx",
+    agent_id="chat_agent",
+    skill_root="./skills",
+    system_prompt="You are a helpful agent.",
+    tools=[
+        {
+            "component_name": "ExeSQL",
+            "name": "exesql",
+            "params": {...}
+        }
+    ]
+)
+
+answer = await agent._invoke_async(
+    user_prompt="查询数据库并总结。",
+    context="数据库是 rag_flow。",
+    reasoning="需要 SQL skill。"
+)
+
+print(answer)
+print(runtime.get_tool_traces())
+这就是完整的 Runtime 方案。

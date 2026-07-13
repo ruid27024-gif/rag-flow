@@ -127,8 +127,40 @@ class ConversationService(CommonService):
 
         return conv.to_dict()
 
+# def structure_answer(conv, ans, message_id, session_id):
+#     reference = ans["reference"]
+#     if not isinstance(reference, dict):
+#         reference = {}
+#         ans["reference"] = {}
+#
+#     chunk_list = chunks_format(reference)
+#
+#     reference["chunks"] = chunk_list
+#     ans["id"] = message_id
+#     ans["session_id"] = session_id
+#
+#
+#     if not conv:
+#         return ans
+#
+#     if not conv.message:
+#         conv.message = []
+#     if not conv.message or conv.message[-1].get("role", "") != "assistant":
+#         conv.message.append({"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id, "suggestions":ans.get("suggestions", [])})
+#     else:
+#         conv.message[-1] = {"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id, "suggestions":ans.get("suggestions", [])}
+#     if conv.reference:
+#         conv.reference[-1] = reference
+#
+#     print(".......................................................................................")
+#     print(reference)
+#     print(".......................................................................................")
+#     print(ans)
+#     return ans
+
 def structure_answer(conv, ans, message_id, session_id):
-    reference = ans["reference"]
+    reference = ans.get("reference", {})
+
     if not isinstance(reference, dict):
         reference = {}
         ans["reference"] = {}
@@ -136,19 +168,63 @@ def structure_answer(conv, ans, message_id, session_id):
     chunk_list = chunks_format(reference)
 
     reference["chunks"] = chunk_list
+
+    # 兼容 Agent 工具信息
+    use_tools = ans.get("use_tools") or []
+    output_dir = ans.get("output_dir")
+    tool_logs = ans.get("tool_logs")
+
+    if use_tools:
+        reference["use_tools"] = use_tools
+
+    if output_dir:
+        reference["output_dir"] = output_dir
+
+    if tool_logs:
+        reference["tool_logs"] = tool_logs
+
     ans["id"] = message_id
     ans["session_id"] = session_id
-    
+
+    # 为了前端也能直接拿到
+    if use_tools:
+        ans["use_tools"] = use_tools
+
+    if output_dir:
+        ans["output_dir"] = output_dir
+
+    if tool_logs:
+        ans["tool_logs"] = tool_logs
 
     if not conv:
         return ans
 
     if not conv.message:
         conv.message = []
+
+    assistant_msg = {
+        "role": "assistant",
+        "content": ans["answer"],
+        "created_at": time.time(),
+        "id": message_id,
+        "suggestions": ans.get("suggestions", [])
+    }
+
+    # 如果是 Agent 回答，额外保存工具信息到 message
+    if use_tools:
+        assistant_msg["use_tools"] = use_tools
+
+    if output_dir:
+        assistant_msg["output_dir"] = output_dir
+
+    if tool_logs:
+        assistant_msg["tool_logs"] = tool_logs
+
     if not conv.message or conv.message[-1].get("role", "") != "assistant":
-        conv.message.append({"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id, "suggestions":ans.get("suggestions", [])})
+        conv.message.append(assistant_msg)
     else:
-        conv.message[-1] = {"role": "assistant", "content": ans["answer"], "created_at": time.time(), "id": message_id, "suggestions":ans.get("suggestions", [])}
+        conv.message[-1] = assistant_msg
+
     if conv.reference:
         conv.reference[-1] = reference
 
@@ -156,6 +232,7 @@ def structure_answer(conv, ans, message_id, session_id):
     print(reference)
     print(".......................................................................................")
     print(ans)
+
     return ans
 
 async def async_completion(tenant_id, chat_id, question, name="New session", session_id=None, stream=True, **kwargs):
