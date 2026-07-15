@@ -418,69 +418,69 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         tenant_ids = list(set([kb.tenant_id for kb in kbs]))
         knowledges = []
         #  Deep Research（推理型）启动深度推理
-        # if prompt_config.get("reasoning", False):
-        # # if True:
-        #     reasoner = DeepResearcher(
-        #         chat_mdl,
-        #         prompt_config,
-        #         partial(
-        #             retriever.retrieval,
-        #             embd_mdl=embd_mdl,
-        #             tenant_ids=tenant_ids,
-        #             kb_ids=dialog.kb_ids,
-        #             page=1,
-        #             page_size=dialog.top_n,
-        #             similarity_threshold=0.2,
-        #             vector_similarity_weight=0.3,
-        #             doc_ids=attachments,
-        #         ),
-        #     )
-        #     # # 流式返回思考过程
-        #     # async for think in reasoner.thinking(kbinfos, attachments_ + " ".join(questions)):
-        #     #     if isinstance(think, str):
-        #     #         thought = think
-        #     #         knowledges = [t for t in think.split("\n") if t]
-        #     #     elif stream:
-        #     #         yield think
-        #
-        #     async for think in reasoner.thinking(
-        #         kbinfos,
-        #         attachments_ + " ".join(questions)
-        #     ):
-        #         if isinstance(think, dict):
-        #             snapshot = think.get("answer", "")
-        #
-        #             # 重点：DeepResearcher 现在是快照模式，所以这里必须覆盖
-        #             # 不能 +=
-        #             if snapshot:
-        #                 thought = snapshot
-        #
-        #             if stream:
-        #                 yield think
-        #
-        #         elif isinstance(think, str):
-        #             if think:
-        #                 thought = think
-        #
-        #             if stream:
-        #                 yield {
-        #                     "answer": think,
-        #                     "reference": {},
-        #                     "audio_binary": None,
-        #                 }
-        #
-        #     # thinking 结束后，再统一生成 knowledges
-        #     thought_without_tag = re.sub(r"</?think\b[^>]*>", "", thought, flags=re.I)
-        #
-        #     knowledges = [
-        #         t.strip()
-        #         for t in thought_without_tag.split("\n")
-        #         if t.strip()
-        #     ]
+        if prompt_config.get("reasoning", False):
+        # if True:
+            reasoner = DeepResearcher(
+                chat_mdl,
+                prompt_config,
+                partial(
+                    retriever.retrieval,
+                    embd_mdl=embd_mdl,
+                    tenant_ids=tenant_ids,
+                    kb_ids=dialog.kb_ids,
+                    page=1,
+                    page_size=dialog.top_n,
+                    similarity_threshold=0.2,
+                    vector_similarity_weight=0.3,
+                    doc_ids=attachments,
+                ),
+            )
+            # # 流式返回思考过程
+            # async for think in reasoner.thinking(kbinfos, attachments_ + " ".join(questions)):
+            #     if isinstance(think, str):
+            #         thought = think
+            #         knowledges = [t for t in think.split("\n") if t]
+            #     elif stream:
+            #         yield think
+        
+            async for think in reasoner.thinking(
+                kbinfos,
+                attachments_ + " ".join(questions)
+            ):
+                if isinstance(think, dict):
+                    snapshot = think.get("answer", "")
+        
+                    # 重点：DeepResearcher 现在是快照模式，所以这里必须覆盖
+                    # 不能 +=
+                    if snapshot:
+                        thought = snapshot
+        
+                    if stream:
+                        yield think
+        
+                elif isinstance(think, str):
+                    if think:
+                        thought = think
+        
+                    if stream:
+                        yield {
+                            "answer": think,
+                            "reference": {},
+                            "audio_binary": None,
+                        }
+        
+            # thinking 结束后，再统一生成 knowledges
+            thought_without_tag = re.sub(r"</?think\b[^>]*>", "", thought, flags=re.I)
+        
+            knowledges = [
+                t.strip()
+                for t in thought_without_tag.split("\n")
+                if t.strip()
+            ]
 
         # 2. Agent 模式，新加
-        # elif agent_mod_enabled:
-        if prompt_config.get("reasoning", False):
+        elif agent_mod_enabled:
+        # if prompt_config.get("reasoning", False):
             async for ans in async_chat_agent_mode(
                     dialog=dialog,
                     messages=messages,

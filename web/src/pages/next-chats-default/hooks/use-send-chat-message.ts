@@ -239,9 +239,26 @@ export const useSendMessage = (controller: AbortController) => {
     ],
   );
 
+  // useEffect(() => {
+  //   //  #1289
+  //   if (answer.answer && conversationId && isNew !== 'true') {
+  //     addNewestAnswer(answer);
+  //   }
+  // }, [answer, addNewestAnswer, conversationId, isNew]);
   useEffect(() => {
-    //  #1289
-    if (answer.answer && conversationId && isNew !== 'true') {
+    // #1289
+    if (!conversationId || isNew === 'true') {
+      return;
+    }
+
+    if (
+      answer?.answer ||
+      answer?.content ||
+      answer?.agent_event ||
+      answer?.agentEvent ||
+      Array.isArray(answer?.agent_events) ||
+      Array.isArray(answer?.agentEvents)
+    ) {
       addNewestAnswer(answer);
     }
   }, [answer, addNewestAnswer, conversationId, isNew]);

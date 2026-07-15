@@ -974,7 +974,7 @@ class DeepResearcher:
 
             for idx, part in enumerate(parts[1:], start=1):
                 if idx == 1:
-                    rebuilt.append("\n\n━━━━━━━━━━━━━━━━━━━━\n知识库召回\n━━━━━━━━━━━━━━━━━━━━\n\n")
+                    rebuilt.append("\n 🔍知识库召回 \n")
                 else:
                     rebuilt.append("\n\n---\n\n")
 
@@ -990,14 +990,14 @@ class DeepResearcher:
         # --------------------------------------------------------------
         text = re.sub(
             r"^\s*Final Information\s*[:：]?\s*",
-            "\n\n━━━━━━━━━━━━━━━━━━━━\n检索总结\n━━━━━━━━━━━━━━━━━━━━\n\n",
+            "\n\n 📚 检索总结\n\n",
             text,
             flags=re.I
         )
 
         text = re.sub(
             r"\n\s*Final Information\s*[:：]?\s*",
-            "\n\n━━━━━━━━━━━━━━━━━━━━\n检索总结\n━━━━━━━━━━━━━━━━━━━━\n\n",
+            "\n\n 📚 检索总结\n\n",
             text,
             flags=re.I
         )
@@ -1007,14 +1007,14 @@ class DeepResearcher:
         # --------------------------------------------------------------
         text = re.sub(
             r"^\s*Final Answer\s*[:：]?\s*",
-            "\n\n━━━━━━━━━━━━━━━━━━━━\n阶段总结\n━━━━━━━━━━━━━━━━━━━━\n\n",
+            "\n\n ✅ 阶段总结\n\n",
             text,
             flags=re.I
         )
 
         text = re.sub(
             r"\n\s*Final Answer\s*[:：]?\s*",
-            "\n\n━━━━━━━━━━━━━━━━━━━━\n阶段总结\n━━━━━━━━━━━━━━━━━━━━\n\n",
+            "\n\n ✅ 阶段总结\n\n",
             text,
             flags=re.I
         )
@@ -1025,11 +1025,9 @@ class DeepResearcher:
         text = re.sub(
             r"(?:^|\n)>\s*\d+\.\s*(.+)",
             lambda m: (
-                f"\n\n━━━━━━━━━━━━━━━━━━━━\n"
-                f"泛化检索问题\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                "\n🧭 泛化检索问题\n\n"
                 f"- {m.group(1).strip()}"
-            )                                       ,
+            ),
             text
         )
 
@@ -1474,9 +1472,7 @@ class DeepResearcher:
         # 内部保存 raw think，输出时通过 _pack_think_snapshot 格式化
         think = "<think>"
         think += (
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "原始问题\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📝原始问题\n\n"
             f"{question}\n"
         )
 

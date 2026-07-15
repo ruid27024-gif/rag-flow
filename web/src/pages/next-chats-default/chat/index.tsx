@@ -159,6 +159,7 @@ export default function Chat() {
         system: '',
         parameters: [],
         reasoning: false,
+        agent_mod: false,
         cross_languages: [],
         toc_enhance: false,
       },
@@ -190,17 +191,28 @@ export default function Chat() {
   }
 
   const reasoning = !!form.watch('prompt_config.reasoning');
+  const agentMod = !!form.watch('prompt_config.agent_mod');
 
   const setReasoningMode = useCallback(
-    async (nextReasoning: boolean) => {
-      const current = !!form.getValues('prompt_config.reasoning');
+    async (nextReasoning: boolean, nextAgentMod: boolean) => {
+      const currentReasoning = !!form.getValues('prompt_config.reasoning');
+      const currentAgentMod = !!form.getValues('prompt_config.agent_mod');
 
       // 如果已经是当前模式，不重复提交
-      if (current === nextReasoning) {
+      if (
+        currentReasoning === nextReasoning &&
+        currentAgentMod === nextAgentMod
+      ) {
         return;
       }
 
       form.setValue('prompt_config.reasoning', nextReasoning, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+
+      form.setValue('prompt_config.agent_mod', nextAgentMod, {
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: true,
@@ -213,6 +225,7 @@ export default function Chat() {
         prompt_config: {
           ...values.prompt_config,
           reasoning: nextReasoning,
+          agent_mod: nextAgentMod,
         },
       });
     },
@@ -220,11 +233,15 @@ export default function Chat() {
   );
 
   const onEnableDeepReasoning = useCallback(() => {
-    return setReasoningMode(true);
+    return setReasoningMode(true, false);
   }, [setReasoningMode]);
 
   const onEnableMultiKbReasoning = useCallback(() => {
-    return setReasoningMode(false);
+    return setReasoningMode(false, false);
+  }, [setReasoningMode]);
+
+  const onEnableAgent = useCallback(() => {
+    return setReasoningMode(false, true);
   }, [setReasoningMode]);
 
   function onInvalid(errors: any) {
@@ -296,6 +313,7 @@ export default function Chat() {
       </section>
     );
   }
+
   // 保存后端 -> 强制刷新 -> 重新拉取全量数据”
   // 先获取currentConversation, setting和kb_ids是通过表单保存后端 -> 强制刷新 -> 重新拉取全量数据再次调用fetchConversation更新currentConversation
   // 然后是通过currentConversation 传入对话模型的
@@ -313,7 +331,14 @@ export default function Chat() {
             switchSettingVisible={switchSettingVisible}
           ></Sessions> */}
 
-        <div className="flex flex-1 min-h-0 pb-1 overflow-hidden">
+        {/* <div className="flex flex-1 min-h-0 pb-1 overflow-hidden"> */}
+        <div
+          className="
+    flex flex-1 min-h-0 pb-1 overflow-hidden
+    bg-[#F3FAF7]
+    dark:bg-transparent
+  "
+        >
           {/* 左侧会话列表：自己内部滚动 */}
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
@@ -368,6 +393,13 @@ export default function Chat() {
         </div> */}
 
           <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+            {/* <div
+  className="
+    flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden
+    bg-[#E3F5F1]
+    dark:bg-[#071A16]
+  "
+> */}
             <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div
@@ -405,8 +437,10 @@ export default function Chat() {
                   clickDocumentButton={clickDocumentButton}
                   onOpenReferencePanel={openReferencePanel}
                   reasoning={reasoning}
+                  agentMod={agentMod}
                   onEnableDeepReasoning={onEnableDeepReasoning}
                   onEnableMultiKbReasoning={onEnableMultiKbReasoning}
+                  onEnableAgent={onEnableAgent}
                 />
               </div>
 

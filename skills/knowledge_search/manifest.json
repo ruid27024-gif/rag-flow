@@ -1,0 +1,7 @@
+{
+  "name": "knowledge_search",
+  "description": "Search selected knowledge bases and datasets.",
+  "tools": [
+    "search_my_dateset"
+  ]
+}

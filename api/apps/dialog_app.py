@@ -526,9 +526,15 @@ async def set_dialog_by_config():
     # 只允许前端修改这几个 prompt_config 字段
     req_prompt_config = ensure_dict(req.get("prompt_config", {}))
 
-    for field in ["quote", "keyword", "toc_enhance", "reasoning"]:
+    for field in ["quote", "keyword", "toc_enhance", "reasoning", "agent_mod"]:
         if field in req_prompt_config:
             prompt_config[field] = req_prompt_config[field]
+
+    prompt_config["reasoning"] = bool(prompt_config.get("reasoning", False))
+    prompt_config["agent_mod"] = bool(prompt_config.get("agent_mod", False))
+
+    if prompt_config["reasoning"]:
+        prompt_config["agent_mod"] = False
 
     # 只允许前端修改元数据；不传则使用配置文件
     meta_data_filter = ensure_dict(

@@ -428,6 +428,57 @@ class AgentKnowledgeSearchTool:
             "doc_aggs": []
         }
 
+class StreamingToolWrapper:
+    """
+    包装工具，在工具开始执行前，先推送一个 running 事件。
+    工具执行完成后的事件仍然由 LLMToolPluginCallSession 的 callback 推送。
+    """
+
+    def __init__(self, name, tool, emit_event):
+        self.name = name
+        self.tool = tool
+        self.emit_event = emit_event
+
+    def get_meta(self):
+        return self.tool.get_meta()
+
+    async def invoke_async(self, **kwargs):
+        self.emit_event({
+            "type": "agent_step",
+            "name": self.name,
+            "arguments": kwargs,
+            "result": {
+                "status": "running",
+                "message": f"{self.name} is running"
+            },
+            "elapsed_time": None
+        })
+
+        return await self.tool.invoke_async(**kwargs)
+
+    def invoke(self, **kwargs):
+        self.emit_event({
+            "type": "agent_step",
+            "name": self.name,
+            "arguments": kwargs,
+            "result": {
+                "status": "running",
+                "message": f"{self.name} is running"
+            },
+            "elapsed_time": None
+        })
+
+        return self.tool.invoke(**kwargs)
+
+    def output(self, key=None):
+        return self.tool.output(key)
+
+    def set_output(self, key, value):
+        return self.tool.set_output(key, value)
+
+    def reset(self):
+        return self.tool.reset()
+    
 def prepare_agent_skills():
     """
     准备 Agent skills 目录。
@@ -690,10 +741,33 @@ def build_agent_step_display(event: dict) -> str:
 
     if name == "search_my_dateset":
         query = args.get("query", "")
+
+        if isinstance(result, dict) and result.get("status") == "running":
+            return f"Agent 正在检索知识库：{query}\n"
+
+        if isinstance(result, dict):
+            return (
+                f"Agent 完成知识库检索：{query}\n"
+                f"- ok: {result.get('ok')}\n"
+                f"- total: {result.get('total')}\n"
+            )
+
         return f"Agent 正在检索知识库：{query}\n"
+
 
     if name == "write_file":
         filename = args.get("filename", "")
+
+        if isinstance(result, dict) and result.get("status") == "running":
+            return f"Agent 正在写入文件：{filename}\n"
+
+        if isinstance(result, dict):
+            return (
+                f"Agent 完成文件写入：{filename}\n"
+                f"- ok: {result.get('ok')}\n"
+                f"- path: {result.get('path')}\n"
+            )
+
         return f"Agent 正在写入文件：{filename}\n"
 
     if name == "skill_tool_call":
@@ -796,6 +870,104 @@ def build_agent_step_display(event: dict) -> str:
 
     return f"Agent 执行步骤：{name}\n"
 
+
+def build_agent_step_ui_event(event: dict) -> dict:
+    name = event.get("name")
+    args = event.get("arguments") or {}
+    result = event.get("result")
+    elapsed_time = event.get("elapsed_time")
+
+    status = "success"
+    if isinstance(result, dict):
+        if result.get("status") == "running":
+            status = "running"
+        elif result.get("ok") is False:
+            status = "error"
+
+    if name and "error" in name:
+        status = "error"
+
+    if name and "error" in name:
+        status = "error"
+
+    if isinstance(result, dict):
+        if result.get("ok") is False:
+            status = "error"
+
+    title = "Agent 步骤"
+    summary = name or ""
+
+    if name == "base_next_step":
+        title = "分析任务"
+        summary = "选择下一步 Skill"
+
+    elif name == "before_read_skill":
+        title = "准备读取 Skill"
+        summary = args.get("skill_name", "")
+
+    elif name == "read_skill":
+        title = "阅读 Skill"
+        if isinstance(result, dict):
+            summary = result.get("skill") or ""
+
+    elif name == "read_skill_error":
+        title = "读取 Skill 失败"
+        summary = args.get("skill_name", "")
+        status = "error"
+
+    elif name == "enter_skill_phase":
+        title = "进入 Skill"
+        if isinstance(result, dict):
+            summary = result.get("skill") or ""
+
+    elif name == "skill_next_step":
+        title = "Skill 决策"
+        if isinstance(result, dict):
+            summary = result.get("skill") or ""
+
+    elif name == "before_skill_tool_call":
+        title = "准备调用工具"
+        summary = args.get("tool", "")
+
+    elif name == "skill_tool_call":
+        title = "工具调用"
+        summary = args.get("tool", "")
+
+    elif name == "search_my_dateset":
+        title = "检索知识库"
+        summary = args.get("query", "")
+
+    elif name == "write_file":
+        title = "写入文件"
+        summary = args.get("filename", "")
+
+    elif name == "skill_reflection":
+        title = "反思整理"
+        if isinstance(result, dict):
+            summary = result.get("skill") or ""
+
+    elif name == "skill_summary":
+        title = "Skill 总结"
+        if isinstance(result, dict):
+            summary = result.get("skill") or ""
+
+    elif name == "skill_no_tool_answer":
+        title = "生成回答"
+        if isinstance(result, dict):
+            summary = result.get("skill") or ""
+
+    display = build_agent_step_display(event)
+
+    return {
+        "type": "agent_step",
+        "name": name,
+        "title": title,
+        "summary": summary,
+        "status": status,
+        "elapsed_time": elapsed_time,
+        "arguments": args,
+        "display": display,
+    }
 async def async_chat_agent_mode(
     dialog,
     messages,
@@ -818,6 +990,10 @@ async def async_chat_agent_mode(
 
     conversation_id = kwargs.get("conversation_id") or str(uuid.uuid4())
     message_id = kwargs.get("message_id") or messages[-1].get("id") or str(uuid.uuid4())
+    # 用于累计结构化 Agent 过程事件，最终返回给前端持久化
+    agent_events = []
+    tool_event_queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
 
     def build_canvas_history(messages):
         history = []
@@ -938,8 +1114,31 @@ async def async_chat_agent_mode(
 
     write_file_tool = SimpleWriteFileTool(base_dir=str(output_dir))
 
-    agent.tools["search_my_dateset"] = search_tool
-    agent.tools["write_file"] = write_file_tool
+    # agent.tools["search_my_dateset"] = search_tool
+    # agent.tools["write_file"] = write_file_tool
+
+    # agent.tool_meta = [
+    #     search_tool.get_meta(),
+    #     write_file_tool.get_meta()
+    # ]
+    def emit_tool_start_event(event: dict):
+        put_agent_event_threadsafe(event)
+
+
+    stream_search_tool = StreamingToolWrapper(
+        name="search_my_dateset",
+        tool=search_tool,
+        emit_event=emit_tool_start_event
+    )
+
+    stream_write_file_tool = StreamingToolWrapper(
+        name="write_file",
+        tool=write_file_tool,
+        emit_event=emit_tool_start_event
+    )
+
+    agent.tools["search_my_dateset"] = stream_search_tool
+    agent.tools["write_file"] = stream_write_file_tool
 
     agent.tool_meta = [
         search_tool.get_meta(),
@@ -955,11 +1154,23 @@ async def async_chat_agent_mode(
     # )
     tool_event_queue = asyncio.Queue()
 
+    def put_agent_event_threadsafe(event: dict):
+        """
+        不管当前在主事件循环线程还是工具线程，都安全地把事件放入 asyncio.Queue。
+        """
+
+        try:
+            loop.call_soon_threadsafe(tool_event_queue.put_nowait, event)
+        except RuntimeError:
+            # loop 已关闭时兜底
+                pass
+
+
     def stream_tool_callback(func_name, params, result, elapsed_time=None):
         """
-        工具/Agent内部事件回调：
-        1. 保留原来的 canvas Redis 日志
-        2. 同时放入队列，给前端流式展示
+        工具/Agent 内部事件回调：
+        1. 保留原 canvas 日志
+        2. 线程安全地推送给前端流式展示
         """
         try:
             agent._canvas.tool_use_callback(
@@ -972,16 +1183,13 @@ async def async_chat_agent_mode(
         except Exception as e:
             logging.exception(e)
 
-        try:
-            tool_event_queue.put_nowait({
-                "type": "agent_step",
-                "name": func_name,
-                "arguments": params,
-                "result": result,
-                "elapsed_time": elapsed_time
-            })
-        except Exception as e:
-            logging.exception(e)
+        put_agent_event_threadsafe({
+            "type": "agent_step",
+            "name": func_name,
+            "arguments": params or {},
+            "result": result,
+            "elapsed_time": elapsed_time
+        })
 
     agent.callback = stream_tool_callback
 
@@ -1058,31 +1266,48 @@ async def async_chat_agent_mode(
         # answer 用来累计正式回答
         think = ""
 
+        show_agent_process_in_think = prompt_config.get(
+            "show_agent_process_in_think",
+            False
+        )
+
         def build_think_answer():
             """
-            返回给前端的累计 answer：
-            <think>
-            Agent 过程日志
-            </think>
+            默认只返回正式回答。
 
-            正式回答
+            如果为了兼容旧前端，需要继续把 Agent 过程塞进 <think>，
+            可以在 prompt_config 里设置：
+            {
+                "show_agent_process_in_think": true
+            }
             """
-            if think.strip():
+            if show_agent_process_in_think and think.strip():
                 return f"<think>\n{think.strip()}\n</think>\n\n{answer}"
+
             return answer
 
         start_text = "Agent 已启动，正在分析任务...\n"
         think += start_text
+
+        start_event = {
+            "type": "agent_start",
+            "name": "agent_start",
+            "title": "Agent 启动",
+            "summary": "正在分析任务",
+            "status": "running",
+            "elapsed_time": None,
+            "arguments": {},
+            "display": start_text,
+        }
+
+        agent_events.append(start_event)
 
         yield {
             "answer": build_think_answer(),
             "reference": {},
             "audio_binary": None,
             "suggestions": [],
-            "agent_event": {
-                "type": "agent_start",
-                "display": start_text
-            }
+            "agent_event": start_event
         }
 
         agent_task = asyncio.create_task(run_agent_stream())
@@ -1108,28 +1333,25 @@ async def async_chat_agent_mode(
                 }
 
             elif event_type == "agent_step":
-                step_name = event.get("name")
+                # 构造前端可直接渲染的结构化事件
+                ui_event = build_agent_step_ui_event(event)
 
-                # Skill / 工具调用过程日志写入 think
-                display_text = build_agent_step_display(event)
+                display_text = ui_event.get("display") or ""
 
+                # 仍然累计到 think，用于兼容旧前端，是否输出由 build_think_answer 控制
                 if display_text:
                     think += display_text
                     if not think.endswith("\n"):
                         think += "\n"
+
+                agent_events.append(ui_event)
 
                 yield {
                     "answer": build_think_answer(),
                     "reference": {},
                     "audio_binary": None,
                     "suggestions": [],
-                    "agent_event": {
-                        "type": "agent_step",
-                        "name": step_name,
-                        "arguments": event.get("arguments"),
-                        "elapsed_time": event.get("elapsed_time"),
-                        "display": display_text
-                    }
+                    "agent_event": ui_event
                 }
 
             elif event_type == "agent_error":
@@ -1138,22 +1360,55 @@ async def async_chat_agent_mode(
 
                 think += "\n" + err_text + "\n"
 
+                error_event = {
+                    "type": "agent_error",
+                    "name": "agent_error",
+                    "title": "Agent 执行异常",
+                    "summary": err_msg,
+                    "status": "error",
+                    "elapsed_time": None,
+                    "arguments": {},
+                    "error": err_msg,
+                    "display": err_text,
+                }
+
+                agent_events.append(error_event)
+
                 yield {
                     "answer": build_think_answer(),
                     "reference": {},
                     "audio_binary": None,
                     "suggestions": [],
-                    "agent_event": {
-                        "type": "agent_error",
-                        "error": err_msg,
-                        "display": err_text
-                    }
+                    "agent_event": error_event
                 }
 
                 break
 
             elif event_type == "agent_done":
                 answer = event.get("answer", "") or agent.output("content") or ""
+
+                done_event = {
+                    "type": "agent_done",
+                    "name": "agent_done",
+                    "title": "Agent 完成",
+                    "summary": "任务执行完成",
+                    "status": "success",
+                    "elapsed_time": None,
+                    "arguments": {},
+                    "display": "Agent 任务执行完成。",
+                }
+
+                agent_events.append(done_event)
+
+                # 如果你希望前端立即收到 done 事件，可以 yield 一次
+                yield {
+                    "answer": build_think_answer(),
+                    "reference": {},
+                    "audio_binary": None,
+                    "suggestions": [],
+                    "agent_event": done_event
+                }
+
                 break
 
         await agent_task
@@ -1185,12 +1440,12 @@ async def async_chat_agent_mode(
         ck2.pop("vector", None)
         safe_refs["chunks"].append(ck2)
 
-    if stream and think.strip():
-        final_answer = f"<think>\n{think.strip()}\n</think>\n\n{answer}"
-    else:
-        final_answer = answer
+    show_agent_process_in_think = prompt_config.get(
+        "show_agent_process_in_think",
+        False
+    )
 
-    if stream and think.strip():
+    if stream and show_agent_process_in_think and think.strip():
         final_answer = f"<think>\n{think.strip()}\n</think>\n\n{answer}"
     else:
         final_answer = answer
@@ -1203,7 +1458,10 @@ async def async_chat_agent_mode(
         "suggestions": [],
         "use_tools": agent.output("use_tools"),
         "output_dir": str(output_dir.resolve()),
-        "file": write_file_tool.output("json")
+        "file": write_file_tool.output("json"),
+
+        # 新增：完整 Agent 过程事件
+        "agent_events": agent_events,
     }
 
     yield final

@@ -663,6 +663,17 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
     table_context_size = max(0, int(parser_config.get("table_context_size", 0) or 0))
     image_context_size = max(0, int(parser_config.get("image_context_size", 0) or 0))
 
+    # HY: 如果 binary 实际已经是 PDF，但 filename 还是 .docx/.doc，
+    # 需要强制改成 .pdf，让后续逻辑走 PDF 分支。
+    if binary and binary[:4] == b"%PDF":
+        old_filename = filename
+        filename = os.path.splitext(filename)[0] + ".pdf"
+        print(
+            f"【DEBUG-HY】: Detected PDF binary, route as PDF: {old_filename} -> {filename}",
+            file=sys.stderr,
+            flush=True,
+        )
+
     doc = {
         "docnm_kwd": filename,
         "title_tks": rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", filename))

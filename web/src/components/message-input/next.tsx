@@ -16,7 +16,16 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
-import { CircleStop, Paperclip, Send, Upload, X } from 'lucide-react';
+import {
+  Bot,
+  CircleStop,
+  Layers3,
+  Paperclip,
+  Send,
+  Sparkles,
+  Upload,
+  X,
+} from 'lucide-react';
 import * as React from 'react';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
@@ -37,9 +46,11 @@ interface IProps {
   stopOutputMessage?(): void;
   onUpload?: NonNullable<FileUploadProps['onUpload']>;
   removeFile?(file: File): void;
-  reasoning?: boolean;
+  reasoning: boolean;
+  agentMod: boolean;
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
+  onEnableAgent?: () => void;
 }
 
 export function NextMessageInput({
@@ -54,9 +65,11 @@ export function NextMessageInput({
   stopOutputMessage,
   onPressEnter,
   removeFile,
-  reasoning = false,
+  reasoning,
+  agentMod,
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
+  onEnableAgent,
 }: IProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
@@ -259,46 +272,77 @@ export function NextMessageInput({
                 disabled={isUploading || sendLoading || disabled}
                 className={cn(
                   `
-                    h-7
-                    rounded-full
-                    border
-                    px-3
-                    text-xs
-                    font-medium
-                    transition-all
-                    duration-200
-                    shadow-none
-                    hover:bg-emerald-50
-                    hover:text-emerald-600
-                    hover:border-emerald-300
-                    dark:hover:bg-emerald-950/30
-                  `,
-                  !reasoning
+        h-8
+        rounded-full
+        border
+        px-3
+        text-xs
+        font-medium
+        transition-all
+        duration-200
+        shadow-none
+        hover:bg-emerald-50
+        hover:text-emerald-600
+        hover:border-emerald-300
+        dark:hover:bg-emerald-950/30
+      `,
+                  !reasoning && !agentMod
                     ? `
-                      border-emerald-300
-                      bg-emerald-50
-                      text-emerald-600
-                      dark:border-emerald-700
-                      dark:bg-emerald-950/30
-                      dark:text-emerald-400
-                    `
+          border-emerald-300
+          bg-emerald-50
+          text-emerald-600
+          shadow-sm
+          dark:border-emerald-700
+          dark:bg-emerald-950/30
+          dark:text-emerald-400
+        `
                     : `
-                      border-gray-200
-                      bg-transparent
-                      text-gray-500
-                      dark:border-gray-700
-                      dark:text-gray-400
-                    `,
+          border-gray-200
+          bg-transparent
+          text-gray-500
+          dark:border-gray-700
+          dark:text-gray-400
+        `,
                 )}
               >
                 <span
                   className={cn(
-                    'mr-0.5 inline-block h-1.5 w-1.5 rounded-full transition-colors',
-                    !reasoning
-                      ? 'bg-emerald-500'
-                      : 'bg-gray-300 dark:bg-gray-600',
+                    `
+          mr-1.5
+          inline-flex
+          h-5 w-5
+          items-center
+          justify-center
+          rounded-full
+          transition-all
+          duration-200
+        `,
+                    !reasoning && !agentMod
+                      ? `
+            scale-105
+            bg-gradient-to-br
+            from-emerald-400
+            to-teal-500
+            text-white
+            shadow-sm
+            shadow-emerald-300/50
+            ring-1
+            ring-emerald-200
+            dark:ring-emerald-700
+          `
+                      : `
+            bg-gray-100
+            text-gray-400
+            ring-1
+            ring-gray-200
+            dark:bg-gray-800
+            dark:text-gray-500
+            dark:ring-gray-700
+          `,
                   )}
-                />
+                >
+                  <Layers3 className="h-3 w-3" />
+                </span>
                 多库并行
               </Button>
 
@@ -316,45 +360,166 @@ export function NextMessageInput({
                 disabled={isUploading || sendLoading || disabled}
                 className={cn(
                   `
-                    h-7
-                    rounded-full
-                    border
-                    px-3
-                    text-xs
-                    font-medium
-                    transition-all
-                    duration-200
-                    shadow-none
-                    hover:bg-blue-50
-                    hover:text-blue-600
-                    hover:border-blue-300
-                    dark:hover:bg-blue-950/30
-                  `,
-                  reasoning
+        h-8
+        rounded-full
+        border
+        px-3
+        text-xs
+        font-medium
+        transition-all
+        duration-200
+        shadow-none
+        hover:bg-blue-50
+        hover:text-blue-600
+        hover:border-blue-300
+        dark:hover:bg-blue-950/30
+      `,
+                  reasoning && !agentMod
                     ? `
-                      border-blue-300
-                      bg-blue-50
-                      text-blue-600
-                      dark:border-blue-700
-                      dark:bg-blue-950/30
-                      dark:text-blue-400
-                    `
+          border-blue-300
+          bg-blue-50
+          text-blue-600
+          shadow-sm
+          dark:border-blue-700
+          dark:bg-blue-950/30
+          dark:text-blue-400
+        `
                     : `
-                      border-gray-200
-                      bg-transparent
-                      text-gray-500
-                      dark:border-gray-700
-                      dark:text-gray-400
-                    `,
+          border-gray-200
+          bg-transparent
+          text-gray-500
+          dark:border-gray-700
+          dark:text-gray-400
+        `,
                 )}
               >
                 <span
                   className={cn(
-                    'mr-0.5 inline-block h-1.5 w-1.5 rounded-full transition-colors',
-                    reasoning ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600',
+                    `
+          mr-1.5
+          inline-flex
+          h-5 w-5
+          items-center
+          justify-center
+          rounded-full
+          transition-all
+          duration-200
+        `,
+                    reasoning && !agentMod
+                      ? `
+            scale-105
+            bg-gradient-to-br
+            from-blue-400
+            to-indigo-500
+            text-white
+            shadow-sm
+            shadow-blue-300/50
+            ring-1
+            ring-blue-200
+            dark:ring-blue-700
+          `
+                      : `
+            bg-gray-100
+            text-gray-400
+            ring-1
+            ring-gray-200
+            dark:bg-gray-800
+            dark:text-gray-500
+            dark:ring-gray-700
+          `,
                   )}
-                />
+                >
+                  <Sparkles className="h-3 w-3" />
+                </span>
                 深度推理
+              </Button>
+
+              {/* Agent */}
+              <Button
+                type="button"
+                size="sm"
+                title="Agent 模式"
+                variant="outline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onEnableAgent?.();
+                }}
+                disabled={isUploading || sendLoading || disabled}
+                className={cn(
+                  `
+        h-8
+        rounded-full
+        border
+        px-3
+        text-xs
+        font-medium
+        transition-all
+        duration-200
+        shadow-none
+        hover:bg-purple-50
+        hover:text-purple-600
+        hover:border-purple-300
+        dark:hover:bg-purple-950/30
+      `,
+                  !reasoning && agentMod
+                    ? `
+          border-purple-300
+          bg-purple-50
+          text-purple-600
+          shadow-sm
+          dark:border-purple-700
+          dark:bg-purple-950/30
+          dark:text-purple-400
+        `
+                    : `
+          border-gray-200
+          bg-transparent
+          text-gray-500
+          dark:border-gray-700
+          dark:text-gray-400
+        `,
+                )}
+              >
+                <span
+                  className={cn(
+                    `
+          mr-1.5
+          inline-flex
+          h-5 w-5
+          items-center
+          justify-center
+          rounded-full
+          transition-all
+          duration-200
+        `,
+                    !reasoning && agentMod
+                      ? `
+            scale-105
+            bg-gradient-to-br
+            from-purple-400
+            to-fuchsia-500
+            text-white
+            shadow-sm
+            shadow-purple-300/50
+            ring-1
+            ring-purple-200
+            dark:ring-purple-700
+          `
+                      : `
+            bg-gray-100
+            text-gray-400
+            ring-1
+            ring-gray-200
+            dark:bg-gray-800
+            dark:text-gray-500
+            dark:ring-gray-700
+          `,
+                  )}
+                >
+                  <Bot className="h-3 w-3" />
+                </span>
+                Agent Skills
               </Button>
             </div>
           </div>

@@ -32,6 +32,7 @@ export function useChatSettingSchema() {
     ),
     tavily_api_key: z.string().optional(),
     reasoning: z.boolean().optional(),
+    agent_mod: z.boolean().optional(),
     cross_languages: z.array(z.string()).optional(),
     toc_enhance: z.boolean().optional(),
   });

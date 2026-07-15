@@ -473,23 +473,139 @@ export const useSelectDerivedMessages = () => {
   }, []);
 
   // Add the streaming message to the last item in the message list
-  const addNewestAnswer = useCallback((answer: IAnswer) => {
+  // const addNewestAnswer = useCallback((answer: IAnswer) => {
+  //   setDerivedMessages((pre) => {
+  //     // console.log(answer)
+  //     return [
+  //       ...(pre?.slice(0, -1) ?? []),
+  //       {
+  //         role: MessageType.Assistant,
+  //         content: answer.answer,
+  //         reference: answer.reference,
+  //         suggestions: answer.suggestions,
+  //         id: buildMessageUuid({
+  //           id: answer.id,
+  //           role: MessageType.Assistant,
+  //         }),
+  //         prompt: answer.prompt,
+  //         audio_binary: answer.audio_binary,
+  //         ...omit(answer, 'reference'),
+  //       },
+  //     ];
+  //   });
+  // }, []);
+
+  // Add the streaming message to the last item in the message list
+  const addNewestAnswer = useCallback((answer: IAnswer & any) => {
     setDerivedMessages((pre) => {
-      // console.log(answer)
+      const prevMessages = pre ?? [];
+      const lastMessage: any = prevMessages.at(-1) ?? {};
+
+      const oldEvents: any[] =
+        lastMessage.agentEvents || lastMessage.agent_events || [];
+
+      const incomingEvents: any[] = [];
+
+      if (Array.isArray(answer.agentEvents)) {
+        incomingEvents.push(...answer.agentEvents);
+      }
+
+      if (Array.isArray(answer.agent_events)) {
+        incomingEvents.push(...answer.agent_events);
+      }
+
+      if (answer.agent_event) {
+        incomingEvents.push(answer.agent_event);
+      }
+
+      if (answer.agentEvent) {
+        incomingEvents.push(answer.agentEvent);
+      }
+
+      /**
+       * 合并去重：
+       * answer_delta 是正文流，不放工具面板。
+       */
+      const mergedEvents = [...oldEvents, ...incomingEvents]
+        .filter((event) => event && event.type !== 'answer_delta')
+        .filter((event, index, arr) => {
+          const key = [
+            event.type || '',
+            event.name || '',
+            event.title || '',
+            event.summary || '',
+            event.status || '',
+            event.display || '',
+          ].join('|');
+
+          return (
+            arr.findIndex((item) => {
+              const itemKey = [
+                item.type || '',
+                item.name || '',
+                item.title || '',
+                item.summary || '',
+                item.status || '',
+                item.display || '',
+              ].join('|');
+
+              return itemKey === key;
+            }) === index
+          );
+        });
+
+      /**
+       * 注意：
+       * 如果 answer.answer 是空字符串，说明这次只是 agent_event，
+       * 不要清空旧正文。
+       */
+      const nextContent =
+        typeof answer.answer === 'string' && answer.answer !== ''
+          ? answer.answer
+          : typeof answer.content === 'string' && answer.content !== ''
+            ? answer.content
+            : lastMessage.content || '';
+
       return [
-        ...(pre?.slice(0, -1) ?? []),
+        ...prevMessages.slice(0, -1),
         {
-          role: MessageType.Assistant,
-          content: answer.answer,
-          reference: answer.reference,
-          suggestions: answer.suggestions,
-          id: buildMessageUuid({
-            id: answer.id,
-            role: MessageType.Assistant,
-          }),
-          prompt: answer.prompt,
-          audio_binary: answer.audio_binary,
+          ...lastMessage,
           ...omit(answer, 'reference'),
+
+          role: MessageType.Assistant,
+
+          content: nextContent,
+          answer: nextContent,
+
+          reference: answer.reference || lastMessage.reference,
+
+          suggestions: answer.suggestions ?? lastMessage.suggestions,
+
+          id: answer.id
+            ? buildMessageUuid({
+                id: answer.id,
+                role: MessageType.Assistant,
+              })
+            : lastMessage.id,
+
+          prompt: answer.prompt ?? lastMessage.prompt,
+
+          audio_binary: answer.audio_binary ?? lastMessage.audio_binary,
+
+          /**
+           * 关键：累加后的事件列表。
+           */
+          agentEvents: mergedEvents,
+
+          /**
+           * 兼容后端字段。
+           */
+          agent_events: mergedEvents,
+
+          /**
+           * 保留最后一个事件，方便调试。
+           */
+          agent_event: answer.agent_event || lastMessage.agent_event,
         },
       ];
     });

@@ -66,10 +66,11 @@ export function Sessions({
   return (
     <section
       className="
-      pt-1 px-4 w-[266px] flex flex-col
-      bg-white dark:bg-zinc-900
-      border-r border-gray-200 dark:border-zinc-800
-    "
+    pt-1 px-4 w-[266px] flex flex-col
+    bg-white/35 dark:bg-zinc-950/35
+    backdrop-blur-xl
+    border-r border-emerald-100/70 dark:border-emerald-950/60
+  "
     >
       {/* ===== Breadcrumb ===== */}
       <PageHeader>

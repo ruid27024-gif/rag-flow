@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { TFunction } from 'i18next';
-import { LucideServerCrash, LucideUserCog, User } from 'lucide-react';
+import { Box, LucideServerCrash, LucideUserCog, User } from 'lucide-react';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
@@ -67,6 +67,7 @@ const menuItems = (t: TFunction) => {
             label: t('admin.userManagement'),
             icon: LucideUserCog,
           },
+          { icon: Box, label: t('setting.model'), key: Routes.Model },
         ]
       : []),
   ];

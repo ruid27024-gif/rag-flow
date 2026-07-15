@@ -290,7 +290,7 @@ const MessageItem = ({
               </div>
             )} */}
 
-            {messageContent && (
+            {/* {messageContent && (
               <div
                 className={cn(
                   isAssistant
@@ -313,6 +313,49 @@ const MessageItem = ({
                     loading={loading}
                     content={messageContent}
                     reference={reference}
+                     agentEvents={(item as any)?.agentEvents || (item as any)?.agent_events || []}
+                    clickDocumentButton={clickDocumentButton}
+                  />
+                ) : (
+                  <span className="whitespace-pre-wrap break-words">
+                    {messageContent}
+                  </span>
+                )}
+              </div>
+            )} */}
+            {(messageContent ||
+              (item as any)?.agentEvents?.length ||
+              (item as any)?.agent_events?.length ||
+              (item as any)?.agent_event) && (
+              <div
+                className={cn(
+                  isAssistant
+                    ? theme === 'dark'
+                      ? styles.messageTextDark
+                      : styles.messageText
+                    : styles.messageUserText,
+                  { '!bg-bg-card': !isAssistant },
+                )}
+                style={{
+                  fontFamily: `-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"`,
+                  fontSize: 16,
+                  lineHeight: 1.75,
+                  fontWeight: 400,
+                  letterSpacing: '0.01em',
+                }}
+              >
+                {isAssistant ? (
+                  <MarkdownContent
+                    loading={loading}
+                    content={messageContent || ''}
+                    reference={reference}
+                    agentEvents={
+                      (item as any)?.agentEvents ||
+                      (item as any)?.agent_events ||
+                      ((item as any)?.agent_event
+                        ? [(item as any)?.agent_event]
+                        : [])
+                    }
                     clickDocumentButton={clickDocumentButton}
                   />
                 ) : (

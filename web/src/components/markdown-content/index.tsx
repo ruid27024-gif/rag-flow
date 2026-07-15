@@ -3,8 +3,14 @@ import SvgIcon from '@/components/svg-icon';
 import { IReference, IReferenceChunk } from '@/interfaces/database/chat';
 import { getExtension } from '@/utils/document-util';
 import DOMPurify from 'dompurify';
-import { ChevronRight } from 'lucide-react';
-import { useCallback, useEffect, useMemo } from 'react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Wrench,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Markdown from 'react-markdown';
 import reactStringReplace from 'react-string-replace';
 import SyntaxHighlighter from 'react-syntax-highlighter';
@@ -54,441 +60,24 @@ const getNumberColor = (num: number) => {
 };
 
 const getChunkIndex = (match: string) => Number(match);
-// TODO: The display of the table is inconsistent with the display previously placed in the MessageItem.
-// const MarkdownContent = ({
-//   reference,
-//   clickDocumentButton,
-//   content,
-// }: {
-//   content: string;
-//   loading: boolean;
-//   reference: IReference;
-//   clickDocumentButton?: (documentId: string, chunk: IReferenceChunk) => void;
-// }) => {
-//   const { t } = useTranslation();
-//   const { setDocumentIds, data: fileThumbnails } =
-//     useFetchDocumentThumbnailsByIds();
-
-//   const replaceSourceHeading = useCallback((text: string) => {
-//     const replaceHeadingOutsideThink = (segment: string) => {
-//       return segment.replace(
-//         /(【(?:从[^】]+来说|综合总结)】)/g,
-//         (_match, heading) => {
-//           const displayHeading = heading
-//             .replace(/^【从(.+?)来说】$/, '$1')
-//             .replace(/^【(.+?)】$/, '$1');
-
-//           return `\n\n<source-heading>${displayHeading}</source-heading>\n\n`;
-//         },
-//       );
-//     };
-
-//     let result = '';
-//     let cursor = 0;
-//     const lowerText = text.toLowerCase();
-
-//     while (cursor < text.length) {
-//       const thinkStart = lowerText.indexOf('<think', cursor);
-
-//       // 后面没有 think，剩余内容全部是正文，正常替换
-//       if (thinkStart === -1) {
-//         result += replaceHeadingOutsideThink(text.slice(cursor));
-//         break;
-//       }
-
-//       // think 前面的正文，正常替换
-//       result += replaceHeadingOutsideThink(text.slice(cursor, thinkStart));
-
-//       const openTagEnd = text.indexOf('>', thinkStart);
-
-//       // 流式场景：<think 标签还没完整，后面都按 think 原样保留
-//       if (openTagEnd === -1) {
-//         result += text.slice(thinkStart);
-//         break;
-//       }
-
-//       const closeTagStart = lowerText.indexOf('</think>', openTagEnd + 1);
-
-//       // 流式场景：think 还没闭合，think 到结尾都原样保留
-//       if (closeTagStart === -1) {
-//         result += text.slice(thinkStart);
-//         break;
-//       }
-
-//       // 完整 think 块，原样保留，不替换里面的标题
-//       result += text.slice(thinkStart, closeTagStart + '</think>'.length);
-
-//       cursor = closeTagStart + '</think>'.length;
-//     }
-
-//     return result.replace(/^\n+/, '');
-//   }, []);
-
-//   const contentWithCursor = useMemo(() => {
-//     let text = content || '';
-
-//     if (text === '') {
-//       text = t('chat.searching');
-//     }
-
-//     // 只替换 think 外面的来源标题
-//     text = replaceSourceHeading(text);
-//     // text = removeEmptySourceSections(text);
-
-//     text = DOMPurify.sanitize(text, {
-//       ADD_TAGS: ['think', 'section', 'source-heading'],
-//       ADD_ATTR: ['class'],
-//     });
-
-//     const nextText = replaceTextByOldReg(text);
-
-//     return pipe(replaceThinkToSection, preprocessLaTeX)(nextText);
-//   }, [content, t, replaceSourceHeading]);
-
-//   useEffect(() => {
-//     const docAggs = reference?.doc_aggs;
-//     setDocumentIds(Array.isArray(docAggs) ? docAggs.map((x) => x.doc_id) : []);
-//   }, [reference, setDocumentIds]);
-
-//   const handleDocumentButtonClick = useCallback(
-//     (
-//       documentId: string,
-//       chunk: IReferenceChunk,
-//       isPdf: boolean,
-//       documentUrl?: string,
-//     ) =>
-//       () => {
-//         if (!isPdf) {
-//           if (!documentUrl) {
-//             return;
-//           }
-//           window.open(documentUrl, '_blank');
-//         } else {
-//           clickDocumentButton?.(documentId, chunk);
-//         }
-//       },
-//     [clickDocumentButton],
-//   );
-
-//   const rehypeWrapReference = () => {
-//     return function wrapTextTransform(tree: any) {
-//       visitParents(tree, 'text', (node, ancestors) => {
-//         const latestAncestor = ancestors.at(-1);
-//         if (
-//           latestAncestor.tagName !== 'custom-typography' &&
-//           latestAncestor.tagName !== 'code'
-//         ) {
-//           node.type = 'element';
-//           node.tagName = 'custom-typography';
-//           node.properties = {};
-//           node.children = [{ type: 'text', value: node.value }];
-//         }
-//       });
-//     };
-//   };
-
-//   // 直接对应原始 chunks 列表的索引
-//   const getReferenceInfo = useCallback(
-//     (chunkIndex: number) => {
-//       const chunks = reference?.chunks ?? [];
-//       const chunkItem = chunks[chunkIndex];
-//       // const document = reference?.doc_aggs?.find(
-//       //   (x) => x?.doc_id === chunkItem?.document_id,
-//       // );
-//       const docIndex = reference?.doc_aggs?.findIndex(
-//         (x) => x?.doc_id === chunkItem?.document_id,
-//       );
-//       const document = reference?.doc_aggs?.[docIndex];
-//       const documentId = document?.doc_id;
-//       const documentUrl = document?.url;
-//       const fileThumbnail = documentId ? fileThumbnails[documentId] : '';
-//       const fileExtension = documentId ? getExtension(document?.doc_name) : '';
-//       const imageId = chunkItem?.image_id;
-
-//       return {
-//         documentUrl,
-//         fileThumbnail,
-//         fileExtension,
-//         imageId,
-//         chunkItem,
-//         documentId,
-//         document,
-//         docIndex, // 返回索引
-//       };
-//     },
-//     [fileThumbnails, reference],
-//   );
-
-//   const getPopoverContent = useCallback(
-//     (chunkIndex: number) => {
-//       const {
-//         documentUrl,
-//         fileThumbnail,
-//         fileExtension,
-//         imageId,
-//         chunkItem,
-//         documentId,
-//         document,
-//       } = getReferenceInfo(chunkIndex);
-
-//       return (
-//         <div key={chunkItem?.id} className="flex gap-2">
-//           {imageId && (
-//             <HoverCard>
-//               <HoverCardTrigger>
-//                 <Image
-//                   id={imageId}
-//                   className={styles.referenceChunkImage}
-//                 ></Image>
-//               </HoverCardTrigger>
-//               <HoverCardContent>
-//                 <Image
-//                   id={imageId}
-//                   className={styles.referenceImagePreview}
-//                 ></Image>
-//               </HoverCardContent>
-//             </HoverCard>
-//           )}
-//           <div className={'space-y-2 max-w-[40vw]'}>
-//             <div
-//               dangerouslySetInnerHTML={{
-//                 __html: DOMPurify.sanitize(chunkItem?.content ?? ''),
-//               }}
-//               className={classNames(styles.chunkContentText)}
-//             ></div>
-//             {documentId && (
-//               <section className="flex gap-1">
-//                 {fileThumbnail ? (
-//                   <img
-//                     src={fileThumbnail}
-//                     alt=""
-//                     className={styles.fileThumbnail}
-//                   />
-//                 ) : (
-//                   <SvgIcon
-//                     name={`file-icon/${fileExtension}`}
-//                     width={24}
-//                   ></SvgIcon>
-//                 )}
-//                 <Button
-//                   variant="link"
-//                   className={'text-wrap p-0'}
-//                   onClick={handleDocumentButtonClick(
-//                     documentId,
-//                     chunkItem,
-//                     fileExtension === 'pdf',
-//                     documentUrl,
-//                   )}
-//                 >
-//                   {document?.doc_name}
-//                 </Button>
-//               </section>
-//             )}
-//           </div>
-//         </div>
-//       );
-//     },
-//     [getReferenceInfo, handleDocumentButtonClick],
-//   );
-
-//   const renderReference = useCallback(
-//     (text: string) => {
-//       let replacedText = reactStringReplace(text, currentReg, (match, i) => {
-//         // 从匹配字符串中提取数字
-//         const chunkIndex = getChunkIndex(match);
-
-//         const {
-//           documentUrl,
-//           fileExtension,
-//           imageId,
-//           chunkItem,
-//           documentId,
-//           docIndex,
-//         } =
-//           // 调用 getReferenceInfo 函数，根据 chunkIndex 获取：
-//           getReferenceInfo(chunkIndex);
-
-//         const docType = chunkItem?.doc_type;
-
-//         return showImage(docType) ? (
-//           <section>
-//             <Image
-//               id={imageId}
-//               className={styles.referenceInnerChunkImage}
-//               onClick={
-//                 documentId
-//                   ? handleDocumentButtonClick(
-//                       documentId,
-//                       chunkItem,
-//                       fileExtension === 'pdf',
-//                       documentUrl,
-//                     )
-//                   : () => {}
-//               }
-//             ></Image>
-//             {/* <span className="text-accent-primary"> {imageId}</span> */}
-//           </section>
-//         ) : (
-//           <HoverCard key={i}>
-//             <HoverCardTrigger>
-//               {/* <CircleAlert className="size-4 inline-block" /> */}
-//               {/* <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white bg-accent-primary rounded-full">
-//                 {docIndex + 1}
-//               </span> */}
-
-//               <span
-//                 className={`inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white rounded-full ${getNumberColor(docIndex + 1)}`}
-//               >
-//                 {docIndex + 1}
-//               </span>
-//             </HoverCardTrigger>
-//             <HoverCardContent className="max-w-3xl">
-//               {getPopoverContent(chunkIndex)}
-//             </HoverCardContent>
-//           </HoverCard>
-//         );
-//       });
-
-//       // replacedText = reactStringReplace(replacedText, curReg, (match, i) => (
-//       //   <span className={styles.cursor} key={i}></span>
-//       // ));
-
-//       return replacedText;
-//     },
-//     [getPopoverContent, getReferenceInfo, handleDocumentButtonClick],
-//   );
-
-//   const processedContent = contentWithCursor.replace(
-//     /<think>([\s\S]*?)(<\/think>|$)/gi,
-//     (_, thinkContent) => {
-//       return `
-//   <details class="think-block">
-//   <summary>思考过程</summary>
-
-//   ${thinkContent}
-
-//   </details>
-//   `;
-//     },
-//   );
-
-//   return (
-//     // <Markdown
-//     //   rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-//     //   remarkPlugins={[remarkGfm, remarkMath]}
-//     //   className={styles.markdownContentWrapper}
-//     //   components={
-//     //     {
-//     //       'custom-typography': ({ children }: { children: string }) =>
-//     //         renderReference(children),
-//     //       code(props: any) {
-//     //         const { children, className, ...rest } = props;
-//     //         const restProps = omit(rest, 'node');
-//     //         const match = /language-(\w+)/.exec(className || '');
-//     //         return match ? (
-//     //           <SyntaxHighlighter
-//     //             {...restProps}
-//     //             PreTag="div"
-//     //             language={match[1]}
-//     //             wrapLongLines
-//     //           >
-//     //             {String(children).replace(/\n$/, '')}
-//     //           </SyntaxHighlighter>
-//     //         ) : (
-//     //           <code
-//     //             {...restProps}
-//     //             className={classNames(className, 'text-wrap')}
-//     //           >
-//     //             {children}
-//     //           </code>
-//     //         );
-//     //       },
-//     //     } as any
-//     //   }
-//     // >
-//     //   {contentWithCursor}
-//     // </Markdown>
-
-//     <Markdown
-//       rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-//       remarkPlugins={[remarkGfm, remarkMath]}
-//       className={styles.markdownContentWrapper}
-//       components={
-//         {
-
-//           // 1. 优化【来源标题】的样式，并加入图标
-//           'source-heading': ({ children }: { children: React.ReactNode }) => (
-//             <div
-//               className="
-//         mt-8 mb-4
-//         flex items-center gap-3
-//         text-lg font-extrabold
-//         text-green-900 dark:text-green-500
-//       "
-
-//             >
-//               {/* 👇 在这里插入你的知识库图标 */}
-//               <HomeIcon
-//                 name="datasets"
-//                 width="24" // 标题里的图标建议稍微小一点，比如 24px
-//               />
-
-//               {/* 标题文字 */}
-//               <span>{children}</span>
-//             </div>
-//           ),
-
-//           // 2. 优化【自定义排版/引用包裹】的渲染逻辑
-//           'custom-typography': ({ children }: { children: string }) => {
-//             return renderReference(children);
-
-//           },
-
-//           // 3. 优化【代码块】的样式
-//           code(props: any) {
-//             const { children, className, ...rest } = props;
-//             const restProps = omit(rest, 'node');
-//             const match = /language-(\w+)/.exec(className || '');
-
-//             return match ? (
-//               <SyntaxHighlighter
-//                 {...restProps}
-//                 PreTag="div"
-//                 language={match[1]}
-//                 wrapLongLines
-//                 className="rounded-md my-2"
-//               >
-//                 {String(children).replace(/\n$/, '')}
-//               </SyntaxHighlighter>
-//             ) : (
-//               <code
-//                 {...restProps}
-//                 className={classNames(
-//                   className,
-//                   'text-wrap',
-//                   'px-1.5 py-0.5',
-//                   'bg-gray-100 dark:bg-gray-800',
-//                   'rounded',
-//                   'text-sm',
-//                 )}
-//               >
-//                 {children}
-//               </code>
-//             );
-//           },
-//         } as any
-//       }
-//     >
-//       {contentWithCursor}
-//     </Markdown>
-//   );
-// };
-
-// export default MarkdownContent;
 
 type ThinkSegment = {
   type: 'text' | 'think';
   content: string;
+};
+type AgentEventStatus = 'running' | 'success' | 'error';
+
+export type AgentEvent = {
+  type: string;
+  name?: string;
+  title?: string;
+  summary?: string;
+  status?: AgentEventStatus;
+  elapsed_time?: number | null;
+  display?: string;
+  arguments?: any;
+  error?: string;
+  delta?: string;
 };
 
 /**
@@ -560,14 +149,291 @@ function splitThinkContent(content: string): ThinkSegment[] {
   return segments;
 }
 
+function isVisibleAgentEvent(event: AgentEvent) {
+  if (!event) return false;
+
+  // 正式回答增量不展示在工具调用列表里
+  if (event.type === 'answer_delta') {
+    return false;
+  }
+
+  return true;
+}
+
+function formatAgentElapsedTime(seconds?: number | null) {
+  if (seconds === undefined || seconds === null) {
+    return '';
+  }
+
+  const ms = seconds * 1000;
+
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`;
+  }
+
+  return `${seconds.toFixed(2)}s`;
+}
+
+function getAgentEventTitle(event: AgentEvent) {
+  if (event.title) {
+    return event.title;
+  }
+
+  const name = event.name || event.type || '';
+
+  if (name === 'agent_start') return 'Agent 启动';
+  if (name === 'base_next_step') return '分析任务';
+  if (name === 'before_read_skill') return '准备读取 Skill';
+  if (name === 'read_skill') return '阅读 Skill';
+  if (name === 'read_skill_error') return '读取 Skill 失败';
+  if (name === 'enter_skill_phase') return '进入 Skill';
+  if (name === 'skill_next_step') return 'Skill 决策';
+  if (name === 'before_skill_tool_call') return '准备调用工具';
+  if (name === 'skill_tool_call') return '工具调用';
+  if (name === 'search_my_dateset') return '检索知识库';
+  if (name === 'write_file') return '写入文件';
+  if (name === 'skill_reflection') return '反思整理';
+  if (name === 'skill_summary') return 'Skill 总结';
+  if (name === 'skill_no_tool_answer') return '生成回答';
+  if (name === 'agent_error') return 'Agent 执行异常';
+  if (name === 'agent_done') return 'Agent 完成';
+
+  return 'Agent 步骤';
+}
+
+function getAgentEventSummary(event: AgentEvent) {
+  if (event.summary) {
+    return event.summary;
+  }
+
+  const args = event.arguments || {};
+
+  return (
+    args.skill_name ||
+    args.skill ||
+    args.tool ||
+    args.query ||
+    args.filename ||
+    event.error ||
+    event.name ||
+    ''
+  );
+}
+
+const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
+  const [open, setOpen] = useState(true);
+  const [openItems, setOpenItems] = useState<Record<number, boolean>>({});
+
+  const visibleEvents = useMemo(() => {
+    return (events || []).filter(isVisibleAgentEvent);
+  }, [events]);
+
+  if (!visibleEvents.length) {
+    return null;
+  }
+
+  return (
+    <div
+      className="
+        my-3
+        rounded-xl
+        border border-slate-200
+        bg-slate-50/80
+        p-2
+        dark:border-slate-700
+        dark:bg-slate-900/50
+      "
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="
+          flex w-full items-center justify-between
+          px-2 py-1
+          text-sm font-medium
+          text-slate-700
+          dark:text-slate-200
+        "
+      >
+        <span className="flex items-center gap-2">
+          <Wrench className="h-4 w-4" />
+
+          <span>工具调用</span>
+
+          <span
+            className="
+              rounded-full
+              bg-slate-200 px-1.5 py-0.5
+              text-xs text-slate-600
+              dark:bg-slate-700 dark:text-slate-300
+            "
+          >
+            {visibleEvents.length}
+          </span>
+        </span>
+
+        {open ? (
+          <ChevronDown className="h-4 w-4 text-slate-500" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-slate-500" />
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-2">
+          {visibleEvents.map((event, index) => {
+            const title = getAgentEventTitle(event);
+            const summary = getAgentEventSummary(event);
+            const cost = formatAgentElapsedTime(event.elapsed_time);
+            const isError =
+              event.status === 'error' ||
+              event.type === 'agent_error' ||
+              event.name === 'agent_error';
+
+            const itemOpen = openItems[index] ?? false;
+
+            return (
+              <div
+                key={`${event.type}-${event.name || ''}-${index}`}
+                className={classNames(
+                  `
+                    overflow-hidden
+                    rounded-lg
+                    border
+                    bg-white
+                    dark:bg-slate-950
+                  `,
+                  isError
+                    ? 'border-red-300 dark:border-red-800'
+                    : 'border-slate-200 dark:border-slate-700',
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenItems((prev) => ({
+                      ...prev,
+                      [index]: !itemOpen,
+                    }))
+                  }
+                  className="
+                    flex w-full items-center gap-2
+                    px-3 py-2
+                    text-left
+                    text-sm
+                  "
+                >
+                  {isError ? (
+                    <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-1">
+                      <span className="shrink-0 font-medium text-slate-800 dark:text-slate-100">
+                        {title}
+                      </span>
+
+                      {summary && (
+                        <>
+                          <span className="shrink-0 text-slate-400">---</span>
+
+                          <span
+                            className="
+                              truncate
+                              text-slate-600
+                              dark:text-slate-300
+                            "
+                            title={String(summary)}
+                          >
+                            {String(summary)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {cost && (
+                    <span className="shrink-0 text-xs text-slate-400">
+                      {cost}
+                    </span>
+                  )}
+
+                  {itemOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                  )}
+                </button>
+
+                {itemOpen && (
+                  <div
+                    className="
+                      border-t border-slate-100
+                      px-4 py-3
+                      text-sm leading-7
+                      text-slate-600
+                      dark:border-slate-800
+                      dark:text-slate-300
+                    "
+                  >
+                    {event.display ? (
+                      <pre
+                        className="
+                          whitespace-pre-wrap
+                          break-words
+                          text-xs leading-6
+                          text-slate-500
+                          dark:text-slate-400
+                        "
+                      >
+                        {event.display}
+                      </pre>
+                    ) : (
+                      <pre
+                        className="
+                          whitespace-pre-wrap
+                          break-words
+                          text-xs leading-6
+                          text-slate-500
+                          dark:text-slate-400
+                        "
+                      >
+                        {JSON.stringify(event, null, 2)}
+                      </pre>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const MarkdownContent = ({
   reference,
   clickDocumentButton,
   content,
+  agentEvents,
+  hideThinkWhenAgentEvents = true,
 }: {
   content: string;
-  loading: boolean;
+  loading?: boolean;
   reference: IReference;
+  agentEvents?: AgentEvent[];
+
+  /**
+   * 新 Agent 后端有 agentEvents 时，默认隐藏 answer 里的 <think>，
+   * 避免「工具调用面板」和「思考过程」重复显示。
+   *
+   * 老后端没有 agentEvents 时，不受影响，仍然显示 think。
+   */
+  hideThinkWhenAgentEvents?: boolean;
+
   clickDocumentButton?: (documentId: string, chunk: IReferenceChunk) => void;
 }) => {
   const { t } = useTranslation();
@@ -575,6 +441,7 @@ const MarkdownContent = ({
   const { setDocumentIds, data: fileThumbnails } =
     useFetchDocumentThumbnailsByIds();
 
+  // think 外的正文替换
   const replaceSourceHeading = useCallback((text: string) => {
     const replaceHeadingOutsideThink = (segment: string) => {
       return segment.replace(
@@ -630,6 +497,7 @@ const MarkdownContent = ({
     return result.replace(/^\n+/, '');
   }, []);
 
+  // 换行治理：普通缩进文本转换成更标准的 Markdown 结构
   const normalizeIndentedTextToMarkdown = useCallback((text: string) => {
     if (!text) return text;
 
@@ -725,6 +593,7 @@ const MarkdownContent = ({
     return result;
   }, []);
 
+  // 库名称治理
   const contentWithCursor = useMemo(() => {
     let text = content || '';
 
@@ -750,11 +619,15 @@ const MarkdownContent = ({
      * 否则 <think> 会被提前转成别的标签，后面就无法折叠处理
      */
     return preprocessLaTeX(nextText);
-  }, [content, t, replaceSourceHeading]);
+  }, [content, t, normalizeIndentedTextToMarkdown, replaceSourceHeading]);
 
   const segments = useMemo(() => {
     return splitThinkContent(contentWithCursor);
   }, [contentWithCursor]);
+
+  const showAgentToolCalls = useMemo(() => {
+    return (agentEvents || []).some(isVisibleAgentEvent);
+  }, [agentEvents]);
 
   useEffect(() => {
     const docAggs = reference?.doc_aggs;
@@ -1012,21 +885,6 @@ const MarkdownContent = ({
          */
         think: () => null,
 
-        // 来源标题
-        // 'source-heading': ({ children }: { children: React.ReactNode }) => (
-        //   <div
-        //     className="
-        //       mt-5 mb-3
-        //       flex items-center gap-3
-        //       text-lg font-extrabold
-        //       text-[#018B8D] dark:text-[#018B8D]
-        //     "
-        //   >
-        //     <HomeIcon name="datasets" width="20" />
-        //     <span>{children}</span>
-        //   </div>
-        // ),
-
         'source-heading': ({ children }: { children: React.ReactNode }) => (
           <div
             className="
@@ -1191,6 +1049,7 @@ const MarkdownContent = ({
 
   return (
     <div className={styles.markdownContentWrapper}>
+      {showAgentToolCalls && <AgentToolCalls events={agentEvents} />}
       {segments.map((segment, index) => {
         if (segment.type === 'think') {
           return (

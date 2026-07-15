@@ -30,9 +30,11 @@ interface IProps {
     documentUrl?: string | null,
   ) => void;
   onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
-  reasoning?: boolean;
+  reasoning: boolean;
+  agentMod: boolean;
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
+  onEnableAgent?: () => void;
 }
 
 export function SingleChatBox({
@@ -42,8 +44,10 @@ export function SingleChatBox({
   clickDocumentButton,
   onOpenReferencePanel,
   reasoning,
+  agentMod,
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
+  onEnableAgent,
 }: IProps) {
   const {
     value,
@@ -74,8 +78,29 @@ export function SingleChatBox({
   // console.log(derivedMessages);
   useEffect(() => {
     const messages = conversation?.message;
+
     if (Array.isArray(messages)) {
-      setDerivedMessages(messages);
+      const normalizedMessages = messages.map((item: any) => {
+        const agentEvents =
+          item.agentEvents ||
+          item.agent_events ||
+          (item.agent_event ? [item.agent_event] : []);
+
+        return {
+          ...item,
+
+          // 兼容有些历史消息只有 answer，没有 content
+          content: item.content ?? item.answer ?? '',
+
+          // 统一前端字段
+          agentEvents,
+
+          // 保留后端字段
+          agent_events: item.agent_events || agentEvents,
+        };
+      });
+
+      setDerivedMessages(normalizedMessages);
     }
   }, [conversation?.message, setDerivedMessages]);
 
@@ -303,232 +328,130 @@ export function SingleChatBox({
           ? MoonIcon
           : StarIcon;
 
+  const isWelcomePage = !conversationId || derivedMessages.length === 1;
+
+  const inputBox = (
+    <NextMessageInput
+      disabled={disabled}
+      sendDisabled={sendDisabled}
+      sendLoading={sendLoading}
+      value={value}
+      onInputChange={handleInputChange}
+      onPressEnter={handlePressEnter}
+      conversationId={conversationId}
+      createConversationBeforeUploadDocument={
+        createConversationBeforeUploadDocument
+      }
+      stopOutputMessage={stopOutputMessage}
+      onUpload={handleUploadFile}
+      isUploading={isUploading}
+      removeFile={removeFile}
+      reasoning={reasoning}
+      agentMod={agentMod}
+      onEnableDeepReasoning={onEnableDeepReasoning}
+      onEnableMultiKbReasoning={onEnableMultiKbReasoning}
+      onEnableAgent={onEnableAgent}
+    />
+  );
   return (
-    // <section className="flex flex-col p-5 h-full">
-    //   {/* 消息滚动区域 */}
-    //   {/* 消息滚动区域 */}
-    //   <div ref={messageContainerRef} className="flex-1 overflow-auto min-h-0">
-    //     <div className="w-full pr-5">
-    //       {/* 🎯 核心判断：没有对话ID 或 有对话ID但消息为空时显示欢迎页 */}
-    //       {!conversationId || derivedMessages.length === 1 ? (
-    //         // ✅ 情况 A：显示带昵称的欢迎页
-    //         /* 外层容器 */
-    //         <div
-    //           className="
-    //       relative overflow-hidden
-    //       p-8
-    //       py-16
-    //       rounded-3xl
-    //       /* 修改点：使用 cyan-50 和 sky-50，看起来更像冰蓝色 */
-    //       bg-gradient-to-b from-cyan-50/50 to-white dark:from-sky-900/20 dark:to-gray-900
-    //       /* 修改点：边框使用 cyan-100 */
-    //       border border-cyan-100 dark:border-sky-900/30
-    //       text-center space-y-4
-    //       mt-12
-    //     "
-    //         >
-    //           {/* 修改点：光晕使用 cyan-300，更亮更透 */}
-    //           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-cyan-300/20 blur-3xl rounded-full pointer-events-none" />
-
-    //           <h1
-    //             className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight"
-    //             style={{
-    //               fontFamily: `Georgia, "Times New Roman", serif`,
-    //             }}
-    //           >
-    //             恒丰纸业 智能小助手
-    //             <span className="ml-2 inline-block animate-bounce text-green-600">
-    //               <TimeIcon />
-    //             </span>
-    //           </h1>
-
-    //           <p className="relative text-lg text-gray-600 dark:text-gray-400">
-    //             欢迎回来，
-    //             <span className="font-bold text-pink-700 dark:text-green-400">
-    //               {userInfo?.nickname}
-    //             </span>
-    //             <span className="mx-2 opacity-40">|</span>
-    //             <span className="font-mono text-sm text-green-700 bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded">
-    //               {hours}:{minutes}
-    //             </span>
-    //           </p>
-    //         </div>
-    //       ) : (
-    //         // ✅ 情况 B：有对话ID且消息不为空，正常渲染对话气泡
-    //         derivedMessages?.map((message, i) => (
-    //           <MessageItem
-    //             loading={
-    //               message.role === MessageType.Assistant &&
-    //               sendLoading &&
-    //               derivedMessages.length - 1 === i
-    //             }
-    //             key={buildMessageUuidWithRole(message)}
-    //             item={message}
-    //             nickname={userInfo.nickname}
-    //             avatar={userInfo.avatar}
-    //             avatarDialog={currentDialog.icon}
-    //             reference={buildMessageItemReference(
-    //               {
-    //                 message: derivedMessages,
-    //                 reference: conversation.reference,
-    //               },
-    //               message,
-    //             )}
-    //             clickDocumentButton={clickDocumentButton}
-    //             index={i}
-    //             removeMessageById={removeMessageById}
-    //             regenerateMessage={regenerateMessage}
-    //             sendLoading={sendLoading}
-    //             visibleAvatar={false}
-    //             onSuggestionClick={handleSuggestionClick}
-    //             onSuggestionDoubleClick={handleSuggestionDoubleClick}
-    //           />
-    //         ))
-    //       )}
-    //     </div>
-    //     {/* 用于滚动到底部的锚点 */}
-    //     <div ref={scrollRef} />
-    //   </div>
     <section className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      {/* 消息滚动区域：这一层是全宽的，所以滚动条会在最右侧 */}
-      <div
-        ref={messageContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
-      >
-        {/* 内容居中区域：只控制内容宽度，不负责滚动 */}
-        <div className="max-w-[860px] mx-auto w-full px-5 pt-0 pb-4">
-          {/* 🎯 核心判断：没有对话ID 或 有对话ID但消息为空时显示欢迎页 */}
-          {!conversationId || derivedMessages.length === 1 ? (
-            <div
-              className="
-                relative overflow-hidden
-                p-8
-                py-16
-                rounded-3xl
-                bg-gradient-to-b from-green-50/50 to-white dark:from-green-900/20 dark:to-gray-900
-                border border-green-100 dark:border-green-900/30
-                text-center space-y-4
-                mt-12
-              "
-            >
-              {/* 装饰性背景光晕 */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-green-400/20 blur-3xl rounded-full pointer-events-none" />
+      {isWelcomePage ? (
+        /**
+         * 欢迎页：
+         * 图标 + 恒丰纸业 + 输入框 居中显示
+         */
+        <div className="flex flex-1 min-h-0 w-full items-center justify-center px-5">
+          <div className="w-full max-w-[860px] -translate-y-8">
+            {/* 简洁 Logo 标题 */}
+            <div className="mb-8 flex items-center justify-center gap-4 text-center">
+              <img
+                src="/hf_pic.png"
+                // alt="恒丰纸业"
+                className="
+    h-16
+    w-16
+    object-contain
+    drop-shadow-[0_10px_18px_rgba(16,185,129,0.18)]
+  "
+              />
 
-              <h1
-                className="relative text-4xl sm:text-5xl font-extrabold text-green-900 dark:text-green-100 tracking-tight"
+              <div
+                className="
+                text-4xl
+                font-extrabold
+                tracking-tight
+                text-emerald-900
+                dark:text-emerald-100
+              "
                 style={{
                   fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, Georgia, "Times New Roman", serif`,
                 }}
               >
-                恒丰纸业 智能小助手
-                <span className="ml-2 inline-block animate-bounce text-green-600">
-                  <TimeIcon />
-                </span>
-              </h1>
-
-              <p className="relative text-lg text-gray-600 dark:text-gray-400">
-                欢迎回来，
-                <span className="font-bold text-pink-700 dark:text-green-400">
-                  {userInfo?.nickname}
-                </span>
-                <span className="mx-2 opacity-40">|</span>
-                <span className="font-mono text-sm text-green-700 bg-white/50 dark:bg-black/20 px-2 py-0.5 rounded">
-                  {hours}:{minutes}
-                </span>
-              </p>
+                恒丰纸业
+              </div>
             </div>
-          ) : (
-            derivedMessages?.map((message, i) => (
-              <MessageItem
-                loading={
-                  message.role === MessageType.Assistant &&
-                  sendLoading &&
-                  derivedMessages.length - 1 === i
-                }
-                key={buildMessageUuidWithRole(message)}
-                item={message}
-                nickname={userInfo.nickname}
-                avatar={userInfo.avatar}
-                avatarDialog={currentDialog.icon}
-                reference={buildMessageItemReference(
-                  {
-                    message: derivedMessages,
-                    reference: conversation.reference,
-                  },
-                  message,
-                )}
-                clickDocumentButton={clickDocumentButton}
-                onOpenReferencePanel={onOpenReferencePanel}
-                index={i}
-                removeMessageById={removeMessageById}
-                regenerateMessage={regenerateMessage}
-                sendLoading={sendLoading}
-                visibleAvatar={false}
-                onSuggestionClick={handleSuggestionClick}
-                onSuggestionDoubleClick={handleSuggestionDoubleClick}
-                onShareMessage={handleShareMessage}
-                onRebaseMessage={handleRebaseMessage}
-              />
-            ))
-          )}
 
-          {/* 用于滚动到底部的锚点 */}
-          <div ref={scrollRef} />
+            {/* 居中的输入框，外层更直角一点 */}
+            <div className="w-full">{inputBox}</div>
+          </div>
         </div>
-      </div>
+      ) : (
+        /**
+         * 正常对话布局：
+         * 消息滚动 + 底部固定输入框
+         */
+        <>
+          {/* 消息滚动区域：这一层是全宽的，所以滚动条会在最右侧 */}
+          <div
+            ref={messageContainerRef}
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+          >
+            {/* 内容居中区域：只控制内容宽度，不负责滚动 */}
+            <div className="max-w-[860px] mx-auto w-full px-5 pt-0 pb-4">
+              {derivedMessages?.map((message, i) => (
+                <MessageItem
+                  loading={
+                    message.role === MessageType.Assistant &&
+                    sendLoading &&
+                    derivedMessages.length - 1 === i
+                  }
+                  key={buildMessageUuidWithRole(message)}
+                  item={message}
+                  nickname={userInfo.nickname}
+                  avatar={userInfo.avatar}
+                  avatarDialog={currentDialog.icon}
+                  reference={buildMessageItemReference(
+                    {
+                      message: derivedMessages,
+                      reference: conversation.reference,
+                    },
+                    message,
+                  )}
+                  clickDocumentButton={clickDocumentButton}
+                  onOpenReferencePanel={onOpenReferencePanel}
+                  index={i}
+                  removeMessageById={removeMessageById}
+                  regenerateMessage={regenerateMessage}
+                  sendLoading={sendLoading}
+                  visibleAvatar={false}
+                  onSuggestionClick={handleSuggestionClick}
+                  onSuggestionDoubleClick={handleSuggestionDoubleClick}
+                  onShareMessage={handleShareMessage}
+                  onRebaseMessage={handleRebaseMessage}
+                />
+              ))}
 
-      {/* 底部输入框：固定在底部，不参与滚动 */}
-      <div className="shrink-0 w-full px-5 pb-4">
-        <div className="max-w-[860px] mx-auto w-full">
-          <NextMessageInput
-            disabled={disabled}
-            sendDisabled={sendDisabled}
-            sendLoading={sendLoading}
-            value={value}
-            onInputChange={handleInputChange}
-            onPressEnter={handlePressEnter}
-            conversationId={conversationId}
-            createConversationBeforeUploadDocument={
-              createConversationBeforeUploadDocument
-            }
-            stopOutputMessage={stopOutputMessage}
-            onUpload={handleUploadFile}
-            isUploading={isUploading}
-            removeFile={removeFile}
-            reasoning={reasoning}
-            onEnableDeepReasoning={onEnableDeepReasoning}
-            onEnableMultiKbReasoning={onEnableMultiKbReasoning}
-          />
-        </div>
-      </div>
+              {/* 用于滚动到底部的锚点 */}
+              <div ref={scrollRef} />
+            </div>
+          </div>
 
-      {/* 
-      <NextMessageInput
-        disabled={disabled}
-        sendDisabled={sendDisabled}
-        sendLoading={sendLoading}
-        value={value}
-        onInputChange={handleInputChange}
-        onPressEnter={handlePressEnter}
-        conversationId={conversationId}
-        createConversationBeforeUploadDocument={
-          createConversationBeforeUploadDocument
-        }
-        stopOutputMessage={stopOutputMessage}
-        onUpload={handleUploadFile}
-        isUploading={isUploading}
-        removeFile={removeFile}
-      /> */}
-
-      {/* PDF 预览弹窗 */}
-      {/* {visible && (
-        <PdfSheet
-          visible={visible}
-          hideModal={hideModal}
-          documentId={documentId}
-          chunk={selectedChunk}
-        />
-      )} */}
+          {/* 底部输入框：固定在底部，不参与滚动 */}
+          <div className="shrink-0 w-full px-5 pb-4">
+            <div className="max-w-[860px] mx-auto w-full">{inputBox}</div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
