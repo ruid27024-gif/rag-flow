@@ -86,11 +86,11 @@ function MultiCommandItem({
       <span className={cn({ 'text-text-disabled': option.disabled })}>
         {option.label}
       </span>
-      {option.suffix && (
+      {/* {option.suffix && (
         <span className={cn({ 'text-text-disabled': option.disabled })}>
           {option.suffix}
         </span>
-      )}
+      )} */}
     </CommandItem>
   );
 }

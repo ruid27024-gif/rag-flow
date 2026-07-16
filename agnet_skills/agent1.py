@@ -558,7 +558,6 @@ class Agent(LLM, ToolBase):
                 2. Do not invent skill names.
                 3. Do not translate skill names.
                 4. The `skill_name` argument must be copied exactly from the Available skills list.
-                5. For file writing, saving markdown, saving reports, or creating documents, use skill_name exactly `file_writer`.
                 """
 
                 st = timer()

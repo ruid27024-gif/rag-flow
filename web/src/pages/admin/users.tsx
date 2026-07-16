@@ -15,7 +15,6 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  LucideClipboardList,
   LucideDot,
   LucideTrash2,
   LucideUserLock,
@@ -67,7 +66,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Routes } from '@/routes';
 import { LucideFilter, LucideSearch } from 'lucide-react';
 
 import useChangePasswordForm from './forms/change-password-form';
@@ -209,7 +207,8 @@ function AdminUserManagement() {
         header: t('admin.email'),
       }),
       columnHelper.accessor('nickname', {
-        header: t('admin.nickname'),
+        // header: t('admin.nickname'),
+        header: '姓名',
         cell: ({ row, cell }) => (
           <div className="flex items-center">
             <span className="mr-2 empty:hidden">{cell.getValue()}</span>
@@ -305,7 +304,7 @@ function AdminUserManagement() {
         header: t('admin.actions'),
         cell: ({ row }) => (
           <div className="opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity">
-            <Button
+            {/* <Button
               variant="transparent"
               size="icon"
               className="border-0"
@@ -314,7 +313,8 @@ function AdminUserManagement() {
               }
             >
               <LucideClipboardList />
-            </Button>
+            </Button> */}
+
             <Button
               variant="transparent"
               size="icon"

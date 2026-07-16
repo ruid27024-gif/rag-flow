@@ -20,9 +20,10 @@ from abc import ABC
 import pandas as pd
 import pymysql
 import psycopg2
-import pyodbc
+# import pyodbc
 from agent.tools.base import ToolParamBase, ToolBase, ToolMeta
 from common.connection_utils import timeout
+from common.constants import LLMType
 
 
 class ExeSQLParam(ToolParamBase):
@@ -273,3 +274,235 @@ class ExeSQL(ToolBase, ABC):
 
     def thoughts(self) -> str:
         return "Query sent—waiting for the data."
+    
+
+class TestExeSQL(ExeSQL):
+    """
+    本地测试 ExeSQL。
+    不调用 ToolBase.__init__，避免必须传 Canvas。
+    """
+
+    def __init__(self, param):
+        self._param = param
+        self._outputs = {}
+        self._inputs = {}
+
+    def check_if_canceled(self, msg=None):
+        return False
+
+    def get_input_elements_from_text(self, text):
+        return {}
+
+    def set_input_value(self, key, value):
+        self._inputs[key] = value
+
+    def string_format(self, text, args):
+        if not args:
+            return text
+        return text.format(**args)
+
+    def set_output(self, key, value):
+        self._outputs[key] = value
+
+    def output(self, key):
+        return self._outputs.get(key)
+
+
+def build_sql_prompt(user_question: str) -> str:
+    return f"""
+你是一个 MySQL SQL 生成助手。
+
+请根据用户的问题，只生成一条 MySQL 查询 SQL。
+
+要求：
+1. 只输出 SQL，不要解释。
+2. 不要输出 Markdown。
+3. 不要使用 ```sql 代码块。
+4. 只能生成 SELECT 查询语句。
+5. 表名必须使用反引号：`user`
+6. 字段名尽量使用反引号。
+7. 默认 LIMIT 20。
+8. 禁止查询敏感字段：`password`、`access_token`。
+9. 不要查询 `avatar` 字段，因为它可能很长。
+10. 禁止生成 INSERT、UPDATE、DELETE、DROP、ALTER、TRUNCATE、CREATE 等修改数据库的 SQL。
+
+数据库表结构如下：
+
+表名：`user`
+
+字段：
+- `id`: 用户ID，字符串，主键
+- `access_token`: 用户访问 token，敏感字段，禁止查询
+- `nickname`: 用户昵称
+- `password`: 用户密码，敏感字段，禁止查询
+- `email`: 用户邮箱
+- `avatar`: 用户头像 base64 字符串，内容很长，不要查询
+- `language`: 语言，例如 English 或 Chinese
+- `color_schema`: 主题，例如 Bright 或 Dark
+- `timezone`: 时区
+- `last_login_time`: 最后登录时间
+- `is_authenticated`: 是否已认证，字符串，1 表示是
+- `is_active`: 是否激活，字符串，1 表示是
+- `is_anonymous`: 是否匿名，字符串，0 表示否
+- `login_channel`: 登录渠道
+- `status`: 用户状态，1 表示有效，0 表示无效
+- `is_superuser`: 是否超级用户，布尔值
+
+默认查询用户列表时，请使用这些字段：
+`id`, `nickname`, `email`, `language`, `timezone`, `last_login_time`, `status`, `is_superuser`
+
+如果用户问题无法转换成查询，请输出：
+SELECT '无法根据问题生成查询' AS message;
+
+用户问题：
+{user_question}
+""".strip()
+
+
+def clean_sql(sql: str) -> str:
+    """
+    清理模型可能输出的 ```sql 代码块。
+    """
+    sql = sql.strip()
+    sql = sql.replace("```sql", "")
+    sql = sql.replace("```SQL", "")
+    sql = sql.replace("```", "")
+    sql = sql.strip()
+
+    # 如果模型多说了废话，尝试提取第一条 SELECT
+    match = re.search(r"(select\s+.*)", sql, re.IGNORECASE | re.DOTALL)
+    if match:
+        sql = match.group(1).strip()
+
+    return sql
+
+
+def validate_sql(sql: str):
+    """
+    简单安全校验，防止模型生成危险 SQL。
+    """
+    cleaned = sql.strip().lower()
+
+    if not cleaned.startswith("select"):
+        raise ValueError(f"只允许执行 SELECT SQL，当前 SQL 是：{sql}")
+
+    forbidden_keywords = [
+        " insert ",
+        " update ",
+        " delete ",
+        " drop ",
+        " alter ",
+        " truncate ",
+        " create ",
+        " replace ",
+        " grant ",
+        " revoke ",
+        " password",
+        " access_token",
+        "`password`",
+        "`access_token`",
+    ]
+
+    normalized = " " + cleaned.replace("\n", " ") + " "
+
+    for word in forbidden_keywords:
+        if word in normalized:
+            raise ValueError(f"SQL 包含禁止内容：{word}，当前 SQL 是：{sql}")
+
+    return True
+
+async def main():
+    from api.db.services.llm_service import LLMBundle
+
+    # =========================
+    # 1. 配置你的 LLM
+    # =========================
+    TENANT_ID = "c6b076fe278a11f1a03d10ffe02ab235"
+    LLM_ID = "qwen3-32b"
+
+    chat_mdl = LLMBundle(
+        TENANT_ID,
+        "chat",
+        LLM_ID,
+        max_retries=1,
+        retry_interval=1,
+        max_rounds=1,
+        verbose_tool_use=True
+    )
+
+    # =========================
+    # 2. 配置 MySQL
+    # =========================
+    param = ExeSQLParam()
+    param.db_type = "mysql"
+    param.database = "rag_flow"
+    param.username = "root"
+    param.host = "127.0.0.1"
+    param.port = 5455
+    param.password = "infini_rag_flow"
+    param.max_records = 100
+
+    sql_tool = TestExeSQL(param)
+
+    # =========================
+    # 3. 用户自然语言问题
+    # =========================
+    user_question = "查询一下用户"
+
+    print("\n====== 用户问题 ======")
+    print(user_question)
+
+    # =========================
+    # 4. LLM 生成 SQL
+    # =========================
+    generated_sql = await llm_generate_sql(chat_mdl, user_question)
+
+    print("\n====== LLM 生成的 SQL ======")
+    print(generated_sql)
+
+    # =========================
+    # 5. 安全校验
+    # =========================
+    validate_sql(generated_sql)
+
+    # =========================
+    # 6. 执行 SQL
+    # =========================
+    result = sql_tool.execute(generated_sql)
+
+    print("\n====== SQL 执行结果 ======")
+    print(result)
+
+async def llm_generate_sql(chat_mdl, user_question: str) -> str:
+    """
+    使用 RAGFlow 的 LLMBundle 生成 SQL。
+    """
+
+    prompt = build_sql_prompt(user_question)
+
+    ans = await chat_mdl.async_chat(
+        prompt,
+        [],
+        {
+            "temperature": 0,
+            "top_p": 0.1,
+        }
+    )
+
+    # 有些模型返回 tuple，比如 (answer, total_tokens)
+    if isinstance(ans, tuple):
+        ans = ans[0]
+
+    sql = clean_sql(str(ans))
+    return sql
+
+
+if __name__ == "__main__":
+    from api.db.services.llm_service import LLMBundle
+    from api.db.services.tenant_llm_service import TenantLLMService
+    import asyncio
+    # 初始化 RAGFlow settings
+    # settings.init_settings()
+
+    import asyncio
+    asyncio.run(main())

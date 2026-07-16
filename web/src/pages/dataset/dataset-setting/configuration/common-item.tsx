@@ -158,7 +158,7 @@ export function EmbeddingModelItem({ line = 1, isEdit }: IProps) {
                   <EmbeddingSelect
                     isEdit={!!isEdit}
                     field={field}
-                    disabled={disabled}
+                    disabled={true}
                   ></EmbeddingSelect>
                 </FormControl>
               </div>

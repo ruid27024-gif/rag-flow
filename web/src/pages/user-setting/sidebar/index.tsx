@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { TFunction } from 'i18next';
-import { Box, LucideServerCrash, LucideUserCog } from 'lucide-react';
+import { LucideServerCrash, LucideUserCog, User } from 'lucide-react';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
@@ -52,7 +52,7 @@ const menuItems = (t: TFunction) => {
   const isAdmin = is_admin_user || role_level === 1;
 
   return [
-    // { icon: User, label: t('setting.profile'), key: Routes.Profile },
+    { icon: User, label: t('setting.profile'), key: Routes.Profile },
     // { icon: User, label: t('setting.model'), key: Routes.Model },
     // 如果是管理员，就展开这两个对象；否则展开空数组（相当于不渲染）
     ...(isAdmin
@@ -67,7 +67,7 @@ const menuItems = (t: TFunction) => {
             label: t('admin.userManagement'),
             icon: LucideUserCog,
           },
-          { icon: Box, label: t('setting.model'), key: Routes.Model },
+          // { icon: Box, label: t('setting.model'), key: Routes.Model },
         ]
       : []),
   ];

@@ -428,7 +428,7 @@ async def analyze_task_async(chat_mdl, prompt, task_name, tools_description: lis
         return ""
     return kwd
 
-
+# 决定下一步调用什么工具
 async def next_step_async(chat_mdl, history:list, tools_description: list[dict], task_desc, user_defined_prompts: dict={}):
     if not tools_description:
         return "", 0
@@ -449,7 +449,7 @@ async def next_step_async(chat_mdl, history:list, tools_description: list[dict],
     json_str = re.sub(r"^.*</think>", "", json_str, flags=re.DOTALL)
     return json_str, tk_cnt
 
-
+# 根据工具结果反思
 async def reflect_async(chat_mdl, history: list[dict], tool_call_res: list[Tuple], user_defined_prompts: dict={}):
     tool_calls = [{"name": p[0], "result": p[1]} for p in tool_call_res]
     goal = history[1]["content"]

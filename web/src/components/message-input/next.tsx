@@ -16,15 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
-import {
-  CircleStop,
-  Layers3,
-  Paperclip,
-  Send,
-  Sparkles,
-  Upload,
-  X,
-} from 'lucide-react';
+import { CircleStop, Layers3, Paperclip, Send, Upload, X } from 'lucide-react';
 import * as React from 'react';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
@@ -346,7 +338,7 @@ export function NextMessageInput({
               </Button>
 
               {/* 深度推理 */}
-              <Button
+              {/* <Button
                 type="button"
                 size="sm"
                 title="海量查询，速度慢"
@@ -431,7 +423,7 @@ export function NextMessageInput({
                   <Sparkles className="h-3 w-3" />
                 </span>
                 深度推理
-              </Button>
+              </Button> */}
 
               {/* Agent */}
               {/* <Button
@@ -519,7 +511,7 @@ export function NextMessageInput({
                   <Bot className="h-3 w-3" />
                 </span>
                 Agent Skills
-              </Button> */}
+              </Button>  */}
             </div>
           </div>
 

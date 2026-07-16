@@ -8,7 +8,6 @@ import {
   DislikeOutlined,
   LikeOutlined,
   PauseCircleOutlined,
-  ShareAltOutlined,
   SoundOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
@@ -66,13 +65,13 @@ export const AssistantGroupButton = ({
           <CopyToClipboard text={content} />
         </Radio.Button>
 
-        {onShareMessage && (
+        {/* {onShareMessage && (
           <Radio.Button value="share" onClick={onShareMessage}>
             <Tooltip title="分享">
               <ShareAltOutlined />
             </Tooltip>
           </Radio.Button>
-        )}
+        )} */}
 
         {onRebaseMessage && (
           <Radio.Button value="rebase" onClick={onRebaseMessage}>
