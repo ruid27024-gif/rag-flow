@@ -84,8 +84,8 @@ export function Header() {
       //   isApi: true,
       // },
       // { path: Routes.Searches, name: t('header.search'), icon: Search },
-      { path: Routes.Agents, name: t('header.flow'), icon: Search },
-      { path: Routes.Memories, name: t('header.Memories'), icon: Search },
+      // { path: Routes.Agents, name: t('header.flow'), icon: Search },
+      // { path: Routes.Memories, name: t('header.Memories'), icon: Search },
       { path: Routes.Files, name: t('header.fileManager'), icon: File },
     ];
 

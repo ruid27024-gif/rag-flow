@@ -17,6 +17,7 @@ import {
   useGetChatSearchParams,
 } from '@/hooks/use-chat-request';
 import { cn } from '@/lib/utils';
+import { Tooltip } from 'antd';
 import { PanelLeftClose, PanelRightClose } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -211,9 +212,11 @@ export function Sessions({
             )}
           >
             <CardContent className="px-3 py-2 flex justify-between items-center group gap-1">
-              <div className="truncate text-gray-900 dark:text-white">
-                {x.name}
-              </div>
+              <Tooltip title={x.name} placement="topLeft">
+                <div className="truncate text-gray-900 dark:text-white">
+                  {x.name}
+                </div>
+              </Tooltip>
               <ConversationDropdown
                 conversation={x}
                 removeTemporaryConversation={removeTemporaryConversation}

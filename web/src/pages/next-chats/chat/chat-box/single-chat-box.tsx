@@ -41,6 +41,7 @@ interface IProps {
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
+  refreshConversation?: () => Promise<any>;
 }
 
 export function SingleChatBox({
@@ -54,6 +55,7 @@ export function SingleChatBox({
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
+  refreshConversation,
 }: IProps) {
   const {
     value,
@@ -83,7 +85,28 @@ export function SingleChatBox({
 
   // const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
   //   useClickDrawer();
+  function fallbackCopyText(text: string) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
 
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    textarea.style.opacity = '0';
+
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return successful;
+    } catch (err) {
+      document.body.removeChild(textarea);
+      return false;
+    }
+  }
   // console.log('derivedMessages',derivedMessages);
   useEffect(() => {
     const messages = conversation?.message;
@@ -135,20 +158,107 @@ export function SingleChatBox({
     handlePressEnter(suggestion);
   };
 
-  const handleShareMessage = async (messageId: string) => {
-    const conversationId = conversation?.id;
+  const handleShareMessage = async (targetMessageOrId: any) => {
+    const currentConversationId = conversation?.id || conversationId;
 
-    if (!conversationId) {
+    if (!currentConversationId) {
       message.error('conversation_id 不存在');
       return;
     }
 
-    if (!messageId) {
-      message.error('message_id 不存在');
+    if (!targetMessageOrId) {
+      message.error('message 不存在');
       return;
     }
 
     try {
+      /**
+       * 兼容两种调用方式：
+       * 1. handleShareMessage(item)
+       * 2. handleShareMessage(item.id)
+       */
+      const targetMessage =
+        typeof targetMessageOrId === 'string'
+          ? { id: targetMessageOrId }
+          : targetMessageOrId;
+
+      const targetId = targetMessage?.id;
+      const targetRole = targetMessage?.role;
+      const targetContent =
+        targetMessage?.content ?? targetMessage?.answer ?? '';
+
+      console.log('share targetMessage:', targetMessage);
+      console.log('share targetId:', targetId);
+      console.log('share targetRole:', targetRole);
+      console.log('share targetContent:', targetContent);
+
+      /**
+       * 分享前刷新 conversation
+       */
+      const latestConversation = refreshConversation
+        ? await refreshConversation(currentConversationId)
+        : conversation;
+
+      console.log('latestConversation:', latestConversation);
+
+      const latestMessages = latestConversation?.message || [];
+
+      console.log(
+        'latestMessages:',
+        latestMessages.map((item: any) => ({
+          id: item.id,
+          role: item.role,
+          content: String(item.content ?? item.answer ?? '').slice(0, 80),
+        })),
+      );
+
+      let realMessage: any = null;
+
+      /**
+       * 1. 优先按 id 匹配
+       */
+      if (targetId) {
+        realMessage = latestMessages.find((item: any) => item.id === targetId);
+      }
+
+      /**
+       * 2. id 匹配不到，再按 role + content 匹配
+       */
+      if (!realMessage && targetContent) {
+        realMessage = [...latestMessages].reverse().find((item: any) => {
+          const itemContent = item.content ?? item.answer ?? '';
+
+          if (!itemContent) return false;
+
+          if (targetRole) {
+            return item.role === targetRole && itemContent === targetContent;
+          }
+
+          return itemContent === targetContent;
+        });
+      }
+
+      /**
+       * 3. 仍然找不到，直接兜底取最后一条 assistant 消息
+       *
+       * 注意：
+       * 如果你的分享按钮只出现在 assistant 消息上，这个兜底是安全的。
+       * 如果 user 消息也有分享按钮，这里可能会分享最后一条 AI 回复。
+       */
+      if (!realMessage) {
+        realMessage = [...latestMessages].reverse().find((item: any) => {
+          const content = item.content ?? item.answer ?? '';
+          return item.role === 'assistant' && content;
+        });
+      }
+
+      if (!realMessage?.id) {
+        message.error('消息还未同步完成，请稍后再试');
+        return;
+      }
+
+      console.log('realMessage for share:', realMessage);
+
       const response = await fetch('/v1/conversation/share', {
         method: 'POST',
         credentials: 'include',
@@ -157,12 +267,14 @@ export function SingleChatBox({
           Authorization: getAuthorization() || '',
         },
         body: JSON.stringify({
-          conversation_id: conversationId,
-          message_id: messageId,
+          conversation_id: currentConversationId,
+          message_id: realMessage.id,
         }),
       });
 
       const result = await response.json();
+
+      console.log('share result:', result);
 
       if (result.code !== 0) {
         message.error(result.message || '创建分享失败');
@@ -171,14 +283,30 @@ export function SingleChatBox({
 
       const shareUrl = result.data?.url;
 
+      console.log('shareUrl:', shareUrl);
+
       if (!shareUrl) {
         message.error('后端未返回分享链接');
         return;
       }
 
-      await navigator.clipboard.writeText(shareUrl);
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(shareUrl);
+          message.success('分享链接已复制');
+        } else {
+          const copied = fallbackCopyText(shareUrl);
 
-      message.success('分享链接已复制');
+          if (copied) {
+            message.success('分享链接已复制');
+          } else {
+            message.warning(`分享链接已创建，请手动复制：${shareUrl}`);
+          }
+        }
+      } catch (copyError) {
+        console.error('复制失败:', copyError);
+        message.warning(`分享链接已创建，请手动复制：${shareUrl}`);
+      }
     } catch (error) {
       console.error(error);
       message.error('分享失败');

@@ -115,7 +115,7 @@ export function LinkToDatasetDialog({
         <DialogFooter>
           <ButtonLoading type="submit" form={FormId} loading={loading}>
             <div className="flex gap-2 items-center">
-              <Link2 /> Save
+              <Link2 /> 保存
             </div>
           </ButtonLoading>
         </DialogFooter>

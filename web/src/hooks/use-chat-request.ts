@@ -139,6 +139,40 @@ export const useRemoveDialog = () => {
   return { data, loading, removeDialog: mutateAsync };
 };
 
+// export const useSetDialog = () => {
+//   const queryClient = useQueryClient();
+//   const { t } = useTranslation();
+
+//   const {
+//     data,
+//     isPending: loading,
+//     mutateAsync,
+//   } = useMutation({
+//     mutationKey: [ChatApiAction.SetDialog],
+//     mutationFn: async (params: Partial<IDialog>) => {
+//       const { data } = await chatService.setDialog(params);
+//       if (data.code === 0) {
+//         queryClient.invalidateQueries({
+//           exact: false,
+//           queryKey: [ChatApiAction.FetchDialogList],
+//         });
+
+//         queryClient.invalidateQueries({
+//           queryKey: [ChatApiAction.FetchDialog],
+//         });
+
+//         message.success(
+//           t(`message.${params.dialog_id ? 'modified' : 'created'}`),
+//         );
+//       }
+//       return data?.code;
+//     },
+//   });
+
+//   return { data, loading, setDialog: mutateAsync };
+// };
+
+// useSetDialog.ts
 export const useSetDialog = () => {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -156,20 +190,31 @@ export const useSetDialog = () => {
           exact: false,
           queryKey: [ChatApiAction.FetchDialogList],
         });
-
         queryClient.invalidateQueries({
           queryKey: [ChatApiAction.FetchDialog],
         });
-
-        message.success(
-          t(`message.${params.dialog_id ? 'modified' : 'created'}`),
-        );
+        // 不再在这里显示消息，交给调用方控制
       }
       return data?.code;
     },
   });
 
-  return { data, loading, setDialog: mutateAsync };
+  // 包装一层，让 setDialog 可以接受 options
+  const setDialog = async (
+    params: Partial<IDialog>,
+    options?: { silent?: boolean; successMessage?: string },
+  ) => {
+    const result = await mutateAsync(params);
+    if (result === 0 && !options?.silent) {
+      const msg =
+        options?.successMessage ||
+        t(`message.${params.dialog_id ? 'modified' : 'created'}`);
+      message.success(msg);
+    }
+    return result;
+  };
+
+  return { data, loading, setDialog };
 };
 
 // export const useSetDialog = () => {

@@ -621,6 +621,7 @@ async def create_share():
         "message_id": "xxx"
     }
     """
+    print("创建分享快照")
     try:
         req = await get_request_json()
 
@@ -665,6 +666,7 @@ async def create_share():
 
         messages = conv.message or []
         references = conv.reference or []
+        
 
         share_messages = build_share_messages_for_assistant_reference(
             messages=messages,
@@ -672,9 +674,42 @@ async def create_share():
             target_message_id=message_id,
         )
 
+        # 兜底：如果前端传来的 message_id 找不到，则尝试分享最后一条 assistant 消息
+        if share_messages is None:
+            fallback_message_id = None
+
+            for msg in reversed(messages):
+                content = msg.get("content") or msg.get("answer") or ""
+                if msg.get("role") == "assistant" and content:
+                    fallback_message_id = msg.get("id")
+                    break
+
+            if fallback_message_id:
+                logging.warning(
+                    "message_id not found, fallback to last assistant message. frontend_message_id=%s fallback_message_id=%s",
+                    message_id,
+                    fallback_message_id,
+                )
+
+                share_messages = build_share_messages_for_assistant_reference(
+                    messages=messages,
+                    references=references,
+                    target_message_id=fallback_message_id,
+                )
+
         if share_messages is None:
             return get_json_result(
-                data=False,
+                data={
+                    "frontend_message_id": message_id,
+                    "available_messages": [
+                        {
+                            "id": msg.get("id"),
+                            "role": msg.get("role"),
+                            "content": str(msg.get("content") or msg.get("answer") or "")[:100],
+                        }
+                        for msg in messages
+                    ],
+                },
                 message="Message not found in conversation.",
                 code=RetCode.DATA_ERROR,
             )
@@ -703,7 +738,7 @@ async def create_share():
         web_url = os.environ.get("WEB_URL", "").rstrip("/")
         if not web_url:
             web_url = request.host_url.rstrip("/")
-        web_url = "http://localhost:9222"
+        web_url = "http://139.224.241.243:9222"
         share_url = f"{web_url}/share/chat/{share.id}"
 
         return get_json_result(

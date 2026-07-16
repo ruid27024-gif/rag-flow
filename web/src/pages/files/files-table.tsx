@@ -48,7 +48,7 @@ import { KnowledgeCell } from './knowledge-cell';
 import { LinkToDatasetDialog } from './link-to-dataset-dialog';
 import { UseMoveDocumentShowType } from './use-move-file';
 import { useNavigateToOtherFolder } from './use-navigate-to-folder';
-import { isAdminownerType, isFolderType } from './util';
+import { isFolderType } from './util';
 
 // type FilesTableProps = Pick<
 //   ReturnType<typeof useFetchFileList>,
@@ -162,9 +162,15 @@ export function FilesTable({
         const record = row.original;
         const sourceType = record?.source_type;
 
-        const shouldHideCheckbox = sourceType
-          ? isAdminownerType(sourceType)
-          : false;
+        // const shouldHideCheckbox = sourceType
+        //   ? isAdminownerType(sourceType)
+        //   : false;
+
+        // if (shouldHideCheckbox) {
+        //   return null;
+        // }
+        const shouldHideCheckbox =
+          sourceType === 'adminowner' || sourceType === 'knowledgebase';
 
         if (shouldHideCheckbox) {
           return null;
@@ -372,7 +378,7 @@ export function FilesTable({
         return true;
       }
 
-      return !isAdminownerType(sourceType);
+      return sourceType !== 'adminowner' && sourceType !== 'knowledgebase';
     },
 
     state: {

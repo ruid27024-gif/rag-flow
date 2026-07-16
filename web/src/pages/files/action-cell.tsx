@@ -30,7 +30,7 @@ import {
 } from './hooks';
 import { useHandleDeleteFile } from './use-delete-file';
 // import { isFolderType } from './util';
-import { isAdminownerType, isFolderType } from './util';
+import { isAdminownerType, isFolderType, isKnowledgeBaseType } from './util';
 
 // type IProps = Pick<CellContext<IFile, unknown>, 'row'> &
 //   Pick<UseHandleConnectToKnowledgeReturnType, 'showConnectToKnowledgeModal'> &
@@ -62,7 +62,10 @@ export function ActionCell({
   const { downloadFile } = useDownloadFile();
   const isFolder = isFolderType(record.type);
   const extension = getExtension(record.name);
-  const isKnowledgeBase = isAdminownerType(record.source_type);
+  const isKnowledgeBase =
+    (isKnowledgeBaseType(record.source_type) && isFolderType(record.type)) ||
+    isAdminownerType(record.source_type);
+  // const isKnowledgeBase = isAdminownerType(record.source_type);
   // const isKnowledgeBase = false; // 👈 强制设为 false，绕过原本的判断逻辑
 
   const handleShowConnectToKnowledgeModal = useCallback(() => {
@@ -93,7 +96,7 @@ export function ActionCell({
 
   return (
     <section className="flex gap-4 items-center text-text-sub-title-invert">
-      {isKnowledgeBase || (
+      {!isKnowledgeBase && (
         <Tooltip
           title="链接知识库"
           placement="top" // 强制显示在按钮上方（可选 top/bottom/left/right 等）
@@ -110,7 +113,7 @@ export function ActionCell({
           </Button>
         </Tooltip>
       )}
-      {isKnowledgeBase || (
+      {!isKnowledgeBase && (
         <Tooltip
           title="文件转移"
           placement="top" // 强制显示在按钮上方（可选 top/bottom/left/right 等）
@@ -127,7 +130,7 @@ export function ActionCell({
           </Button>
         </Tooltip>
       )}
-      {isKnowledgeBase || (
+      {!isKnowledgeBase && (
         <Tooltip
           title="重命名"
           placement="top" // 强制显示在按钮上方（可选 top/bottom/left/right 等）

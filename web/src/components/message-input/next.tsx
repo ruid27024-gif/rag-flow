@@ -17,7 +17,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
 import {
-  Bot,
   CircleStop,
   Layers3,
   Paperclip,
@@ -435,7 +434,7 @@ export function NextMessageInput({
               </Button>
 
               {/* Agent */}
-              <Button
+              {/* <Button
                 type="button"
                 size="sm"
                 title="Agent 模式"
@@ -520,7 +519,7 @@ export function NextMessageInput({
                   <Bot className="h-3 w-3" />
                 </span>
                 Agent Skills
-              </Button>
+              </Button> */}
             </div>
           </div>
 

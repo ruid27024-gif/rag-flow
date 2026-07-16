@@ -27,6 +27,7 @@ import {
 } from '@/utils/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMount } from 'ahooks';
+import { message } from 'antd';
 import { isEmpty, omit } from 'lodash';
 import { LogOut } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -174,20 +175,37 @@ export default function Chat() {
     },
   });
 
-  // 表单values的提交逻辑
-  async function onSubmit(values: FormSchemaType) {
-    // 移除llm_setting
-    const nextValues: Record<string, any> = removeUselessFieldsFromValues(
-      values,
-      'llm_setting.',
-    );
+  // // 表单values的提交逻辑
+  // async function onSubmit(values: FormSchemaType) {
+  //   // 移除llm_setting
+  //   const nextValues: Record<string, any> = removeUselessFieldsFromValues(
+  //     values,
+  //     'llm_setting.',
+  //   );
 
-    // 调用 Hook 中的 setDialog 保存数据
-    setDialog({
-      ...omit(data, 'operator_permission'), // 保留原数据但剔除权限字段
-      ...nextValues, // 合并新修改的值
-      dialog_id: id, // 确保带上 ID
-    });
+  //   // 调用 Hook 中的 setDialog 保存数据
+  //   setDialog({
+  //     ...omit(data, 'operator_permission'), // 保留原数据但剔除权限字段
+  //     ...nextValues, // 合并新修改的值
+  //     dialog_id: id, // 确保带上 ID
+  //   });
+  // }
+  // 在 Chat 组件中
+  async function onSubmit(
+    values: FormSchemaType,
+    options?: { silent?: boolean; successMessage?: string },
+  ) {
+    const nextValues = removeUselessFieldsFromValues(values, 'llm_setting.');
+
+    // 调用 setDialog 时传入 options
+    await setDialog(
+      {
+        ...omit(data, 'operator_permission'),
+        ...nextValues,
+        dialog_id: id,
+      },
+      options, // 透传
+    );
   }
 
   const reasoning = !!form.watch('prompt_config.reasoning');
@@ -220,14 +238,18 @@ export default function Chat() {
 
       const values = form.getValues();
 
-      await onSubmit({
-        ...values,
-        prompt_config: {
-          ...values.prompt_config,
-          reasoning: nextReasoning,
-          agent_mod: nextAgentMod,
+      await onSubmit(
+        {
+          ...values,
+          prompt_config: {
+            ...values.prompt_config,
+            reasoning: nextReasoning,
+            agent_mod: nextAgentMod,
+          },
         },
-      });
+        { silent: true },
+      );
+      message.success('切换成功');
     },
     [form, onSubmit],
   );
@@ -290,6 +312,19 @@ export default function Chat() {
     // 第一次加载立即获取对话数据
     fetchConversation(conversationId, isNew === 'true');
   });
+
+  const refreshCurrentConversation = useCallback(async () => {
+    if (!conversationId) return null;
+
+    const conversation = await fetchConversationManually(conversationId);
+
+    if (!isEmpty(conversation)) {
+      setCurrentConversation(conversation);
+      return conversation;
+    }
+
+    return null;
+  }, [conversationId, fetchConversationManually]);
 
   if (isDebugMode) {
     return (
@@ -441,6 +476,7 @@ export default function Chat() {
                   onEnableDeepReasoning={onEnableDeepReasoning}
                   onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                   onEnableAgent={onEnableAgent}
+                  refreshConversation={refreshCurrentConversation}
                 />
               </div>
 
