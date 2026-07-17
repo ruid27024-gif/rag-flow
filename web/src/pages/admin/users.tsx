@@ -356,6 +356,8 @@ function AdminUserManagement() {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
+  const filteredRowCount = table.getFilteredRowModel().rows.length;
+
   return (
     <>
       <Card className="!shadow-none relative h-full bg-transparent overflow-hidden">
@@ -536,9 +538,23 @@ function AdminUserManagement() {
             </Table>
           </CardContent>
 
-          <CardFooter className="flex items-center justify-end">
+          {/* <CardFooter className="flex items-center justify-end">
             <RAGFlowPagination
               total={usersList?.length ?? 0}
+              current={table.getState().pagination.pageIndex + 1}
+              pageSize={table.getState().pagination.pageSize}
+              onChange={(page, pageSize) => {
+                table.setPagination({
+                  pageIndex: page - 1,
+                  pageSize,
+                });
+              }}
+            />
+          </CardFooter> */}
+
+          <CardFooter className="flex items-center justify-end">
+            <RAGFlowPagination
+              total={filteredRowCount} // ← 使用筛选后的数量
               current={table.getState().pagination.pageIndex + 1}
               pageSize={table.getState().pagination.pageSize}
               onChange={(page, pageSize) => {

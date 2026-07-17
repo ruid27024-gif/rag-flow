@@ -35,9 +35,8 @@ const CopyToClipboard = ({ text, className }: Props) => {
   const [copied, setCopied] = useState(false);
   const { t } = useTranslate('common');
 
-  const filteredText = text
-    .replace(/<think>([\s\S]*?)<\/think>/gi, '$1')
-    .trim();
+  // 删除 <THINK>...</THINK> 及其之间的所有内容
+  const filteredText = text.replace(/<THINK>[\s\S]*?<\/THINK>/gi, '').trim();
 
   const handleCopy = () => {
     setCopied(true);
