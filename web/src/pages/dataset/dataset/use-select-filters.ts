@@ -27,8 +27,10 @@ export function useSelectDatasetFilters() {
   }, [filter.run_status, t]);
   const filters: FilterCollection[] = useMemo(() => {
     return [
-      { field: 'type', label: 'File Type', list: fileTypes },
-      { field: 'run', label: 'Status', list: fileStatus },
+      // { field: 'type', label: 'File Type', list: fileTypes },
+      // { field: 'run', label: 'Status', list: fileStatus },
+      { field: 'type', label: '文件类型', list: fileTypes },
+      { field: 'run', label: '状态', list: fileStatus },
     ] as FilterCollection[];
   }, [fileStatus, fileTypes]);
 
