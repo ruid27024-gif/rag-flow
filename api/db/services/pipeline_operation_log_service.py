@@ -408,188 +408,693 @@ class PipelineOperationLogService(CommonService):
 
     #     return log_list, count
 
+    # @classmethod
+    # @DB.connection_context()
+    # def get_file_logs_by_kb_id(
+    #     cls,
+    #     kb_id,
+    #     page_number,
+    #     items_per_page,
+    #     orderby,
+    #     desc,
+    #     keywords,
+    #     operation_status,
+    #     types,
+    #     suffix,
+    #     create_date_from=None,
+    #     create_date_to=None
+    # ):
+    #     fields = cls.get_file_logs_fields()
+
+    #     from peewee import fn, Case, JOIN
+    #     from api.db.db_models import Task
+
+    #     LogLatestAlias = cls.model.alias()
+
+    #     latest_log_update_date = (
+    #         LogLatestAlias
+    #         .select(fn.MAX(LogLatestAlias.update_date))
+    #         .where(
+    #             LogLatestAlias.kb_id == cls.model.kb_id,
+    #             LogLatestAlias.document_id == cls.model.document_id,
+    #             LogLatestAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+    #         )
+    #     )
+
+    #     TaskLatestAlias = Task.alias()
+
+    #     latest_task_update_time = (
+    #         TaskLatestAlias
+    #         .select(fn.MAX(TaskLatestAlias.update_time))
+    #         .where(
+    #             TaskLatestAlias.doc_id == cls.model.document_id
+    #         )
+    #     )
+
+    #     TaskParseAlias = Task.alias()
+
+    #     has_parse_task_query = (
+    #         TaskParseAlias
+    #         .select(TaskParseAlias.id)
+    #         .where(
+    #             TaskParseAlias.doc_id == cls.model.document_id,
+    #             TaskParseAlias.task_type == "",
+    #         )
+    #         .limit(1)
+    #     )
+
+    #     is_latest_parse = Case(
+    #         None,
+    #         [
+    #             (cls.model.update_date == latest_log_update_date, 1),
+    #         ],
+    #         0
+    #     ).alias("is_latest_parse")
+
+    #     has_parse_task = Case(
+    #         None,
+    #         [
+    #             (fn.EXISTS(has_parse_task_query), 1),
+    #         ],
+    #         0
+    #     ).alias("has_parse_task")
+
+    #     fields = [
+    #         *fields,
+    #         is_latest_parse,
+    #         has_parse_task,
+
+    #         Task.task_type.alias("latest_task_type"),
+    #         Task.progress.alias("latest_task_progress"),
+    #         Task.progress_msg.alias("latest_task_progress_msg"),
+    #         Task.update_time.alias("latest_task_update_time"),
+    #     ]
+
+    #     logs = (
+    #         cls.model
+    #         .select(*fields)
+    #         .join(
+    #             Task,
+    #             JOIN.LEFT_OUTER,
+    #             on=(
+    #                 (Task.doc_id == cls.model.document_id) &
+    #                 (Task.update_time == latest_task_update_time)
+    #             )
+    #         )
+    #         .where(
+    #             cls.model.kb_id == kb_id,
+    #             cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+    #             cls.model.update_date == latest_log_update_date,
+    #         )
+    #     )
+
+    #     if keywords:
+    #         logs = logs.where(
+    #             fn.LOWER(cls.model.document_name).contains(keywords.lower())
+    #         )
+
+    #     if operation_status:
+    #         logs = logs.where(cls.model.operation_status.in_(operation_status))
+
+    #     if types:
+    #         logs = logs.where(cls.model.document_type.in_(types))
+
+    #     if suffix:
+    #         logs = logs.where(cls.model.document_suffix.in_(suffix))
+
+    #     if create_date_from:
+    #         logs = logs.where(cls.model.create_date >= create_date_from)
+
+    #     if create_date_to:
+    #         logs = logs.where(cls.model.create_date <= create_date_to)
+
+    #     # 只展示 status 为 2 的日志
+    #     logs = logs.where(cls.model.status != "2")
+
+    #     count = logs.count()
+
+    #     if desc:
+    #         logs = logs.order_by(cls.model.getter_by(orderby).desc())
+    #     else:
+    #         logs = logs.order_by(cls.model.getter_by(orderby).asc())
+
+    #     if page_number and items_per_page:
+    #         logs = logs.paginate(page_number, items_per_page)
+
+    #     log_list = list(logs.dicts())
+
+    #     for log in log_list:
+    #         raw_task_type = log.get("latest_task_type")
+    #         has_parse_task = bool(log.get("has_parse_task"))
+
+    #         if raw_task_type is None:
+    #             latest_task_type = None
+    #         else:
+    #             latest_task_type = raw_task_type.lower().strip()
+
+    #         if latest_task_type == "graphrag":
+    #             process_scene = "graph_parse"
+    #             process_scene_text = "知识图谱"
+
+    #         elif latest_task_type == "raptor":
+    #             process_scene = "raptor"
+    #             process_scene_text = "raptor"
+
+    #         elif has_parse_task:
+    #             process_scene = "full_parse"
+    #             process_scene_text = "解析全文"
+
+    #         elif latest_task_type == "parse_author_info":
+    #             process_scene = "author_extract"
+    #             process_scene_text = "提取作者"
+
+    #         elif latest_task_type:
+    #             process_scene = latest_task_type
+    #             process_scene_text = latest_task_type
+
+    #         else:
+    #             process_scene = "unknown"
+    #             process_scene_text = "未知"
+
+    #         log.update({
+    #             "latest_task_type": latest_task_type or "",
+    #             "has_parse_task": has_parse_task,
+
+    #             "process_scene": process_scene,
+    #             "process_scene_text": process_scene_text,
+
+    #             "latest_task_scene": process_scene,
+    #             "latest_task_scene_text": process_scene_text,
+
+    #             "latest_task_progress": log.get("latest_task_progress"),
+    #             "latest_task_progress_msg": log.get("latest_task_progress_msg") or "",
+    #             "latest_task_update_time": log.get("latest_task_update_time"),
+    #         })
+
+    #     return log_list, count
+    
     @classmethod
     @DB.connection_context()
     def get_file_logs_by_kb_id(
-        cls,
-        kb_id,
-        page_number,
-        items_per_page,
-        orderby,
-        desc,
-        keywords,
-        operation_status,
-        types,
-        suffix,
-        create_date_from=None,
-        create_date_to=None
+            cls,
+            kb_id,
+            page_number,
+            items_per_page,
+            orderby,
+            desc,
+            keywords,
+            operation_status,
+            types,
+            suffix,
+            create_date_from=None,
+            create_date_to=None,
     ):
-        fields = cls.get_file_logs_fields()
+        from peewee import fn, JOIN, Case
+        from api.db.db_models import Document, Task
+        from api.db.services.task_service import GRAPH_RAPTOR_FAKE_DOC_ID
 
-        from peewee import fn, Case, JOIN
-        from api.db.db_models import Task
+        Log = cls.model
 
-        LogLatestAlias = cls.model.alias()
+        # =========================
+        # Task 别名
+        # =========================
+        TaskActive = Task.alias()
+        TaskAny = Task.alias()
 
-        latest_log_update_date = (
-            LogLatestAlias
-            .select(fn.MAX(LogLatestAlias.update_date))
-            .where(
-                LogLatestAlias.kb_id == cls.model.kb_id,
-                LogLatestAlias.document_id == cls.model.document_id,
-                LogLatestAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
-            )
-        )
-
-        TaskLatestAlias = Task.alias()
-
-        latest_task_update_time = (
-            TaskLatestAlias
-            .select(fn.MAX(TaskLatestAlias.update_time))
-            .where(
-                TaskLatestAlias.doc_id == cls.model.document_id
-            )
-        )
-
+        TaskActivePickAlias = Task.alias()
+        TaskAnyPickAlias = Task.alias()
         TaskParseAlias = Task.alias()
 
-        has_parse_task_query = (
-            TaskParseAlias
-            .select(TaskParseAlias.id)
+        LogLatestAlias = Log.alias()
+
+        # =========================
+        # 当前未完成任务：按任务优先级取
+        #
+        # 优先级：
+        # 0 普通全文解析 task_type == ""
+        # 1 dataflow
+        # 2 graphrag
+        # 3 raptor
+        # 9 parse_author_info
+        #
+        # 注意：
+        # progress >= 0 and progress < 1
+        # 表示排队中 / 运行中
+        # =========================
+        active_task_id_query = (
+            TaskActivePickAlias
+            .select(TaskActivePickAlias.id)
             .where(
-                TaskParseAlias.doc_id == cls.model.document_id,
-                TaskParseAlias.task_type == "",
+                TaskActivePickAlias.doc_id == Document.id,
+                TaskActivePickAlias.progress >= 0,
+                TaskActivePickAlias.progress < 1,
+            )
+            .order_by(
+                Case(
+                    None,
+                    [
+                        # 普通全文解析，最高优先级
+                        (TaskActivePickAlias.task_type == "", 0),
+
+                        # dataflow 解析
+                        (TaskActivePickAlias.task_type ** "dataflow%", 1),
+
+                        # 知识图谱
+                        (TaskActivePickAlias.task_type == "graphrag", 2),
+
+                        # raptor
+                        (TaskActivePickAlias.task_type == "raptor", 3),
+
+                        # 提取作者，最低优先级
+                        (TaskActivePickAlias.task_type == "parse_author_info", 9),
+                    ],
+                    5,
+                ).asc(),
+                TaskActivePickAlias.update_time.desc(),
             )
             .limit(1)
         )
 
-        is_latest_parse = Case(
-            None,
-            [
-                (cls.model.update_date == latest_log_update_date, 1),
-            ],
-            0
-        ).alias("is_latest_parse")
+        # =========================
+        # 最新任意 Task
+        # 如果没有 active_task，就用它兜底
+        # =========================
+        latest_any_task_id_query = (
+            TaskAnyPickAlias
+            .select(TaskAnyPickAlias.id)
+            .where(
+                TaskAnyPickAlias.doc_id == Document.id
+            )
+            .order_by(TaskAnyPickAlias.update_time.desc())
+            .limit(1)
+        )
+
+        # =========================
+        # 最新 pipeline_operation_log
+        # =========================
+        latest_log_update_date = (
+            LogLatestAlias
+            .select(fn.MAX(LogLatestAlias.update_date))
+            .where(
+                LogLatestAlias.kb_id == Document.kb_id,
+                LogLatestAlias.document_id == Document.id,
+                LogLatestAlias.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
+            )
+        )
+
+        # =========================
+        # 是否存在普通全文解析任务
+        # task_type == "" 代表普通全文解析
+        # =========================
+        has_parse_task_query = (
+            TaskParseAlias
+            .select(TaskParseAlias.id)
+            .where(
+                TaskParseAlias.doc_id == Document.id,
+                TaskParseAlias.task_type == "",
+            )
+            .limit(1)
+        )
 
         has_parse_task = Case(
             None,
             [
                 (fn.EXISTS(has_parse_task_query), 1),
             ],
-            0
+            0,
         ).alias("has_parse_task")
 
-        fields = [
-            *fields,
-            is_latest_parse,
-            has_parse_task,
+        # =========================
+        # 主查询：以 Document 为主表
+        # =========================
+        query = (
+            Document
+            .select(
+                # ---------- Document 字段 ----------
+                Document.id.alias("id"),
+                Document.id.alias("document_id"),
+                Document.kb_id.alias("kb_id"),
 
-            Task.task_type.alias("latest_task_type"),
-            Task.progress.alias("latest_task_progress"),
-            Task.progress_msg.alias("latest_task_progress_msg"),
-            Task.update_time.alias("latest_task_update_time"),
-        ]
+                Document.name.alias("document_name"),
+                Document.suffix.alias("document_suffix"),
+                Document.type.alias("document_type"),
+                Document.source_type.alias("source_type"),
 
-        logs = (
-            cls.model
-            .select(*fields)
+                Document.parser_id.alias("parser_id"),
+                Document.pipeline_id.alias("document_pipeline_id"),
+                Document.thumbnail.alias("document_avatar"),
+
+                Document.progress.alias("document_progress"),
+                Document.progress_msg.alias("document_progress_msg"),
+                Document.process_begin_at.alias("document_process_begin_at"),
+                Document.process_duration.alias("document_process_duration"),
+                Document.run.alias("document_run"),
+
+                Document.create_time.alias("create_time"),
+                Document.create_date.alias("create_date"),
+                Document.update_time.alias("update_time"),
+                Document.update_date.alias("update_date"),
+
+                # ---------- 当前优先展示的未完成 Task ----------
+                TaskActive.id.alias("active_task_id"),
+                TaskActive.task_type.alias("active_task_type"),
+                TaskActive.progress.alias("active_task_progress"),
+                TaskActive.progress_msg.alias("active_task_progress_msg"),
+                TaskActive.begin_at.alias("active_task_begin_at"),
+                TaskActive.process_duration.alias("active_task_process_duration"),
+                TaskActive.update_time.alias("active_task_update_time"),
+
+                # ---------- 最新任意 Task ----------
+                TaskAny.id.alias("latest_task_id"),
+                TaskAny.task_type.alias("latest_task_type"),
+                TaskAny.progress.alias("latest_task_progress"),
+                TaskAny.progress_msg.alias("latest_task_progress_msg"),
+                TaskAny.begin_at.alias("latest_task_begin_at"),
+                TaskAny.process_duration.alias("latest_task_process_duration"),
+                TaskAny.update_time.alias("latest_task_update_time"),
+
+                # ---------- 最新日志字段 ----------
+                Log.id.alias("latest_log_id"),
+                Log.pipeline_id.alias("pipeline_id"),
+                Log.pipeline_title.alias("pipeline_title"),
+                Log.task_type.alias("log_task_type"),
+                Log.operation_status.alias("latest_log_operation_status"),
+                Log.progress.alias("latest_log_progress"),
+                Log.progress_msg.alias("latest_log_progress_msg"),
+                Log.process_begin_at.alias("latest_log_process_begin_at"),
+                Log.process_duration.alias("latest_log_process_duration"),
+                Log.avatar.alias("avatar"),
+                Log.dsl.alias("dsl"),
+
+                has_parse_task,
+            )
             .join(
-                Task,
+                TaskActive,
+                JOIN.LEFT_OUTER,
+                on=(TaskActive.id == active_task_id_query),
+            )
+            .switch(Document)
+            .join(
+                TaskAny,
+                JOIN.LEFT_OUTER,
+                on=(TaskAny.id == latest_any_task_id_query),
+            )
+            .switch(Document)
+            .join(
+                Log,
                 JOIN.LEFT_OUTER,
                 on=(
-                    (Task.doc_id == cls.model.document_id) &
-                    (Task.update_time == latest_task_update_time)
-                )
+                        (Log.document_id == Document.id)
+                        & (Log.update_date == latest_log_update_date)
+                ),
             )
             .where(
-                cls.model.kb_id == kb_id,
-                cls.model.document_id != GRAPH_RAPTOR_FAKE_DOC_ID,
-                cls.model.update_date == latest_log_update_date,
+                Document.kb_id == kb_id,
+                Document.id != GRAPH_RAPTOR_FAKE_DOC_ID,
+                Document.status == "1",
             )
         )
 
+        # =========================
+        # 查询条件
+        # =========================
         if keywords:
-            logs = logs.where(
-                fn.LOWER(cls.model.document_name).contains(keywords.lower())
+            query = query.where(
+                fn.LOWER(Document.name).contains(keywords.lower())
             )
 
-        if operation_status:
-            logs = logs.where(cls.model.operation_status.in_(operation_status))
-
         if types:
-            logs = logs.where(cls.model.document_type.in_(types))
+            query = query.where(Document.type.in_(types))
 
         if suffix:
-            logs = logs.where(cls.model.document_suffix.in_(suffix))
+            query = query.where(Document.suffix.in_(suffix))
 
         if create_date_from:
-            logs = logs.where(cls.model.create_date >= create_date_from)
+            query = query.where(Document.create_date >= create_date_from)
 
         if create_date_to:
-            logs = logs.where(cls.model.create_date <= create_date_to)
+            query = query.where(Document.create_date <= create_date_to)
 
-        # 只展示 status 为 2 的日志
-        logs = logs.where(cls.model.status != "2")
+        # =========================
+        # 排序
+        # =========================
+        order_field_map = {
+            "create_time": Document.create_time,
+            "create_date": Document.create_date,
+            "update_time": Document.update_time,
+            "update_date": Document.update_date,
+            "process_begin_at": Document.process_begin_at,
+            "document_name": Document.name,
+            "name": Document.name,
+            "progress": Document.progress,
+        }
 
-        count = logs.count()
+        order_field = order_field_map.get(orderby, Document.create_time)
 
         if desc:
-            logs = logs.order_by(cls.model.getter_by(orderby).desc())
+            query = query.order_by(order_field.desc())
         else:
-            logs = logs.order_by(cls.model.getter_by(orderby).asc())
+            query = query.order_by(order_field.asc())
 
+        rows = list(query.dicts())
+
+        # =========================
+        # 选择页面应该展示哪个任务
+        # =========================
+        def pick_display_task(row):
+            """
+            优先展示 active_task。
+            active_task 已经在 SQL 里按任务类型优先级选过：
+
+            全文解析 > dataflow > graphrag > raptor > 其他 > 提取作者
+            """
+
+            if row.get("active_task_id"):
+                return {
+                    "id": row.get("active_task_id"),
+                    "task_type": row.get("active_task_type"),
+                    "progress": row.get("active_task_progress"),
+                    "progress_msg": row.get("active_task_progress_msg") or "",
+                    "begin_at": row.get("active_task_begin_at"),
+                    "process_duration": row.get("active_task_process_duration"),
+                    "update_time": row.get("active_task_update_time"),
+                    "is_active": True,
+                }
+
+            if row.get("latest_task_id"):
+                return {
+                    "id": row.get("latest_task_id"),
+                    "task_type": row.get("latest_task_type"),
+                    "progress": row.get("latest_task_progress"),
+                    "progress_msg": row.get("latest_task_progress_msg") or "",
+                    "begin_at": row.get("latest_task_begin_at"),
+                    "process_duration": row.get("latest_task_process_duration"),
+                    "update_time": row.get("latest_task_update_time"),
+                    "is_active": False,
+                }
+
+            return {
+                "id": None,
+                "task_type": "",
+                "progress": None,
+                "progress_msg": "",
+                "begin_at": None,
+                "process_duration": None,
+                "update_time": None,
+                "is_active": False,
+            }
+
+        # =========================
+        # 推断 operation_status
+        #
+        # 前端 RunningStatus:
+        # 0 未开始
+        # 1 运行中
+        # 2 已取消
+        # 3 成功
+        # 4 失败
+        # 5 排队中
+        # =========================
+        def infer_operation_status(row, display_task):
+            document_run = row.get("document_run")
+
+            task_id = display_task.get("id")
+            task_progress = display_task.get("progress")
+            task_msg = display_task.get("progress_msg") or ""
+            task_process_duration = display_task.get("process_duration")
+
+            task_msg_lower = task_msg.lower()
+
+            # 没有任何 Task，优先用 document.run
+            if not task_id:
+                if document_run is not None and str(document_run) != "":
+                    return str(document_run)
+                return "0"
+
+            # Document 明确取消
+            if str(document_run) == "2":
+                return "2"
+
+            # 有任务但 progress 为空，认为排队中
+            if task_progress is None:
+                return "5"
+
+            # 失败或取消
+            if task_progress < 0:
+                if (
+                        "canceled" in task_msg_lower
+                        or "cancelled" in task_msg_lower
+                        or "取消" in task_msg_lower
+                ):
+                    return "2"
+                return "4"
+
+            # 成功
+            if task_progress >= 1:
+                return "3"
+
+            # 排队中
+            # 你的场景：progress 一开始不是 0，
+            # 但是 process_duration == 0 且 progress_msg 是 Task has been received.
+            if (
+                    task_process_duration == 0
+                    and (
+                    "task has been received" in task_msg_lower
+                    or "received" in task_msg_lower
+            )
+            ):
+                return "5"
+
+            # progress 刚好为 0，也认为排队中
+            if task_progress == 0:
+                return "5"
+
+            # 其他 0 < progress < 1
+            return "1"
+
+        # =========================
+        # 推断具体任务显示
+        # =========================
+        def infer_process_scene(display_task, has_parse_task_flag):
+            raw_task_type = display_task.get("task_type")
+            task_type = raw_task_type.lower().strip() if raw_task_type else ""
+
+            if task_type == "graphrag":
+                return task_type, "graph_parse", "知识图谱"
+
+            if task_type == "raptor":
+                return task_type, "raptor", "raptor"
+
+            if task_type == "parse_author_info":
+                return task_type, "author_extract", "提取作者"
+
+            # 普通全文解析 task_type 为空
+            if task_type == "":
+                return task_type, "full_parse", "解析全文"
+
+            # dataflow 也可以视为解析全文
+            if task_type.startswith("dataflow"):
+                return task_type, "full_parse", "解析全文"
+
+            # 兜底：如果这个文档有普通解析任务，也显示解析全文
+            if has_parse_task_flag:
+                return task_type, "full_parse", "解析全文"
+
+            return task_type, task_type or "unknown", task_type or "未知"
+
+        log_list = []
+
+        for row in rows:
+            display_task = pick_display_task(row)
+
+            # 状态
+            row["operation_status"] = infer_operation_status(row, display_task)
+
+            # 状态过滤
+            if operation_status:
+                valid_status = [str(s) for s in operation_status]
+                if row["operation_status"] not in valid_status:
+                    continue
+
+            # source_from 前端兼容
+            row["source_from"] = (row.get("source_type") or "local").split("/")[0]
+
+            # progress 优先使用当前展示任务
+            row["progress"] = (
+                display_task.get("progress")
+                if display_task.get("progress") is not None
+                else row.get("document_progress") or 0
+            )
+
+            # progress_msg 优先使用当前展示任务
+            row["progress_msg"] = (
+                    display_task.get("progress_msg")
+                    or row.get("document_progress_msg")
+                    or row.get("latest_log_progress_msg")
+                    or ""
+            )
+
+            # process_begin_at 优先使用当前展示任务
+            row["process_begin_at"] = (
+                    display_task.get("begin_at")
+                    or row.get("document_process_begin_at")
+                    or row.get("latest_log_process_begin_at")
+            )
+
+            # process_duration 优先使用当前展示任务
+            row["process_duration"] = (
+                    display_task.get("process_duration")
+                    or row.get("document_process_duration")
+                    or row.get("latest_log_process_duration")
+                    or 0
+            )
+
+            # pipeline_title 兜底
+            row["pipeline_title"] = (
+                    row.get("pipeline_title")
+                    or row.get("parser_id")
+                    or "general"
+            )
+
+            # avatar 兜底
+            row["avatar"] = row.get("avatar") or row.get("document_avatar")
+
+            has_parse_task_flag = bool(row.get("has_parse_task"))
+
+            latest_task_type, process_scene, process_scene_text = infer_process_scene(
+                display_task,
+                has_parse_task_flag,
+            )
+
+            # 前端任务字段
+            row["task_type"] = latest_task_type
+            row["latest_task_type"] = latest_task_type
+            row["has_parse_task"] = has_parse_task_flag
+
+            row["process_scene"] = process_scene
+            row["process_scene_text"] = process_scene_text
+
+            row["latest_task_scene"] = process_scene
+            row["latest_task_scene_text"] = process_scene_text
+
+            row["latest_task_progress"] = display_task.get("progress")
+            row["latest_task_progress_msg"] = display_task.get("progress_msg") or ""
+            row["latest_task_update_time"] = display_task.get("update_time")
+
+            # 调试字段，可留可删
+            row["display_task_id"] = display_task.get("id")
+            row["display_task_is_active"] = display_task.get("is_active")
+
+            log_list.append(row)
+
+        count = len(log_list)
+
+        # 因为 operation_status 是 Python 中推断出来的，
+        # 所以分页放在状态过滤之后
         if page_number and items_per_page:
-            logs = logs.paginate(page_number, items_per_page)
-
-        log_list = list(logs.dicts())
-
-        for log in log_list:
-            raw_task_type = log.get("latest_task_type")
-            has_parse_task = bool(log.get("has_parse_task"))
-
-            if raw_task_type is None:
-                latest_task_type = None
-            else:
-                latest_task_type = raw_task_type.lower().strip()
-
-            if latest_task_type == "graphrag":
-                process_scene = "graph_parse"
-                process_scene_text = "知识图谱"
-
-            elif latest_task_type == "raptor":
-                process_scene = "raptor"
-                process_scene_text = "raptor"
-
-            elif has_parse_task:
-                process_scene = "full_parse"
-                process_scene_text = "解析全文"
-
-            elif latest_task_type == "parse_author_info":
-                process_scene = "author_extract"
-                process_scene_text = "提取作者"
-
-            elif latest_task_type:
-                process_scene = latest_task_type
-                process_scene_text = latest_task_type
-
-            else:
-                process_scene = "unknown"
-                process_scene_text = "未知"
-
-            log.update({
-                "latest_task_type": latest_task_type or "",
-                "has_parse_task": has_parse_task,
-
-                "process_scene": process_scene,
-                "process_scene_text": process_scene_text,
-
-                "latest_task_scene": process_scene,
-                "latest_task_scene_text": process_scene_text,
-
-                "latest_task_progress": log.get("latest_task_progress"),
-                "latest_task_progress_msg": log.get("latest_task_progress_msg") or "",
-                "latest_task_update_time": log.get("latest_task_update_time"),
-            })
+            start = (page_number - 1) * items_per_page
+            end = start + items_per_page
+            log_list = log_list[start:end]
 
         return log_list, count
     
