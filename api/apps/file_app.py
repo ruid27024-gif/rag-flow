@@ -1610,3 +1610,116 @@ async def move():
 
     except Exception as e:
         return server_error_response(e)
+
+from pathlib import Path
+from urllib.parse import unquote
+AGENT_OUTPUT_ROOT = Path("./agent_outputs").resolve()
+from quart import send_file
+
+from pathlib import Path
+from urllib.parse import unquote
+from quart import send_file
+
+@manager.route('/agent/download/<tenant_id>/<conversation_id>/<path:filename>', methods=['GET'])
+async def download_agent_file(tenant_id, conversation_id, filename):
+    """
+    下载 Agent 生成的文件。
+
+    URL:
+    /v1/file/agent/download/{tenant_id}/{conversation_id}/{filename}
+    """
+
+    filename = unquote(filename)
+
+    # 只保留文件名，防止 ../../xxx
+    safe_filename = Path(filename).name
+
+    root = AGENT_OUTPUT_ROOT.resolve()
+
+    file_path = (
+        root
+        / str(tenant_id)
+        / str(conversation_id)
+        / safe_filename
+    ).resolve()
+
+    # 更安全的路径穿越检查
+    try:
+        file_path.relative_to(root)
+    except ValueError:
+        return get_data_error_result(message="Invalid file path")
+
+    if not file_path.exists() or not file_path.is_file():
+        return get_data_error_result(message="File not found")
+
+    return await send_file(
+        str(file_path),
+        as_attachment=True,
+        attachment_filename=safe_filename,
+    )
+
+from pathlib import Path
+from urllib.parse import quote, unquote
+from quart import send_file
+
+@manager.route('/agent/list/<tenant_id>/<conversation_id>', methods=['GET'])
+async def list_agent_files(tenant_id, conversation_id):
+    """
+    列出某个 conversation 下 Agent 生成的文件。
+
+    URL:
+    /v1/file/agent/list/{tenant_id}/{conversation_id}
+    """
+
+    root = AGENT_OUTPUT_ROOT.resolve()
+
+    conversation_dir = (
+        root
+        / str(tenant_id)
+        / str(conversation_id)
+    ).resolve()
+
+    # 防止路径穿越
+    try:
+        conversation_dir.relative_to(root)
+    except ValueError:
+        return get_data_error_result(message="Invalid directory path")
+
+    # 目录不存在时返回空列表
+    if not conversation_dir.exists() or not conversation_dir.is_dir():
+        return get_json_result(data={
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+            "files": []
+        })
+
+    files = []
+
+    for item in conversation_dir.iterdir():
+        if not item.is_file():
+            continue
+
+        stat = item.stat()
+
+        download_url = (
+            f"/v1/file/agent/download/"
+            f"{quote(str(tenant_id))}/"
+            f"{quote(str(conversation_id))}/"
+            f"{quote(item.name)}"
+        )
+
+        files.append({
+            "name": item.name,
+            "size": stat.st_size,
+            "mtime": stat.st_mtime,
+            "download_url": download_url,
+        })
+
+    # 按修改时间倒序排列，最新文件在前面
+    files.sort(key=lambda x: x["mtime"], reverse=True)
+
+    return get_json_result(data={
+        "tenant_id": tenant_id,
+        "conversation_id": conversation_id,
+        "files": files
+    })

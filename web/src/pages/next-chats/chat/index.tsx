@@ -44,7 +44,241 @@ import { useAddChatBox } from './use-add-box';
 import { useSwitchDebugMode } from './use-switch-debug-mode';
 
 import DocumentPreviewer from '@/components/pdf-previewer';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { message } from 'antd';
+
+type AgentFileItem = {
+  name: string;
+  size: number;
+  mtime?: number;
+  download_url: string;
+};
+
+function AgentFilesPanel({
+  className,
+  tenantId,
+  conversationId,
+  visible,
+  onClose,
+}: {
+  className?: string;
+  tenantId?: string;
+  conversationId?: string;
+  visible?: boolean;
+  onClose?: () => void;
+}) {
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [files, setFiles] = useState<AgentFileItem[]>([]);
+  const [error, setError] = useState('');
+
+  const loadFiles = useCallback(async () => {
+    if (!tenantId || !conversationId) {
+      setError('缺少 tenantId 或 conversationId');
+      setFiles([]);
+      return;
+    }
+
+    setLoadingFiles(true);
+    setError('');
+
+    try {
+      const url = `/v1/file/agent/list/${encodeURIComponent(
+        tenantId,
+      )}/${encodeURIComponent(conversationId)}`;
+
+      const res = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result?.message || '获取文件列表失败');
+      }
+
+      setFiles(result?.data?.files || []);
+    } catch (err: any) {
+      console.error('加载会话文件失败:', err);
+      setError(err?.message || '加载会话文件失败');
+      setFiles([]);
+    } finally {
+      setLoadingFiles(false);
+    }
+  }, [tenantId, conversationId]);
+
+  useEffect(() => {
+    if (visible) {
+      loadFiles();
+    }
+  }, [visible, loadFiles]);
+
+  return (
+    <aside
+      className={cn(
+        `
+    flex
+    h-full
+    w-[360px]
+    flex-col
+    border-l
+    border-gray-200
+    bg-transparent
+    dark:border-gray-800
+    dark:bg-transparent
+    `,
+        className,
+      )}
+    >
+      <div
+        className="
+          flex
+          h-12
+          shrink-0
+          items-center
+          justify-between
+          border-b
+          border-gray-200
+          px-4
+          dark:border-gray-800
+        "
+      >
+        <div className="font-medium text-gray-900 dark:text-gray-100">
+          本会话生成文件
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={loadFiles}
+            className="
+              rounded-md
+              px-2
+              py-1
+              text-xs
+              text-gray-500
+              hover:bg-gray-100
+              dark:text-gray-400
+              dark:hover:bg-gray-800
+            "
+          >
+            刷新
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="
+              rounded-md
+              px-2
+              py-1
+              text-xs
+              text-gray-500
+              hover:bg-gray-100
+              dark:text-gray-400
+              dark:hover:bg-gray-800
+            "
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {loadingFiles && (
+          <div className="py-6 text-center text-sm text-gray-500">
+            加载中...
+          </div>
+        )}
+
+        {!loadingFiles && error && (
+          <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        {!loadingFiles && !error && files.length === 0 && (
+          <div className="py-6 text-center text-sm text-gray-500">
+            暂无生成文件
+          </div>
+        )}
+
+        {!loadingFiles && !error && files.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {files.map((file) => (
+              <div
+                key={file.name}
+                className="
+                  rounded-lg
+                  border
+                  border-gray-200
+                  p-3
+                  hover:bg-gray-50
+                  dark:border-gray-800
+                  dark:hover:bg-gray-900
+                "
+              >
+                <div className="min-w-0">
+                  <div
+                    className="
+                      truncate
+                      text-sm
+                      font-medium
+                      text-gray-900
+                      dark:text-gray-100
+                    "
+                    title={file.name}
+                  >
+                    {file.name}
+                  </div>
+
+                  <div className="mt-1 text-xs text-gray-500">
+                    {formatBytes(file.size)}
+                    {file.mtime ? ` · ${formatTime(file.mtime)}` : ''}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex justify-end">
+                  <a
+                    href={file.download_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="
+                      rounded-md
+                      bg-blue-600
+                      px-2.5
+                      py-1.5
+                      text-xs
+                      text-white
+                      hover:bg-blue-700
+                    "
+                  >
+                    下载
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function formatTime(mtime: number) {
+  try {
+    return new Date(mtime * 1000).toLocaleString();
+  } catch {
+    return '';
+  }
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes)) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 export default function Chat() {
   // 来源列表
@@ -175,6 +409,35 @@ export default function Chat() {
   const { t } = useTranslation();
   const [currentConversation, setCurrentConversation] =
     useState<IClientConversation>({} as IClientConversation);
+
+  const [agentFilesVisible, setAgentFilesVisible] = useState(false);
+
+  const openAgentFilesPanel = useCallback(() => {
+    setAgentFilesVisible(true);
+
+    if (referenceVisible) {
+      closeReferencePanel();
+    }
+
+    if (sourcePreviewVisible) {
+      closeSourcePreviewPanel();
+    }
+
+    if (settingVisible) {
+      switchSettingVisible();
+    }
+  }, [
+    referenceVisible,
+    sourcePreviewVisible,
+    settingVisible,
+    closeReferencePanel,
+    closeSourcePreviewPanel,
+    switchSettingVisible,
+  ]);
+
+  const closeAgentFilesPanel = useCallback(() => {
+    setAgentFilesVisible(false);
+  }, []);
 
   const initializedRef = useRef(false);
 
@@ -491,6 +754,27 @@ export default function Chat() {
       </section>
     );
   }
+  const { data: userInfo } = useFetchUserInfo();
+
+  const currentTenantId =
+    (currentConversation as any)?.tenant_id ||
+    (currentConversation as any)?.tenantId ||
+    (currentConversation as any)?.user_id ||
+    (currentConversation as any)?.userId ||
+    (data as any)?.tenant_id ||
+    (data as any)?.tenantId ||
+    (data as any)?.user_id ||
+    (data as any)?.userId ||
+    (userInfo as any)?.tenant_id ||
+    (userInfo as any)?.tenantId ||
+    (userInfo as any)?.id ||
+    (userInfo as any)?.user_id ||
+    (userInfo as any)?.userId;
+
+  const currentConversationId =
+    (currentConversation as any)?.id ||
+    (currentConversation as any)?.conversation_id ||
+    conversationId;
 
   return (
     <Form {...form}>
@@ -578,6 +862,29 @@ export default function Chat() {
                     loading={loading}
                     className="bg-white text-black hover:bg-gray-100 border"
                   />
+                  {agentMod && currentTenantId && currentConversationId && (
+                    <button
+                      type="button"
+                      onClick={openAgentFilesPanel}
+                      className="
+      h-9
+      rounded-md
+      border
+      border-gray-200
+      bg-white
+      px-3
+      text-sm
+      text-gray-700
+      hover:bg-gray-100
+      dark:border-gray-700
+      dark:bg-gray-900
+      dark:text-gray-200
+      dark:hover:bg-gray-800
+    "
+                    >
+                      会话文件
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -626,6 +933,16 @@ export default function Chat() {
                 list={referenceList}
                 onClose={closeReferencePanel}
                 onOpenSourcePreview={openSourcePreviewPanel}
+              />
+
+              <AgentFilesPanel
+                className={cn('shrink-0', {
+                  hidden: !agentFilesVisible,
+                })}
+                tenantId={currentTenantId}
+                conversationId={currentConversationId}
+                visible={agentFilesVisible}
+                onClose={closeAgentFilesPanel}
               />
 
               {/* 右侧设置面板 */}

@@ -7,6 +7,7 @@ from functools import partial
 
 from agent.canvas import Canvas
 from agnet_skills.agent1 import Agent, AgentParam
+from urllib.parse import quote
 
 
 from agent.tools.base import LLMToolPluginCallSession
@@ -19,6 +20,29 @@ import json
 from typing import Any
 from rag.app.tag import label_question
 from rag.prompts.generator import kb_prompt
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase import pdfmetrics
+
+def write_text_pdf(file_path: Path, content: str):
+    c = canvas.Canvas(str(file_path), pagesize=A4)
+    width, height = A4
+
+    x = 50
+    y = height - 50
+    line_height = 18
+
+    for line in content.splitlines():
+        if y < 50:
+            c.showPage()
+            y = height - 50
+
+        c.drawString(x, y, line[:1000])
+        y -= line_height
+
+    c.save()
 
 
 class SimpleWriteFileTool:
@@ -37,9 +61,14 @@ class SimpleWriteFileTool:
     }
     """
 
-    def __init__(self, base_dir="./agent_outputs"):
+    def __init__(self, base_dir="./agent_outputs", public_base_url="/api/agent/files"):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
+
+        # 前端可访问的下载 URL 前缀
+        # 例如：/api/agent/files/{tenant_id}/{conversation_id}
+        self.public_base_url = public_base_url.rstrip("/")
+
         self._output = {}
 
     def get_meta(self):
@@ -70,7 +99,7 @@ class SimpleWriteFileTool:
         防止模型传 ../../xxx 这种路径。
         只允许写入 base_dir 下面。
         """
-        filename = filename.strip() or "output.txt"
+        filename = (filename or "").strip() or "output.txt"
 
         # 去掉危险路径，只保留文件名
         safe_name = Path(filename).name
@@ -85,15 +114,24 @@ class SimpleWriteFileTool:
         content = kwargs.get("content", "")
 
         file_path = self._safe_path(filename)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        file_path.write_text(content, encoding="utf-8")
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".pdf":
+            write_text_pdf(file_path, content)
+        else:
+            file_path.write_text(content, encoding="utf-8")
+
+        download_url = f"{self.public_base_url}/{quote(file_path.name)}"
 
         result = {
             "ok": True,
             "filename": file_path.name,
+            "download_url": download_url,
             "path": str(file_path.resolve()),
-            "bytes": len(content.encode("utf-8")),
-            "message": f"File written successfully: {file_path.resolve()}"
+            "bytes": file_path.stat().st_size,
+            "message": f"File written successfully: {file_path.name}",
         }
 
         self._output["content"] = result
@@ -758,6 +796,9 @@ def build_agent_step_display(event: dict) -> str:
     if name == "write_file":
         filename = args.get("filename", "")
 
+        if isinstance(result, dict):
+            filename = result.get("filename") or filename
+
         if isinstance(result, dict) and result.get("status") == "running":
             return f"Agent 正在写入文件：{filename}\n"
 
@@ -765,7 +806,8 @@ def build_agent_step_display(event: dict) -> str:
             return (
                 f"Agent 完成文件写入：{filename}\n"
                 f"- ok: {result.get('ok')}\n"
-                f"- path: {result.get('path')}\n"
+                f"- bytes: {result.get('bytes')}\n"
+                f"- download_url: {result.get('download_url')}\n"
             )
 
         return f"Agent 正在写入文件：{filename}\n"
@@ -870,7 +912,6 @@ def build_agent_step_display(event: dict) -> str:
 
     return f"Agent 执行步骤：{name}\n"
 
-
 def build_agent_step_ui_event(event: dict) -> dict:
     name = event.get("name")
     args = event.get("arguments") or {}
@@ -886,13 +927,6 @@ def build_agent_step_ui_event(event: dict) -> dict:
 
     if name and "error" in name:
         status = "error"
-
-    if name and "error" in name:
-        status = "error"
-
-    if isinstance(result, dict):
-        if result.get("ok") is False:
-            status = "error"
 
     title = "Agent 步骤"
     summary = name or ""
@@ -939,7 +973,10 @@ def build_agent_step_ui_event(event: dict) -> dict:
 
     elif name == "write_file":
         title = "写入文件"
-        summary = args.get("filename", "")
+        if isinstance(result, dict):
+            summary = result.get("filename") or args.get("filename", "")
+        else:
+            summary = args.get("filename", "")
 
     elif name == "skill_reflection":
         title = "反思整理"
@@ -958,7 +995,7 @@ def build_agent_step_ui_event(event: dict) -> dict:
 
     display = build_agent_step_display(event)
 
-    return {
+    ui_event = {
         "type": "agent_step",
         "name": name,
         "title": title,
@@ -966,8 +1003,25 @@ def build_agent_step_ui_event(event: dict) -> dict:
         "status": status,
         "elapsed_time": elapsed_time,
         "arguments": args,
+        "result": result,
         "display": display,
     }
+
+    if name == "write_file" and isinstance(result, dict):
+        ui_event["filename"] = result.get("filename") or args.get("filename", "")
+        ui_event["download_url"] = result.get("download_url")
+        ui_event["bytes"] = result.get("bytes")
+
+        ui_event["arguments"] = {
+            **args,
+            "filename": result.get("filename") or args.get("filename", ""),
+            "download_url": result.get("download_url"),
+            "bytes": result.get("bytes"),
+            "result": result,
+        }
+
+    return ui_event
+
 async def async_chat_agent_mode(
     dialog,
     messages,
@@ -1112,7 +1166,10 @@ async def async_chat_agent_mode(
     output_dir = Path("./agent_outputs") / str(dialog.tenant_id) / str(conversation_id)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    write_file_tool = SimpleWriteFileTool(base_dir=str(output_dir))
+    write_file_tool = SimpleWriteFileTool(
+    base_dir=output_dir,
+    public_base_url=f"/v1/file/agent/download/{dialog.tenant_id}/{conversation_id}",
+)
 
     # agent.tools["search_my_dateset"] = search_tool
     # agent.tools["write_file"] = write_file_tool

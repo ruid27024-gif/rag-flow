@@ -76,8 +76,104 @@ export type AgentEvent = {
   elapsed_time?: number | null;
   display?: string;
   arguments?: any;
+  result?: any;
+  download_url?: string;
+  filename?: string;
   error?: string;
   delta?: string;
+};
+
+const AgentFileDownloads = ({ events }: { events?: AgentEvent[] }) => {
+  const files = useMemo(() => {
+    const list = (events || [])
+      .map((event) => {
+        const { downloadUrl, filename } = getAgentFileInfo(event);
+
+        if (!downloadUrl) {
+          return null;
+        }
+
+        return {
+          downloadUrl,
+          filename: filename || '文件',
+        };
+      })
+      .filter(Boolean) as {
+      downloadUrl: string;
+      filename: string;
+    }[];
+
+    // 去重，避免流式过程中重复展示同一个文件
+    const map = new Map<string, { downloadUrl: string; filename: string }>();
+
+    list.forEach((file) => {
+      map.set(file.downloadUrl, file);
+    });
+
+    return Array.from(map.values());
+  }, [events]);
+
+  if (!files.length) {
+    return null;
+  }
+
+  return (
+    <div
+      className="
+        mt-4
+        rounded-xl
+        border border-emerald-200
+        bg-emerald-50/70
+        p-3
+        dark:border-emerald-800
+        dark:bg-emerald-950/30
+      "
+    >
+      <div
+        className="
+          mb-2
+          text-sm
+          font-semibold
+          text-emerald-700
+          dark:text-emerald-300
+        "
+      >
+        生成的文件
+      </div>
+
+      <div className="space-y-2">
+        {files.map((file, index) => (
+          <a
+            key={`${file.downloadUrl}-${index}`}
+            href={file.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={file.filename || undefined}
+            className="
+              flex
+              items-center
+              justify-between
+              rounded-lg
+              border border-emerald-200
+              bg-white
+              px-3 py-2
+              text-sm
+              text-emerald-700
+              hover:bg-emerald-50
+              dark:border-emerald-800
+              dark:bg-slate-950
+              dark:text-emerald-300
+              dark:hover:bg-emerald-950/40
+            "
+          >
+            <span className="truncate">{file.filename || '下载文件'}</span>
+
+            <span className="ml-3 shrink-0 text-xs">下载</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 /**
@@ -220,6 +316,29 @@ function getAgentEventSummary(event: AgentEvent) {
   );
 }
 
+function getAgentFileInfo(event: AgentEvent) {
+  const downloadUrl =
+    event.download_url ||
+    event.arguments?.download_url ||
+    event.result?.download_url ||
+    event.arguments?.result?.download_url ||
+    event.arguments?.output?.download_url ||
+    event.arguments?.json?.download_url;
+
+  const filename =
+    event.filename ||
+    event.arguments?.filename ||
+    event.result?.filename ||
+    event.arguments?.result?.filename ||
+    event.arguments?.output?.filename ||
+    event.arguments?.json?.filename;
+
+  return {
+    downloadUrl,
+    filename,
+  };
+}
+
 const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
   const [open, setOpen] = useState(true);
   const [openItems, setOpenItems] = useState<Record<number, boolean>>({});
@@ -291,6 +410,7 @@ const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
               event.name === 'agent_error';
 
             const itemOpen = openItems[index] ?? false;
+            const { downloadUrl, filename } = getAgentFileInfo(event);
 
             return (
               <div
@@ -370,38 +490,61 @@ const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
                 {itemOpen && (
                   <div
                     className="
-                      border-t border-slate-100
-                      px-4 py-3
-                      text-sm leading-7
-                      text-slate-600
-                      dark:border-slate-800
-                      dark:text-slate-300
-                    "
+      border-t border-slate-100
+      px-4 py-3
+      text-sm leading-7
+      text-slate-600
+      dark:border-slate-800
+      dark:text-slate-300
+    "
                   >
                     {event.display ? (
                       <pre
                         className="
-                          whitespace-pre-wrap
-                          break-words
-                          text-xs leading-6
-                          text-slate-500
-                          dark:text-slate-400
-                        "
+          whitespace-pre-wrap
+          break-words
+          text-xs leading-6
+          text-slate-500
+          dark:text-slate-400
+        "
                       >
                         {event.display}
                       </pre>
                     ) : (
                       <pre
                         className="
-                          whitespace-pre-wrap
-                          break-words
-                          text-xs leading-6
-                          text-slate-500
-                          dark:text-slate-400
-                        "
+          whitespace-pre-wrap
+          break-words
+          text-xs leading-6
+          text-slate-500
+          dark:text-slate-400
+        "
                       >
                         {JSON.stringify(event, null, 2)}
                       </pre>
+                    )}
+
+                    {downloadUrl && (
+                      <div className="mt-3">
+                        <a
+                          href={downloadUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={filename || undefined}
+                          className="
+            inline-flex
+            items-center
+            rounded-md
+            bg-[#018B8D]
+            px-3 py-1.5
+            text-sm font-medium
+            text-white
+            hover:bg-[#017476]
+          "
+                        >
+                          下载文件：{filename || '文件'}
+                        </a>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1117,6 +1260,8 @@ const MarkdownContent = ({
           </Markdown>
         );
       })}
+      {/* 新增：统一把生成文件下载链接放在回答最下方 */}
+      <AgentFileDownloads events={agentEvents} />
     </div>
   );
 };
