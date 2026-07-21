@@ -13,7 +13,7 @@ import { formatDate } from '@/utils/date';
 import { UseMutateAsyncFunction } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { lowerFirst } from 'lodash';
-import { CirclePause, Trash2, WandSparkles } from 'lucide-react';
+import { CirclePause, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ProcessingType } from '../../dataset-overview/dataset-common';
@@ -195,7 +195,7 @@ const Generate: React.FC<GenerateProps> = (props) => {
       <DropdownMenu open={open} onOpenChange={handleOpenChange}>
         <DropdownMenuTrigger asChild disabled={disabled}>
           <div className={cn({ 'cursor-not-allowed': disabled })}>
-            <Button
+            {/* <Button
               disabled={disabled}
               variant={'transparent'}
               onClick={() => {
@@ -206,7 +206,7 @@ const Generate: React.FC<GenerateProps> = (props) => {
             >
               <WandSparkles className="mr-2 size-4" />
               {t('knowledgeDetails.generate')}
-            </Button>
+            </Button> */}
           </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-[380px] p-5 flex flex-col gap-2 ">

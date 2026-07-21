@@ -51,7 +51,7 @@ const FeedbackDialog = ({
     <Dialog open={visible} onOpenChange={hideModal}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Feedback</DialogTitle>
+          <DialogTitle>反馈描述</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form

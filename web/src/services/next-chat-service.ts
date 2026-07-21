@@ -6,6 +6,7 @@ const {
   setDialog,
   // listDialog,
   removeDialog,
+  renameConversation,
   getConversation,
   getConversationSSE,
   setConversation,
@@ -70,6 +71,10 @@ const methods = {
   },
   removeConversation: {
     url: removeConversation,
+    method: 'post',
+  },
+  renameConversation: {
+    url: renameConversation,
     method: 'post',
   },
   createToken: {

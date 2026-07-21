@@ -47,6 +47,7 @@ export const enum ChatApiAction {
   Feedback = 'feedback',
   CreateSharedConversation = 'createSharedConversation',
   FetchConversationSse = 'fetchConversationSSE',
+  RenameConversation = 'renameConversation',
 }
 
 export const useGetChatSearchParams = () => {
@@ -404,6 +405,42 @@ export const useRemoveConversation = () => {
   });
 
   return { data, loading, removeConversation: mutateAsync };
+};
+
+export const useRenameConversation = () => {
+  const queryClient = useQueryClient();
+  const { dialogId } = useGetChatSearchParams();
+
+  const {
+    data,
+    isPending: loading,
+    mutateAsync,
+  } = useMutation({
+    mutationKey: [ChatApiAction.RenameConversation],
+    mutationFn: async ({
+      conversationId,
+      name,
+    }: {
+      conversationId: string;
+      name: string;
+    }) => {
+      const { data } = await chatService.renameConversation({
+        conversationId,
+        name,
+        dialogId,
+      });
+
+      if (data.code === 0) {
+        queryClient.invalidateQueries({
+          queryKey: [ChatApiAction.FetchConversationList],
+        });
+      }
+
+      return data.code;
+    },
+  });
+
+  return { data, loading, renameConversation: mutateAsync };
 };
 
 export const useDeleteMessage = () => {

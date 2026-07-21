@@ -149,6 +149,48 @@ async def rm():
         return get_json_result(data=True)
     except Exception as e:
         return server_error_response(e)
+    
+@manager.route("/rename", methods=["POST"])  # noqa: F821
+@login_required
+async def rename():
+    req = await get_request_json()
+
+    conversation_id = req.get("conversation_id")
+    name = req.get("name", "").strip()
+
+    if not conversation_id:
+        return get_data_error_result(message="conversation_id is required!")
+
+    if not name:
+        return get_data_error_result(message="Conversation name is required!")
+
+    try:
+        exist, conv = ConversationService.get_by_id(conversation_id)
+        if not exist:
+            return get_data_error_result(message="Conversation not found!")
+
+        # 权限校验：沿用删除接口逻辑
+        tenants = UserTenantService.query(user_id=current_user.id)
+        for tenant in tenants:
+            if DialogService.query(tenant_id=tenant.tenant_id, id=conv.dialog_id):
+                break
+        else:
+            return get_json_result(
+                data=False,
+                message="Only owner of conversation authorized for this operation.",
+                code=RetCode.OPERATING_ERROR,
+            )
+
+        # 修改名称
+        conv_dict = conv.to_dict()
+        conv_dict["name"] = name
+
+        ConversationService.update_by_id(conversation_id, conv_dict)
+
+        return get_json_result(data=True)
+
+    except Exception as e:
+        return server_error_response(e)
 
 
 @manager.route("/list", methods=["GET"])  # noqa: F821
@@ -375,27 +417,83 @@ async def delete_msg():
     return get_json_result(data=conv)
 
 
+# @manager.route("/thumbup", methods=["POST"])  # noqa: F821
+# @login_required
+# @validate_request("conversation_id", "message_id")
+# async def thumbup():
+#     req = await get_request_json()
+#     e, conv = ConversationService.get_by_id(req["conversation_id"])
+#     if not e:
+#         return get_data_error_result(message="Conversation not found!")
+#     up_down = req.get("thumbup")
+#     feedback = req.get("feedback", "")
+#     conv = conv.to_dict()
+#     for i, msg in enumerate(conv["message"]):
+#         if req["message_id"] == msg.get("id", "") and msg.get("role", "") == "assistant":
+#             if up_down:
+#                 msg["thumbup"] = True
+#                 if "feedback" in msg:
+#                     del msg["feedback"]
+#             else:
+#                 msg["thumbup"] = False
+#                 if feedback:
+#                     msg["feedback"] = feedback
+#             break
+
+#     ConversationService.update_by_id(conv["id"], conv)
+#     return get_json_result(data=conv)
+
 @manager.route("/thumbup", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("conversation_id", "message_id")
 async def thumbup():
     req = await get_request_json()
+
     e, conv = ConversationService.get_by_id(req["conversation_id"])
     if not e:
         return get_data_error_result(message="Conversation not found!")
-    up_down = req.get("thumbup")
+
+    # 注意：这里不能简单 req.get("thumbup")
+    # 因为 False 是有效值，表示不喜欢
+    up_down = req.get("thumbup", None)
     feedback = req.get("feedback", "")
+
     conv = conv.to_dict()
+
     for i, msg in enumerate(conv["message"]):
-        if req["message_id"] == msg.get("id", "") and msg.get("role", "") == "assistant":
-            if up_down:
+        if (
+            req["message_id"] == msg.get("id", "")
+            and msg.get("role", "") == "assistant"
+        ):
+            # =========================
+            # 取消喜欢 / 不喜欢
+            # 前端传 thumbup: null
+            # =========================
+            if up_down is None:
+                if "thumbup" in msg:
+                    del msg["thumbup"]
+                if "feedback" in msg:
+                    del msg["feedback"]
+
+            # =========================
+            # 喜欢
+            # =========================
+            elif up_down is True:
                 msg["thumbup"] = True
                 if "feedback" in msg:
                     del msg["feedback"]
-            else:
+
+            # =========================
+            # 不喜欢
+            # =========================
+            elif up_down is False:
                 msg["thumbup"] = False
+
                 if feedback:
                     msg["feedback"] = feedback
+                elif "feedback" in msg:
+                    del msg["feedback"]
+
             break
 
     ConversationService.update_by_id(conv["id"], conv)
@@ -885,7 +983,7 @@ async def rebase_conversation():
 
     前端传:
     {
-        "conversation_id": "xxx",
+        "conversation_id": "xxx",   
         "message_id": "xxx"
     }
 

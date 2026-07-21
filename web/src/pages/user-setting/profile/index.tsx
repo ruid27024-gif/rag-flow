@@ -142,14 +142,14 @@ const ProfilePage: FC = () => {
             <div className="text-sm text-text-primary border border-border-button flex-1 rounded-md py-1.5 px-2">
               {profile.userName}
             </div>
-            <Button
+            {/* <Button
               variant={'ghost'}
               type="button"
               onClick={() => handleEditClick(EditType.editName)}
               className="text-sm text-text-secondary flex gap-1 px-1 border border-border-button"
             >
               <PenLine size={12} /> {t('edit')}
-            </Button>
+            </Button> */}
           </div>
         </div>
 
@@ -175,14 +175,14 @@ const ProfilePage: FC = () => {
             <div className="text-sm text-text-primary border border-border-button flex-1 rounded-md py-1.5 px-2">
               {profile.timeZone}
             </div>
-            <Button
+            {/* <Button
               variant={'ghost'}
               type="button"
               onClick={() => handleEditClick(EditType.editTimeZone)}
               className="text-sm text-text-secondary flex gap-1 px-1 border border-border-button"
             >
               <PenLine size={12} /> {t('edit')}
-            </Button>
+            </Button> */}
           </div>
         </div>
 

@@ -373,6 +373,7 @@ const MessageItem = ({
                 <div className="mt-1 flex justify-start">
                   <AssistantGroupButton
                     messageId={item.id}
+                    thumbup={item.thumbup}
                     content={item.content}
                     prompt={item.prompt}
                     showLikeButton={showLikeButton}

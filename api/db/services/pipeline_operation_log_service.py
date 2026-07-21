@@ -628,18 +628,48 @@ class PipelineOperationLogService(CommonService):
         LogLatestAlias = Log.alias()
 
         # =========================
-        # 当前未完成任务：按任务优先级取
+        # Task 类型优先级
         #
-        # 优先级：
         # 0 普通全文解析 task_type == ""
         # 1 dataflow
         # 2 graphrag
         # 3 raptor
         # 9 parse_author_info
         #
+        # parse_author_info 优先级最低，避免全文解析完成后页面显示成“提取作者”
+        # =========================
+        def task_priority_case(TaskAlias):
+            return Case(
+                None,
+                [
+                    # 普通全文解析，最高优先级
+                    (TaskAlias.task_type == "", 0),
+
+                    # dataflow 解析
+                    (TaskAlias.task_type ** "dataflow%", 1),
+
+                    # 知识图谱
+                    (TaskAlias.task_type == "graphrag", 2),
+
+                    # raptor
+                    (TaskAlias.task_type == "raptor", 3),
+
+                    # 提取作者，最低优先级
+                    (TaskAlias.task_type == "parse_author_info", 9),
+                ],
+                5,
+            )
+
+        # =========================
+        # 当前未完成任务
+        #
         # 注意：
-        # progress >= 0 and progress < 1
-        # 表示排队中 / 运行中
+        # 只有 Document.run 本身处于运行中/排队中，才认为 active task 有效。
+        #
+        # 这样可以避免：
+        # Document 已经成功 run == 3，
+        # 但 Task 表里残留 progress = 0 / progress < 1 的脏任务，
+        # 导致页面显示“排队中”。
         # =========================
         active_task_id_query = (
             TaskActivePickAlias
@@ -648,36 +678,28 @@ class PipelineOperationLogService(CommonService):
                 TaskActivePickAlias.doc_id == Document.id,
                 TaskActivePickAlias.progress >= 0,
                 TaskActivePickAlias.progress < 1,
+
+                # 关键修复：文档不是运行/排队状态，就不要找 active task
+                Document.run.in_(["1", "5", 1, 5]),
             )
             .order_by(
-                Case(
-                    None,
-                    [
-                        # 普通全文解析，最高优先级
-                        (TaskActivePickAlias.task_type == "", 0),
-
-                        # dataflow 解析
-                        (TaskActivePickAlias.task_type ** "dataflow%", 1),
-
-                        # 知识图谱
-                        (TaskActivePickAlias.task_type == "graphrag", 2),
-
-                        # raptor
-                        (TaskActivePickAlias.task_type == "raptor", 3),
-
-                        # 提取作者，最低优先级
-                        (TaskActivePickAlias.task_type == "parse_author_info", 9),
-                    ],
-                    5,
-                ).asc(),
+                task_priority_case(TaskActivePickAlias).asc(),
                 TaskActivePickAlias.update_time.desc(),
             )
             .limit(1)
         )
 
         # =========================
-        # 最新任意 Task
-        # 如果没有 active_task，就用它兜底
+        # fallback Task
+        #
+        # 没有 active_task 时，用它兜底。
+        #
+        # 注意：
+        # 这里不能只按 update_time desc。
+        # 因为 parse_author_info 通常在全文解析之后更新，
+        # 如果只取最新，会导致解析完成后页面显示“提取作者完成”。
+        #
+        # 所以这里也要按任务优先级选择。
         # =========================
         latest_any_task_id_query = (
             TaskAnyPickAlias
@@ -685,7 +707,10 @@ class PipelineOperationLogService(CommonService):
             .where(
                 TaskAnyPickAlias.doc_id == Document.id
             )
-            .order_by(TaskAnyPickAlias.update_time.desc())
+            .order_by(
+                task_priority_case(TaskAnyPickAlias).asc(),
+                TaskAnyPickAlias.update_time.desc(),
+            )
             .limit(1)
         )
 
@@ -764,7 +789,7 @@ class PipelineOperationLogService(CommonService):
                 TaskActive.process_duration.alias("active_task_process_duration"),
                 TaskActive.update_time.alias("active_task_update_time"),
 
-                # ---------- 最新任意 Task ----------
+                # ---------- fallback Task ----------
                 TaskAny.id.alias("latest_task_id"),
                 TaskAny.task_type.alias("latest_task_type"),
                 TaskAny.progress.alias("latest_task_progress"),
@@ -804,8 +829,8 @@ class PipelineOperationLogService(CommonService):
                 Log,
                 JOIN.LEFT_OUTER,
                 on=(
-                        (Log.document_id == Document.id)
-                        & (Log.update_date == latest_log_update_date)
+                    (Log.document_id == Document.id)
+                    & (Log.update_date == latest_log_update_date)
                 ),
             )
             .where(
@@ -864,9 +889,13 @@ class PipelineOperationLogService(CommonService):
         def pick_display_task(row):
             """
             优先展示 active_task。
+
             active_task 已经在 SQL 里按任务类型优先级选过：
 
             全文解析 > dataflow > graphrag > raptor > 其他 > 提取作者
+
+            如果没有 active_task，则展示 fallback task。
+            fallback task 也按同样优先级选择，避免解析完成后显示“提取作者”。
             """
 
             if row.get("active_task_id"):
@@ -925,15 +954,29 @@ class PipelineOperationLogService(CommonService):
 
             task_msg_lower = task_msg.lower()
 
-            # 没有任何 Task，优先用 document.run
-            if not task_id:
-                if document_run is not None and str(document_run) != "":
-                    return str(document_run)
-                return "0"
+            document_run_str = "" if document_run is None else str(document_run)
+
+            # =========================
+            # 关键修复：
+            # Document 已经明确成功时，直接成功。
+            # 防止 Task 表残留 progress = 0 / progress < 1 的数据导致显示排队中。
+            # =========================
+            if document_run_str == "3":
+                return "3"
 
             # Document 明确取消
-            if str(document_run) == "2":
+            if document_run_str == "2":
                 return "2"
+
+            # Document 明确失败
+            if document_run_str == "4":
+                return "4"
+
+            # 没有任何 Task，优先用 document.run
+            if not task_id:
+                if document_run_str != "":
+                    return document_run_str
+                return "0"
 
             # 有任务但 progress 为空，认为排队中
             if task_progress is None:
@@ -959,9 +1002,9 @@ class PipelineOperationLogService(CommonService):
             if (
                     task_process_duration == 0
                     and (
-                    "task has been received" in task_msg_lower
-                    or "received" in task_msg_lower
-            )
+                        "task has been received" in task_msg_lower
+                        or "received" in task_msg_lower
+                    )
             ):
                 return "5"
 
@@ -979,28 +1022,74 @@ class PipelineOperationLogService(CommonService):
             raw_task_type = display_task.get("task_type")
             task_type = raw_task_type.lower().strip() if raw_task_type else ""
 
+            # 知识图谱
             if task_type == "graphrag":
-                return task_type, "graph_parse", "知识图谱"
+                return {
+                    "raw_task_type": raw_task_type or "",
+                    "task_type": "graphrag",
+                    "task_type_text": "GraphRAG",
+                    "process_scene": "graph_parse",
+                    "process_scene_text": "知识图谱",
+                }
 
+            # Raptor
             if task_type == "raptor":
-                return task_type, "raptor", "raptor"
+                return {
+                    "raw_task_type": raw_task_type or "",
+                    "task_type": "raptor",
+                    "task_type_text": "Raptor",
+                    "process_scene": "raptor",
+                    "process_scene_text": "Raptor",
+                }
 
+            # 提取作者
             if task_type == "parse_author_info":
-                return task_type, "author_extract", "提取作者"
+                return {
+                    "raw_task_type": raw_task_type or "",
+                    "task_type": "parse_author_info",
+                    "task_type_text": "提取作者",
+                    "process_scene": "author_extract",
+                    "process_scene_text": "提取作者",
+                }
 
-            # 普通全文解析 task_type 为空
+            # 普通全文解析
+            # 数据库里 task_type 是空字符串，但是前端任务列要显示 Parse
             if task_type == "":
-                return task_type, "full_parse", "解析全文"
+                return {
+                    "raw_task_type": raw_task_type or "",
+                    "task_type": "parse",
+                    "task_type_text": "Parse",
+                    "process_scene": "full_parse",
+                    "process_scene_text": "解析全文",
+                }
 
-            # dataflow 也可以视为解析全文
+            # dataflow 也视为 Parse
             if task_type.startswith("dataflow"):
-                return task_type, "full_parse", "解析全文"
+                return {
+                    "raw_task_type": raw_task_type or "",
+                    "task_type": "parse",
+                    "task_type_text": "Parse",
+                    "process_scene": "full_parse",
+                    "process_scene_text": "解析全文",
+                }
 
-            # 兜底：如果这个文档有普通解析任务，也显示解析全文
+            # 兜底：如果这个文档有普通解析任务，也显示 Parse
             if has_parse_task_flag:
-                return task_type, "full_parse", "解析全文"
+                return {
+                    "raw_task_type": raw_task_type or "",
+                    "task_type": "parse",
+                    "task_type_text": "Parse",
+                    "process_scene": "full_parse",
+                    "process_scene_text": "解析全文",
+                }
 
-            return task_type, task_type or "unknown", task_type or "未知"
+            return {
+                "raw_task_type": raw_task_type or "",
+                "task_type": task_type or "unknown",
+                "task_type_text": task_type or "未知",
+                "process_scene": task_type or "unknown",
+                "process_scene_text": task_type or "未知",
+            }
 
         log_list = []
 
@@ -1026,34 +1115,38 @@ class PipelineOperationLogService(CommonService):
                 else row.get("document_progress") or 0
             )
 
+            # 如果 document_run 已经成功，但 display_task 是历史任务，可以强制 progress = 1
+            if str(row.get("document_run")) == "3":
+                row["progress"] = 1
+
             # progress_msg 优先使用当前展示任务
             row["progress_msg"] = (
-                    display_task.get("progress_msg")
-                    or row.get("document_progress_msg")
-                    or row.get("latest_log_progress_msg")
-                    or ""
+                display_task.get("progress_msg")
+                or row.get("document_progress_msg")
+                or row.get("latest_log_progress_msg")
+                or ""
             )
 
             # process_begin_at 优先使用当前展示任务
             row["process_begin_at"] = (
-                    display_task.get("begin_at")
-                    or row.get("document_process_begin_at")
-                    or row.get("latest_log_process_begin_at")
+                display_task.get("begin_at")
+                or row.get("document_process_begin_at")
+                or row.get("latest_log_process_begin_at")
             )
 
             # process_duration 优先使用当前展示任务
             row["process_duration"] = (
-                    display_task.get("process_duration")
-                    or row.get("document_process_duration")
-                    or row.get("latest_log_process_duration")
-                    or 0
+                display_task.get("process_duration")
+                or row.get("document_process_duration")
+                or row.get("latest_log_process_duration")
+                or 0
             )
 
             # pipeline_title 兜底
             row["pipeline_title"] = (
-                    row.get("pipeline_title")
-                    or row.get("parser_id")
-                    or "general"
+                row.get("pipeline_title")
+                or row.get("parser_id")
+                or "general"
             )
 
             # avatar 兜底
@@ -1061,16 +1154,33 @@ class PipelineOperationLogService(CommonService):
 
             has_parse_task_flag = bool(row.get("has_parse_task"))
 
-            latest_task_type, process_scene, process_scene_text = infer_process_scene(
+            task_display = infer_process_scene(
                 display_task,
                 has_parse_task_flag,
             )
 
-            # 前端任务字段
-            row["task_type"] = latest_task_type
-            row["latest_task_type"] = latest_task_type
+            normalized_task_type = task_display["task_type"]
+            task_type_text = task_display["task_type_text"]
+            process_scene = task_display["process_scene"]
+            process_scene_text = task_display["process_scene_text"]
+
+            # 原始数据库 task_type
+            row["raw_task_type"] = task_display["raw_task_type"]
+
+            # 标准化后的任务类型
+            row["task_type"] = normalized_task_type
+            row["latest_task_type"] = normalized_task_type
+
+            # 给前端显示用的任务名称
+            row["task_type_text"] = task_type_text
+            row["latest_task_type_text"] = task_type_text
+
+            # 关键：如果前端任务列用的是 log_task_type，这里也要覆盖
+            row["log_task_type"] = task_type_text
+
             row["has_parse_task"] = has_parse_task_flag
 
+            # 具体任务
             row["process_scene"] = process_scene
             row["process_scene_text"] = process_scene_text
 
@@ -1097,7 +1207,6 @@ class PipelineOperationLogService(CommonService):
             log_list = log_list[start:end]
 
         return log_list, count
-    
     
     
     @classmethod

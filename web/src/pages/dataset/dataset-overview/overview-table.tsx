@@ -230,8 +230,11 @@ export const getFileLogsTableColumns = (
         <div className="text-text-primary flex justify-start">
           {row.original.source_from === 'local' ||
           row.original.source_from === '' ? (
-            <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
-              <MonitorUp className="text-accent-primary" size={16} />
+            <div className="flex items-center gap-2">
+              <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
+                <MonitorUp className="text-accent-primary" size={16} />
+              </div>
+              <span className="text-sm">本地</span>
             </div>
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">
@@ -306,7 +309,7 @@ export const getFileLogsTableColumns = (
     },
     {
       accessorKey: 'latest_task_scene_text',
-      header: '具体任务',
+      header: t('task_detail'),
       meta: {
         cellClassName: 'max-w-[20vw] text-left',
         headerClassName: 'text-left',
@@ -617,6 +620,11 @@ const FileLogsTable: FC<FileLogsTableProps> = ({
       fileName: row.original.document_name,
       source: row.original.source_from,
       task: row.original?.task_type,
+      // 具体任务
+      task_detail:
+        row.original.process_scene_text ||
+        row.original.latest_task_scene_text ||
+        '-',
       status: row.original.status as RunningStatus,
       startDate: formatDate(row.original.process_begin_at),
       duration: formatSecondsToHumanReadable(

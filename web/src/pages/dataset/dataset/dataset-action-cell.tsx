@@ -18,7 +18,7 @@ import {
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { getAuthorization } from '@/utils/authorization-util';
 import { formatFileSize } from '@/utils/common-util';
-import { formatDate } from '@/utils/date';
+// import { formatDate } from '@/utils/date';
 import { downloadDocument } from '@/utils/file-util';
 import { Download, Eye, PenLine, Play, Trash2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
@@ -33,6 +33,26 @@ const FieldNameMap: Record<string, string> = {
   type: '类型',
   create_time: '创建时间',
   update_time: '更新时间',
+};
+
+const formatDate = (dateStr: string | number | Date) => {
+  if (!dateStr) return '-';
+
+  const date = new Date(dateStr);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(dateStr);
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
 const FunctionMap = {

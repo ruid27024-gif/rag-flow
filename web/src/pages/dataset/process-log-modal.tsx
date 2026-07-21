@@ -91,6 +91,8 @@ const ProcessLogModal: React.FC<ProcessLogModalProps> = ({
       <div className=" rounded-lg">
         <div className="flex flex-wrap ">
           {Object?.keys(logInfo).map((key) => {
+            const value = logInfo[key as keyof typeof logInfo];
+
             if (
               blackKeyList.includes(key) ||
               !logInfo[key as keyof typeof logInfo]
@@ -126,11 +128,21 @@ const ProcessLogModal: React.FC<ProcessLogModalProps> = ({
                 </div>
               );
             }
+
             return (
               <div className="w-1/2" key={key}>
-                <InfoItem
+                {/* <InfoItem
                   label={t(key)}
                   value={logInfo[key as keyof typeof logInfo]}
+                /> */}
+                <InfoItem
+                  label={t(key)}
+                  value={
+                    (key === 'source' || key === 'source_from') &&
+                    String(value).trim().toLowerCase() === 'local'
+                      ? '本地'
+                      : value
+                  }
                 />
               </div>
             );

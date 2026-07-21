@@ -27,7 +27,7 @@ export type IEditType = keyof typeof EditType;
 export const modalTitle = {
   [EditType.editName]: 'Edit Name',
   [EditType.editTimeZone]: 'Edit Time Zone',
-  [EditType.editPassword]: 'Edit Password',
+  [EditType.editPassword]: '修改密码',
 } as const;
 
 export const useProfile = () => {

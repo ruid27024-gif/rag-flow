@@ -61,10 +61,16 @@ const getNumberColor = (num: number) => {
 
 const getChunkIndex = (match: string) => Number(match);
 
-type ThinkSegment = {
-  type: 'text' | 'think';
-  content: string;
-};
+type ThinkSegment =
+  | {
+      type: 'text';
+      content: string;
+    }
+  | {
+      type: 'think';
+      content: string;
+      done: boolean;
+    };
 type AgentEventStatus = 'running' | 'success' | 'error';
 
 export type AgentEvent = {
@@ -76,8 +82,104 @@ export type AgentEvent = {
   elapsed_time?: number | null;
   display?: string;
   arguments?: any;
+  result?: any;
+  download_url?: string;
+  filename?: string;
   error?: string;
   delta?: string;
+};
+
+const AgentFileDownloads = ({ events }: { events?: AgentEvent[] }) => {
+  const files = useMemo(() => {
+    const list = (events || [])
+      .map((event) => {
+        const { downloadUrl, filename } = getAgentFileInfo(event);
+
+        if (!downloadUrl) {
+          return null;
+        }
+
+        return {
+          downloadUrl,
+          filename: filename || '文件',
+        };
+      })
+      .filter(Boolean) as {
+      downloadUrl: string;
+      filename: string;
+    }[];
+
+    // 去重，避免流式过程中重复展示同一个文件
+    const map = new Map<string, { downloadUrl: string; filename: string }>();
+
+    list.forEach((file) => {
+      map.set(file.downloadUrl, file);
+    });
+
+    return Array.from(map.values());
+  }, [events]);
+
+  if (!files.length) {
+    return null;
+  }
+
+  return (
+    <div
+      className="
+        mt-4
+        rounded-xl
+        border border-emerald-200
+        bg-emerald-50/70
+        p-3
+        dark:border-emerald-800
+        dark:bg-emerald-950/30
+      "
+    >
+      <div
+        className="
+          mb-2
+          text-sm
+          font-semibold
+          text-emerald-700
+          dark:text-emerald-300
+        "
+      >
+        生成的文件
+      </div>
+
+      <div className="space-y-2">
+        {files.map((file, index) => (
+          <a
+            key={`${file.downloadUrl}-${index}`}
+            href={file.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={file.filename || undefined}
+            className="
+              flex
+              items-center
+              justify-between
+              rounded-lg
+              border border-emerald-200
+              bg-white
+              px-3 py-2
+              text-sm
+              text-emerald-700
+              hover:bg-emerald-50
+              dark:border-emerald-800
+              dark:bg-slate-950
+              dark:text-emerald-300
+              dark:hover:bg-emerald-950/40
+            "
+          >
+            <span className="truncate">{file.filename || '下载文件'}</span>
+
+            <span className="ml-3 shrink-0 text-xs">下载</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 /**
@@ -130,16 +232,18 @@ function splitThinkContent(content: string): ThinkSegment[] {
       segments.push({
         type: 'think',
         content: afterThinkStart,
+        done: false,
       });
       break;
     }
 
     const thinkEndIndex = endMatch.index;
 
-    // think 内容
+    // think 内容，已经收到 </think>
     segments.push({
       type: 'think',
       content: afterThinkStart.slice(0, thinkEndIndex),
+      done: true,
     });
 
     // 继续处理 </think> 后面的内容
@@ -220,6 +324,29 @@ function getAgentEventSummary(event: AgentEvent) {
   );
 }
 
+function getAgentFileInfo(event: AgentEvent) {
+  const downloadUrl =
+    event.download_url ||
+    event.arguments?.download_url ||
+    event.result?.download_url ||
+    event.arguments?.result?.download_url ||
+    event.arguments?.output?.download_url ||
+    event.arguments?.json?.download_url;
+
+  const filename =
+    event.filename ||
+    event.arguments?.filename ||
+    event.result?.filename ||
+    event.arguments?.result?.filename ||
+    event.arguments?.output?.filename ||
+    event.arguments?.json?.filename;
+
+  return {
+    downloadUrl,
+    filename,
+  };
+}
+
 const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
   const [open, setOpen] = useState(true);
   const [openItems, setOpenItems] = useState<Record<number, boolean>>({});
@@ -291,6 +418,7 @@ const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
               event.name === 'agent_error';
 
             const itemOpen = openItems[index] ?? false;
+            const { downloadUrl, filename } = getAgentFileInfo(event);
 
             return (
               <div
@@ -370,38 +498,61 @@ const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
                 {itemOpen && (
                   <div
                     className="
-                      border-t border-slate-100
-                      px-4 py-3
-                      text-sm leading-7
-                      text-slate-600
-                      dark:border-slate-800
-                      dark:text-slate-300
-                    "
+      border-t border-slate-100
+      px-4 py-3
+      text-sm leading-7
+      text-slate-600
+      dark:border-slate-800
+      dark:text-slate-300
+    "
                   >
                     {event.display ? (
                       <pre
                         className="
-                          whitespace-pre-wrap
-                          break-words
-                          text-xs leading-6
-                          text-slate-500
-                          dark:text-slate-400
-                        "
+          whitespace-pre-wrap
+          break-words
+          text-xs leading-6
+          text-slate-500
+          dark:text-slate-400
+        "
                       >
                         {event.display}
                       </pre>
                     ) : (
                       <pre
                         className="
-                          whitespace-pre-wrap
-                          break-words
-                          text-xs leading-6
-                          text-slate-500
-                          dark:text-slate-400
-                        "
+          whitespace-pre-wrap
+          break-words
+          text-xs leading-6
+          text-slate-500
+          dark:text-slate-400
+        "
                       >
                         {JSON.stringify(event, null, 2)}
                       </pre>
+                    )}
+
+                    {downloadUrl && (
+                      <div className="mt-3">
+                        <a
+                          href={downloadUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={filename || undefined}
+                          className="
+            inline-flex
+            items-center
+            rounded-md
+            bg-[#018B8D]
+            px-3 py-1.5
+            text-sm font-medium
+            text-white
+            hover:bg-[#017476]
+          "
+                        >
+                          下载文件：{filename || '文件'}
+                        </a>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1052,53 +1203,108 @@ const MarkdownContent = ({
       {showAgentToolCalls && <AgentToolCalls events={agentEvents} />}
       {segments.map((segment, index) => {
         if (segment.type === 'think') {
+          const hasAnswerAfterThink = segments.slice(index + 1).some((item) => {
+            return item.type === 'text' && item.content.trim().length > 0;
+          });
+
+          /**
+           * 规则：
+           * 有 </think>，并且 </think> 后面有正式文字 => 思考完成
+           * 其他情况 => 正在思考
+           */
+          const isThinking = !(segment.done && hasAnswerAfterThink);
+
           return (
             <details
-              open
+              open={true}
               key={`think-${index}`}
               className="
-                group
-                my-2
-                text-sm
-                text-gray-400
-                dark:text-gray-500
-              "
+        group
+        my-2
+        text-sm
+        text-gray-400
+        dark:text-gray-500
+      "
             >
               <summary
                 className="
-                  flex
-                  cursor-pointer
-                  select-none
-                  list-none
-                  items-center
-                  gap-1
-                  text-sm
-                  font-normal
-                  text-gray-400
-                  dark:text-gray-500
-                  [&::-webkit-details-marker]:hidden
-                "
+          flex
+          cursor-pointer
+          select-none
+          list-none
+          items-center
+          gap-1
+          text-sm
+          font-normal
+          text-gray-400
+          dark:text-gray-500
+          [&::-webkit-details-marker]:hidden
+        "
               >
-                <span>思考过程</span>
+                <span className="flex items-center gap-1.5">
+                  <svg
+                    className={`h-[18px] w-[18px] text-indigo-500 dark:text-indigo-400 ${
+                      isThinking ? 'animate-[spin_2.6s_linear_infinite]' : ''
+                    }`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <ellipse
+                      cx="12"
+                      cy="12"
+                      rx="8"
+                      ry="3.2"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                    />
+                    <ellipse
+                      cx="12"
+                      cy="12"
+                      rx="8"
+                      ry="3.2"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      transform="rotate(90 12 12)"
+                    />
+                    <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                  </svg>
+
+                  <span className="text-[15px] font-medium text-gray-400 dark:text-gray-500">
+                    {isThinking ? '正在思考' : '思考完成'}
+                  </span>
+                </span>
+
+                {isThinking && (
+                  <span className="ml-1 inline-flex gap-0.5">
+                    <span className="animate-bounce">.</span>
+                    <span className="animate-bounce [animation-delay:150ms]">
+                      .
+                    </span>
+                    <span className="animate-bounce [animation-delay:300ms]">
+                      .
+                    </span>
+                  </span>
+                )}
 
                 <ChevronRight
                   className="
-                    h-4 w-4
-                    text-text-secondary
-                    transition-transform duration-300 ease-out
-                    group-open:rotate-90
-                  "
+            h-4 w-4
+            text-text-secondary
+            transition-transform duration-300 ease-out
+            group-open:rotate-90
+          "
                 />
               </summary>
 
               <div
                 className="
-                  mt-3
-                  whitespace-pre-wrap
-                  leading-7
-                  text-gray-400
-                  dark:text-gray-500
-                "
+          mt-3
+          whitespace-pre-wrap
+          leading-7
+          text-gray-400
+          dark:text-gray-500
+        "
               >
                 {segment.content}
               </div>
@@ -1117,6 +1323,8 @@ const MarkdownContent = ({
           </Markdown>
         );
       })}
+
+      <AgentFileDownloads events={agentEvents} />
     </div>
   );
 };

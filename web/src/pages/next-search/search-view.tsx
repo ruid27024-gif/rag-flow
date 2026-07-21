@@ -257,6 +257,14 @@ export default function SearchingView({
   const [searchtext, setSearchtext] = useState<string>('');
   const [retrievalLoading, setRetrievalLoading] = useState(false);
   const [previewImageId, setPreviewImageId] = useState<string>();
+
+  // 新增：每次新搜索时 +1，用来通知 RetrievalDocuments 重置
+  const [searchResetKey, setSearchResetKey] = useState(0);
+  const [hideRetrievalForNewQuestion, setHideRetrievalForNewQuestion] =
+    useState(false);
+  const [newQuestionLoadingStarted, setNewQuestionLoadingStarted] =
+    useState(false);
+
   const { id: searchId } = useParams();
 
   const saveSearchMessage = async (content: string) => {
@@ -300,11 +308,66 @@ export default function SearchingView({
     }
   };
 
+  const handleSubmitSearch = async (content: string) => {
+    const nextContent = content.trim();
+
+    if (!nextContent) return;
+
+    /**
+     * 用户重新提问，立即隐藏文件标签
+     */
+    setHideRetrievalForNewQuestion(true);
+    setNewQuestionLoadingStarted(false);
+
+    /**
+     * 新问题默认恢复全部文件
+     */
+    setSelectedDocumentIds([]);
+
+    /**
+     * 通知 RetrievalDocuments 重置内部文档列表
+     */
+    setSearchResetKey((prev) => prev + 1);
+
+    await saveSearchMessage(nextContent);
+
+    handleSearch(nextContent);
+  };
+
   useEffect(() => {
     setSearchtext(searchStr);
   }, [searchStr, setSearchtext]);
+  useEffect(() => {
+    if (!hideRetrievalForNewQuestion) return;
+
+    /**
+     * 新问题的 loading 真正开始了
+     */
+    if (sendingLoading || retrievalLoading) {
+      setNewQuestionLoadingStarted(true);
+      return;
+    }
+
+    /**
+     * loading 已经开始过，并且现在结束了，恢复显示标签
+     */
+    if (newQuestionLoadingStarted && !sendingLoading && !retrievalLoading) {
+      setHideRetrievalForNewQuestion(false);
+      setNewQuestionLoadingStarted(false);
+    }
+  }, [
+    hideRetrievalForNewQuestion,
+    newQuestionLoadingStarted,
+    sendingLoading,
+    retrievalLoading,
+  ]);
 
   console.log(retrievalLoading);
+  const shouldShowRetrievalDocuments =
+    !isSearchStrEmpty &&
+    !sendingLoading &&
+    !retrievalLoading &&
+    (chunks?.length ?? 0) > 0;
   return (
     <section
       className={cn(
@@ -350,12 +413,7 @@ export default function SearchingView({
                 //   }
                 onKeyUp={async (e) => {
                   if (e.key === 'Enter') {
-                    const content = searchtext.trim();
-
-                    if (!content) return;
-
-                    await saveSearchMessage(content);
-                    handleSearch(content);
+                    await handleSubmitSearch(searchtext);
                   }
                 }}
               />
@@ -397,12 +455,7 @@ export default function SearchingView({
                       return;
                     }
 
-                    const content = searchtext.trim();
-
-                    if (!content) return;
-
-                    await saveSearchMessage(content);
-                    handleSearch(content);
+                    await handleSubmitSearch(searchtext);
                   }}
                 >
                   {sendingLoading ? (
@@ -419,8 +472,53 @@ export default function SearchingView({
             className="w-full mt-5 overflow-auto scrollbar-none "
             style={{ height: 'calc(100vh - 250px)' }}
           >
+            {searchData.search_config.summary && !isSearchStrEmpty && (
+              <>
+                <div className="flex justify-start items-start text-text-primary text-2xl">
+                  {t('search.AISummary')}
+                </div>
+                {isEmpty(answer) && sendingLoading ? (
+                  <SkeletonCard className=" mt-2" />
+                ) : (
+                  answer.answer && (
+                    <div className="border rounded-lg p-4 mt-3 max-h-100 overflow-auto scrollbar-none">
+                      <MarkdownContent
+                        loading={sendingLoading}
+                        content={answer.answer}
+                        reference={answer.reference ?? ({} as IReference)}
+                        clickDocumentButton={clickDocumentButton}
+                      ></MarkdownContent>
+                    </div>
+                  )
+                )}
+                {answer.answer && !sendingLoading && (
+                  <div className="w-full border-b border-border-default/80 my-6"></div>
+                )}
+              </>
+            )}
+
+            {/* retrieval documents */}
+            {!isSearchStrEmpty && (
+              <div
+                className={cn('mt-3 w-80', {
+                  hidden: hideRetrievalForNewQuestion || sendingLoading,
+                })}
+              >
+                <RetrievalDocuments
+                  selectedDocumentIds={selectedDocumentIds}
+                  setSelectedDocumentIds={setSelectedDocumentIds}
+                  onTesting={handleTestChunk}
+                  setLoading={(loading: boolean) => {
+                    setRetrievalLoading(loading);
+                  }}
+                  resetKey={searchResetKey}
+                />
+              </div>
+            )}
+
+            {/* loading */}
             {(sendingLoading || retrievalLoading) && chunks?.length === 0 && (
-              <div className="mt-4 flex h-full min-h-[240px] w-full flex-col items-center justify-center gap-5">
+              <div className="mt-8 flex min-h-[240px] w-full flex-col items-center justify-center gap-5">
                 <div className="relative flex h-20 w-20 items-center justify-center">
                   {/* 外层柔和光晕 */}
                   <div className="absolute inset-0 rounded-full bg-blue-500/20 blur-2xl animate-pulse" />
@@ -450,46 +548,6 @@ export default function SearchingView({
                   </span>
                 </div>
               </div>
-            )}
-            {searchData.search_config.summary && !isSearchStrEmpty && (
-              <>
-                <div className="flex justify-start items-start text-text-primary text-2xl">
-                  {t('search.AISummary')}
-                </div>
-                {isEmpty(answer) && sendingLoading ? (
-                  <SkeletonCard className=" mt-2" />
-                ) : (
-                  answer.answer && (
-                    <div className="border rounded-lg p-4 mt-3 max-h-100 overflow-auto scrollbar-none">
-                      <MarkdownContent
-                        loading={sendingLoading}
-                        content={answer.answer}
-                        reference={answer.reference ?? ({} as IReference)}
-                        clickDocumentButton={clickDocumentButton}
-                      ></MarkdownContent>
-                    </div>
-                  )
-                )}
-                {answer.answer && !sendingLoading && (
-                  <div className="w-full border-b border-border-default/80 my-6"></div>
-                )}
-              </>
-            )}
-            {/* retrieval documents */}
-            {!isSearchStrEmpty && !sendingLoading && (
-              <>
-                <div className=" mt-3 w-80 ">
-                  <RetrievalDocuments
-                    selectedDocumentIds={selectedDocumentIds}
-                    setSelectedDocumentIds={setSelectedDocumentIds}
-                    onTesting={handleTestChunk}
-                    setLoading={(loading: boolean) => {
-                      setRetrievalLoading(loading);
-                    }}
-                  ></RetrievalDocuments>
-                </div>
-                {/* <div className="w-full border-b border-border-default/80 my-6"></div> */}
-              </>
             )}
             <div className="mt-3 ">
               {chunks?.length > 0 && (
@@ -669,10 +727,15 @@ export default function SearchingView({
                             key={idx}
                             variant="transparent"
                             className="bg-bg-card text-text-secondary"
-                            onClick={handleClickRelatedQuestion(
-                              x,
-                              searchData.search_config.summary,
-                            )}
+                            onClick={(event) => {
+                              setSelectedDocumentIds([]);
+                              setSearchResetKey((prev) => prev + 1);
+
+                              handleClickRelatedQuestion(
+                                x,
+                                searchData.search_config.summary,
+                              )(event);
+                            }}
                           >
                             {x}
                           </Button>

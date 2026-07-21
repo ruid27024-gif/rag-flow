@@ -170,6 +170,7 @@ export default {
     `${api_host}/conversation/getsse/${dialogId}`,
   listConversation: `${api_host}/conversation/list`,
   removeConversation: `${api_host}/conversation/rm`,
+  renameConversation: `${api_host}/conversation/rename`,
   completeConversation: `${api_host}/conversation/completion`,
   deleteMessage: `${api_host}/conversation/delete_msg`,
   thumbup: `${api_host}/conversation/thumbup`,
