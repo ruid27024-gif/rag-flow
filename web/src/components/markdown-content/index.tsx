@@ -1243,7 +1243,7 @@ const MarkdownContent = ({
               >
                 <span className="flex items-center gap-1.5">
                   <svg
-                    className={`h-[18px] w-[18px] text-indigo-500 dark:text-indigo-400 ${
+                    className={`h-[18px] w-[18px] text-emerald-600 dark:text-emerald-400 ${
                       isThinking ? 'animate-[spin_2.6s_linear_infinite]' : ''
                     }`}
                     viewBox="0 0 24 24"
