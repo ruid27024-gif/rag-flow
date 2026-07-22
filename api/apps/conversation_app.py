@@ -134,6 +134,7 @@ def getsse(dialog_id):
 async def rm():
     req = await get_request_json()
     conv_ids = req["conversation_ids"]
+    
     try:
         for cid in conv_ids:
             exist, conv = ConversationService.get_by_id(cid)
@@ -156,6 +157,7 @@ async def rename():
     req = await get_request_json()
 
     conversation_id = req.get("conversation_id")
+    
     name = req.get("name", "").strip()
 
     if not conversation_id:

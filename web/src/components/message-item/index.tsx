@@ -415,9 +415,11 @@ const MessageItem = ({
               </div>
             )} */}
 
-            {isAssistant && suggestionsList.length > 0 && (
-              <div
-                className="
+            {isAssistant &&
+              referenceDocumentList.length > 0 &&
+              suggestionsList.length > 0 && (
+                <div
+                  className="
                   mt-4
                   w-full
                   max-w-[850px]
@@ -425,31 +427,31 @@ const MessageItem = ({
                   border-gray-200/70
                   dark:border-gray-700/50
                 "
-              >
-                {suggestionsList.map((suggestion, index) => (
-                  <div
-                    key={index}
-                    onClick={() => {
-                      if (suggestionClickTimerRef.current) {
-                        clearTimeout(suggestionClickTimerRef.current);
-                      }
+                >
+                  {suggestionsList.map((suggestion, index) => (
+                    <div
+                      key={index}
+                      onClick={() => {
+                        if (suggestionClickTimerRef.current) {
+                          clearTimeout(suggestionClickTimerRef.current);
+                        }
 
-                      suggestionClickTimerRef.current = setTimeout(() => {
-                        // 单击：只进入输入框
-                        onSuggestionClick?.(suggestion);
-                        suggestionClickTimerRef.current = null;
-                      }, 220);
-                    }}
-                    onDoubleClick={() => {
-                      if (suggestionClickTimerRef.current) {
-                        clearTimeout(suggestionClickTimerRef.current);
-                        suggestionClickTimerRef.current = null;
-                      }
+                        suggestionClickTimerRef.current = setTimeout(() => {
+                          // 单击：只进入输入框
+                          onSuggestionClick?.(suggestion);
+                          suggestionClickTimerRef.current = null;
+                        }, 220);
+                      }}
+                      onDoubleClick={() => {
+                        if (suggestionClickTimerRef.current) {
+                          clearTimeout(suggestionClickTimerRef.current);
+                          suggestionClickTimerRef.current = null;
+                        }
 
-                      // 双击：直接发送
-                      onSuggestionDoubleClick?.(suggestion);
-                    }}
-                    className="
+                        // 双击：直接发送
+                        onSuggestionDoubleClick?.(suggestion);
+                      }}
+                      className="
                       group
                       flex
                       cursor-pointer
@@ -468,10 +470,10 @@ const MessageItem = ({
                       dark:text-gray-100
                       dark:hover:bg-white/5
                     "
-                  >
-                    {/* 左侧小箭头 */}
-                    <span
-                      className="
+                    >
+                      {/* 左侧小箭头 */}
+                      <span
+                        className="
                         mt-0.5
                         shrink-0
                         text-base
@@ -482,26 +484,26 @@ const MessageItem = ({
                         dark:text-gray-500
                         dark:group-hover:text-gray-300
                       "
-                    >
-                      ↳
-                    </span>
+                      >
+                        ↳
+                      </span>
 
-                    {/* 建议文字 */}
-                    <span
-                      className="
+                      {/* 建议文字 */}
+                      <span
+                        className="
                         min-w-0
                         flex-1
                         break-words
                         text-gray-900
                         dark:text-gray-100
                       "
-                    >
-                      {suggestion}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                      >
+                        {suggestion}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             {isUser &&
               Array.isArray(uploadedFiles) &&
               uploadedFiles.length > 0 && (

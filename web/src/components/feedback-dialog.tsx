@@ -55,7 +55,10 @@ const FeedbackDialog = ({
         </DialogHeader>
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit(handleOk)}
+            onSubmit={(e) => {
+              e.stopPropagation();
+              form.handleSubmit(handleOk)(e);
+            }}
             className="space-y-6"
             id={FormId}
           >
