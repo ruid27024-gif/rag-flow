@@ -7,7 +7,6 @@ import {
   BreadcrumbLink,
   BreadcrumbList,
 } from '@/components/ui/breadcrumb';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SearchInput } from '@/components/ui/input';
 import { useSetModalState } from '@/hooks/common-hooks';
@@ -538,7 +537,7 @@ export function Sessions({
       )}
 
       {/* ===== Footer ===== */}
-      <div className="py-2">
+      {/* <div className="py-2">
         <Button
           className="w-full"
           type="button"
@@ -548,7 +547,7 @@ export function Sessions({
         >
           {t('chat.chatSetting')}
         </Button>
-      </div>
+      </div> */}
     </section>
   );
 }

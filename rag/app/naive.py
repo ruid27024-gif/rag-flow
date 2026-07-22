@@ -17,6 +17,7 @@
 import logging
 import re
 import os
+import sys
 from functools import reduce
 from io import BytesIO
 from timeit import default_timer as timer

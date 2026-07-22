@@ -16,7 +16,7 @@ from api.db.db_models import AdminUser, Group, File, File_Admin, User, UserGroup
 from api.db.db_models import AdminUser
 from peewee import *
 File_Admin.create_table()
-def test():
+# def test():
     # # 1. 获取管理员
     # admin_user = AdminUser.select().where(AdminUser.role_level == 1).first()
     # if not admin_user:
@@ -75,7 +75,8 @@ def test():
     #         # root1 = root.copy()
     #         root.id = g["group_id"]
     #         root.name = g["group_name"]
-
+    #         root.sourceType = "adminowner"
+            
     #         File_Admin.create(**root.to_dict())
     #     except IntegrityError as e:
     #         print("主键已存在，跳过:",g["group_id"])
@@ -162,8 +163,9 @@ def test():
     
     # """
     
-    # 把4个组参考库分别接入组内
-    # 获取参考库的根
+    # # 把4个组参考库分别接入组内
+    # # 获取参考库的根
+    
     # file1 = File.select().where((File.parent_id == File.id)
     #                             & (File.tenant_id == 'b49914742aa211f1a25910ffe02ab235')).first()
     
@@ -201,15 +203,15 @@ def test():
     # except Exception as e:
     #     pass 
 
-    file5 = File.select().where((File.parent_id == File.id)
-                            & (File.tenant_id == '18b80f5c661f11f1bd02e8473ae7fab0')).first()
-    file5.parent_id = '72551b94660711f19ddbe8473ae7fab0'
-    file5.name = '数字化管理中心'
+    # file5 = File.select().where((File.parent_id == File.id)
+    #                         & (File.tenant_id == '18b80f5c661f11f1bd02e8473ae7fab0')).first()
+    # file5.parent_id = '72551b94660711f19ddbe8473ae7fab0'
+    # file5.name = '数字化管理中心'
 
 
 
 
-    File_Admin.create(**file5.to_dict()) 
+    # File_Admin.create(**file5.to_dict()) 
 
 
     # # 全局参考库
@@ -223,9 +225,113 @@ def test():
     # except Exception as e:
     #     pass 
     
+def test():
+    user_id = "03aef74a84ee11f1ad4be8473ae7fab0"
+
+    root = (
+        File
+        .select()
+        .where(
+            (File.parent_id == File.id) &
+            (File.tenant_id == user_id)
+        )
+        .first()
+    )
+
+    if not root:
+        print("❌ 没有找到自己的根目录")
+        return
+
+    admin_root_id = root.id
+
+    print("✅ 找到自己的根目录")
+    print("root id:", root.id)
+    print("root parent_id:", root.parent_id)
+    print("root tenant_id:", root.tenant_id)
+
+    # 1. 自己的根目录原封不动写入
+    try:
+        File_Admin.create(**root.to_dict())
+        print("✅ 自己的根目录已写入:", admin_root_id)
+    except IntegrityError:
+        print("⚠️ 自己的根目录已存在，跳过:", admin_root_id)
+
+    # 2. 5 个组
+    groups = [
+        {
+            "group_id": "71196836278011f19ca210ffe02ab235",
+            "group_name": "工艺研究一室（100146）",
+        },
+        {
+            "group_id": "e013c3d4278611f1a03d10ffe02ab235",
+            "group_name": "工艺研究二室（100147）",
+        },
+        {
+            "group_id": "8e865b04278a11f1a03d10ffe02ab235",
+            "group_name": "工艺研究三室（100148）",
+        },
+        {
+            "group_id": "1dc3a6243ed711f1a593345a60aae1f7",
+            "group_name": "新品事业部研发部（100051）",
+        },
+        {
+            "group_id": "72551b94660711f19ddbe8473ae7fab0",
+            "group_name": "数字化管理中心",
+        },
+    ]
+
+    for g in groups:
+        group_id = g["group_id"]
+        group_name = g["group_name"]
+
+        data = root.to_dict()
+
+        data["id"] = group_id
+        data["parent_id"] = admin_root_id
+        data["name"] = group_name
+        data["source_type"] = "adminowner"
+
+        try:
+            File_Admin.create(**data)
+            print("✅ 组已挂到当前根目录:", group_name, group_id)
+        except IntegrityError:
+            print("⚠️ 当前根目录下已存在该组，跳过:", group_name, group_id)
+        except Exception as e:
+            print("❌ 组写入失败:", group_name, group_id, e)
+
+    # 3. 全局参考库
+    global_ref_tenant_id = "e475b8cc215711f1b64c10ffe02ab235"
+
+    global_ref = (
+        File
+        .select()
+        .where(
+            (File.parent_id == File.id) &
+            (File.tenant_id == global_ref_tenant_id)
+        )
+        .first()
+    )
+
+    if not global_ref:
+        print("❌ 没有找到全局参考库根目录")
+    else:
+        data = global_ref.to_dict()
+
+        data["parent_id"] = admin_root_id
+        data["name"] = "全局参考库"
+        data["source_type"] = "adminowner"
+
+        try:
+            File_Admin.create(**data)
+            print("✅ 全局参考库已挂到当前根目录:", global_ref.id)
+        except IntegrityError:
+            print("⚠️ 当前根目录下已存在全局参考库，跳过:", global_ref.id)
+        except Exception as e:
+            print("❌ 全局参考库写入失败:", e)
+
+    print("✅ 处理完成")
 
 
 if __name__ == "__main__":
     test()
-
 
