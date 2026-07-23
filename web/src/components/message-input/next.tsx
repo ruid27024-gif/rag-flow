@@ -9,13 +9,23 @@ import {
   FileUploadItemPreview,
   FileUploadItemProgress,
   FileUploadList,
+  FileUploadTrigger,
   type FileUploadProps,
 } from '@/components/file-upload';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
-import { CircleStop, Layers3, Send, Upload, X } from 'lucide-react';
+import {
+  Bot,
+  CircleStop,
+  Layers3,
+  Paperclip,
+  Send,
+  Sparkles,
+  Upload,
+  X,
+} from 'lucide-react';
 import * as React from 'react';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
@@ -232,7 +242,7 @@ export function NextMessageInput({
         <div className="flex items-center justify-between gap-1.5">
           {/* 左侧工具区 */}
           <div className="flex items-center gap-2">
-            {/* {showUploadIcon && (
+            {showUploadIcon && (
               <FileUploadTrigger asChild>
                 <Button
                   type="button"
@@ -245,7 +255,7 @@ export function NextMessageInput({
                   <span className="sr-only">Attach file</span>
                 </Button>
               </FileUploadTrigger>
-            )} */}
+            )}
 
             <div className="flex items-center gap-2">
               {/* 多库并行推理 */}
@@ -337,7 +347,7 @@ export function NextMessageInput({
               </Button>
 
               {/* 深度推理 */}
-              {/* <Button
+              <Button
                 type="button"
                 size="sm"
                 title="海量查询，速度慢"
@@ -422,10 +432,10 @@ export function NextMessageInput({
                   <Sparkles className="h-3 w-3" />
                 </span>
                 深度推理
-              </Button> */}
+              </Button>
 
               {/* Agent */}
-              {/* <Button
+              <Button
                 type="button"
                 size="sm"
                 title="Agent 模式"
@@ -510,7 +520,7 @@ export function NextMessageInput({
                   <Bot className="h-3 w-3" />
                 </span>
                 Agent Skills
-              </Button>  */}
+              </Button>
             </div>
           </div>
 

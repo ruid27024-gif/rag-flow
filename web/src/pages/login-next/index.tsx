@@ -299,13 +299,14 @@ const Login = () => {
 
         <div className="absolute top-3 flex flex-col items-center mb-12 w-full text-text-primary">
           <div className="flex items-center mb-4 w-full pl-10 pt-10 ">
-            <div className="w-12 h-12 p-2 rounded-lg flex items-center justify-center mr-3">
-              <img
-                src={'/hf.svg'}
-                alt="logo"
-                // className="size-8 mr-[12] cursor-pointer"
-                className="size-16 mr-[12px] cursor-pointer"
-              />
+            <div className="w-60 h-30 p-2 rounded-lg flex items-center justify-center mr-3">
+              <div className="p-2 rounded-lg flex items-center justify-center mr-3">
+                <img
+                  src="/hengyue.png"
+                  alt="logo"
+                  className="h-12 w-auto cursor-pointer"
+                />
+              </div>
             </div>
             {/* <div className="text-xl font-bold self-center">{t('Company')}</div> */}
           </div>
@@ -344,7 +345,7 @@ const Login = () => {
             className="pl-3 text-4xl font-extrabold animate-shine font-serif"
             style={{
               fontFamily: `Georgia, "Times New Roman", serif`,
-              background: 'linear-gradient(90deg, #065F46, #34D399, #065F46)',
+              background: 'linear-gradient(90deg, #174A8B, #2563A8, #174A8B)',
               backgroundSize: '200% 100%',
               WebkitBackgroundClip: 'text',
               backgroundClip: 'text',
@@ -515,7 +516,7 @@ const Login = () => {
                   </form>
                 </Form>
 
-                {/* {title === 'login' && registerEnabled && (
+                {title === 'login' && registerEnabled && (
                   <div className="mt-10 text-right">
                     <p className="text-text-disabled text-sm">
                       {t('signInTip')}
@@ -542,7 +543,7 @@ const Login = () => {
                       </Button>
                     </p>
                   </div>
-                )} */}
+                )}
               </div>
             </div>
           </FlipCard3D>
