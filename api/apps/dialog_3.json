@@ -7,7 +7,7 @@
   "llm_id": "qwen3-32b",
   "llm_setting": "{\"temperature\":0.2,\"top_p\":0.75,\"presence_penalty\":0.5,\"frequency_penalty\":0.5}",
   "meta_data_filter": "{\"method\":\"disabled\"}",
-  "name": "恒丰纸业统一问答智能体",
+  "name": "医疗诊断问答智能体",
   "prompt_config": "{\"quote\":true,\"keyword\":false,\"tts\":false,\"prologue\":\"您好！我是恒丰统一问答机器人，有什么可以帮助到您呢？😀\",\"system\":\"你是一个智能助手，请总结知识库的内容来回答问题，请列举知识库中的数据详细回答。当所有知识库内容都与问题无关时，你的回答必须包括“知识库中未找到您要的答案！”这句话。回答需要考虑聊天历史。以下是知识库：{knowledge}\",\"refine_multiturn\":true,\"use_kg\":false,\"parameters\":[{\"key\":\"knowledge\",\"optional\":false}],\"reasoning\":false,\"cross_languages\":[],\"toc_enhance\":false}",
   "prompt_type": "simple",
   "rerank_id": "",

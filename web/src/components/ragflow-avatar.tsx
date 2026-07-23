@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 const PREDEFINED_COLORS = [
   { from: '#4F6DEE', to: '#67BDF9' },
   { from: '#633897', to: '#CBA1FF' },
-  { from: '#1e7e34', to: '#18642a' },
+  { from: '#075985', to: '#0EA5E9' },
 
   { from: '#C35F2B', to: '#EDB395' },
   { from: '#FF6B6B', to: '#FF8E53' }, // 5. 珊瑚红 (活力/醒目)
@@ -110,12 +110,12 @@ export const RAGFlowAvatar = memo(
     // }
 
     if (color === 6) {
-      from = '#064E3B';
-      to = '#047857';
+      from = '#075985';
+      to = '#0EA5E9';
     } else if (color === 99) {
       // color 传入 99 时，使用深蓝色
-      from = '#4ADE80';
-      to = '#4ADE80';
+      from = '#0284C7';
+      to = '#38BDF8';
     } else if (typeof color === 'number') {
       const colorConfig = PREDEFINED_COLORS[color - 1];
 
@@ -124,13 +124,13 @@ export const RAGFlowAvatar = memo(
         to = colorConfig.to;
       } else {
         // 传入了数字，但是不在预设范围内
-        from = '#035a2d';
-        to = '#048a44';
+        from = '#075985';
+        to = '#0EA5E9';
       }
     } else {
       // color 是 undefined / null / 没传时
-      from = '#3baa51';
-      to = '#38A04D';
+      from = '#0369A1';
+      to = '#38BDF8';
     }
 
     const fallbackRef = useRef<HTMLElement>(null);

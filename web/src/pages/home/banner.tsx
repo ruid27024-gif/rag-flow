@@ -50,15 +50,15 @@ export function NextBanner() {
       </span> */}
       <span
         className="
-          pl-3
-          text-transparent
-          [-webkit-text-fill-color:transparent]
-          bg-clip-text
-          bg-gradient-to-r
-          from-[#065F46]
-          to-[#34D399]
-          font-serif
-        "
+    pl-3
+    text-transparent
+    [-webkit-text-fill-color:transparent]
+    bg-clip-text
+    bg-gradient-to-r
+    from-[#075985]
+    to-[#0EA5E9]
+    font-serif
+  "
         style={{
           fontFamily: `Georgia, "Times New Roman", serif`,
         }}

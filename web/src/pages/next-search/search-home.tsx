@@ -1,7 +1,6 @@
 import { Input } from '@/components/originui/input';
 import message from '@/components/ui/message';
 import { IUserInfo } from '@/interfaces/database/user-setting';
-import { cn } from '@/lib/utils';
 import { Search } from 'lucide-react';
 import { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -126,13 +125,11 @@ export default function SearchPage({
       </div>
 
       <div className="relative z-10 px-8 pt-8 flex flex-col justify-center items-center w-[780px]">
-        <h1
-          className={cn(
-            'text-4xl font-bold bg-gradient-to-l from-[#40EBE3] to-[#4A51FF] bg-clip-text text-transparent',
-          )}
-        >
-          恒丰纸业
-        </h1>
+        <img
+          src="/hengyue.png"
+          alt="恒悦"
+          className="h-16 w-auto object-contain"
+        />
 
         {!isSearching && (
           <>

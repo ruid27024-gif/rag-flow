@@ -396,12 +396,15 @@ export function FilesTable({
     <>
       <div className="w-full">
         <Table rootClassName="max-h-[calc(100vh-242px)] overflow-auto">
-          <TableHeader>
+          <TableHeader className="bg-transparent">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow
+                key={headerGroup.id}
+                className="bg-transparent hover:bg-transparent"
+              >
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead key={header.id} className="bg-transparent">
                       {header.isPlaceholder
                         ? null
                         : flexRender(

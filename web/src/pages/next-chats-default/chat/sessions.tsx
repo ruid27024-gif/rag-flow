@@ -165,24 +165,36 @@ export function Sessions({
     return (
       <aside
         className="
-        w-[40px] shrink-0
-        bg-[#F7FBF9] dark:bg-zinc-950
-        border-r border-emerald-100/80 dark:border-emerald-950/70
-        flex flex-col items-center
-      "
+    w-[40px] shrink-0
+    flex flex-col items-center
+
+    bg-white/15
+    backdrop-blur-xl
+    border-r border-sky-200/50
+
+    dark:bg-transparent
+    dark:border-zinc-800/60
+    dark:backdrop-blur-none
+  "
       >
         <button
           type="button"
           onClick={switchVisible}
           className="
-          mt-[76px]
-          inline-flex size-8 items-center justify-center
-          rounded-md
-          text-gray-500 dark:text-gray-400
-          hover:text-emerald-700 dark:hover:text-emerald-300
-          hover:bg-emerald-50 dark:hover:bg-emerald-950/50
-          transition-colors
-        "
+    mt-[76px]
+    inline-flex size-8 items-center justify-center
+    rounded-md
+
+    text-sky-600
+    hover:text-sky-800
+    hover:bg-white/35
+
+    dark:text-slate-400
+    dark:hover:text-sky-300
+    dark:hover:bg-sky-950/30
+
+    transition-colors
+  "
         >
           <PanelRightClose className="size-4" />
         </button>
@@ -205,36 +217,37 @@ export function Sessions({
             <BreadcrumbItem>
               <BreadcrumbLink
                 onClick={navigateToChatList}
-                className="group relative inline-flex items-center"
+                className="group relative inline-flex items-center cursor-pointer"
               >
-                <span
+                <img
+                  src="/hengyue.png"
+                  alt="恒丰纸业"
                   className="
-                  text-2xl font-semibold
-                  text-[#064E3B]
-                  cursor-pointer
-                  transition-colors duration-200
-                  group-hover:text-[#047857]
-                "
-                >
-                  {t('chat.chat')}
-                </span>
+              h-10
+              w-auto
+              object-contain
+              transition-opacity duration-200
+              group-hover:opacity-85
+            "
+                />
 
                 <span
                   className="
-                  absolute left-0 top-full mt-2
-                  rounded-md
-                  bg-white px-3 py-1.5
-                  text-xs text-[#064E3B]
-                  border border-emerald-100
-                  shadow-sm
-                  opacity-0
-                  translate-y-1
-                  transition-all duration-200
-                  pointer-events-none
-                  group-hover:opacity-100
-                  group-hover:translate-y-0
-                  z-50
-                "
+              absolute left-0 top-full mt-2
+              whitespace-nowrap
+              rounded-md
+              bg-white px-3 py-1.5
+              text-xs text-[#064E3B]
+              border border-emerald-100
+              shadow-sm
+              opacity-0
+              translate-y-1
+              transition-all duration-200
+              pointer-events-none
+              group-hover:opacity-100
+              group-hover:translate-y-0
+              z-50
+            "
                 >
                   点击返回导航页面
                 </span>

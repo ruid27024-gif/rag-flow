@@ -180,20 +180,21 @@ export default function Datasets() {
                       {/* 组名 */}
                       <h2
                         className="
-                            pl-3
-                            text-transparent
-                            [-webkit-text-fill-color:transparent]
-                            bg-clip-text
-                            bg-gradient-to-r
-                            from-[#065F46]
-                            to-[#34D399]
-                            font-serif
-                          "
+                          pl-3
+                          text-transparent
+                          [-webkit-text-fill-color:transparent]
+                          bg-clip-text
+                          bg-gradient-to-r
+                          from-[#0C4A6E]
+                          to-[#0284C7]
+                          font-serif
+                        "
                         style={{
                           fontFamily: `Georgia, "Times New Roman", serif`,
                         }}
                       >
                         {groupName}
+
                         {/* <span
                           className="
                           ml-2 relative inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded-full

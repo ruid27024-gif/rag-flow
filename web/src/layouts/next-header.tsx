@@ -237,10 +237,9 @@ export function Header() {
     <section className="py-5 px-10 flex justify-between items-center ">
       <div className="flex items-center gap-4">
         <img
-          src={'/hf.svg'}
+          src="/hengyue.png"
           alt="logo"
-          // className="size-10 mr-[12] cursor-pointer"
-          className="size-16 mr-[12px] cursor-pointer"
+          className="h-24 w-48 mr-[12px] cursor-pointer object-contain"
           onClick={handleLogoClick}
         />
       </div>

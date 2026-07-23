@@ -271,20 +271,20 @@ export function NextMessageInput({
         transition-all
         duration-200
         shadow-none
-        hover:bg-emerald-50
-        hover:text-emerald-600
-        hover:border-emerald-300
-        dark:hover:bg-emerald-950/30
+        hover:bg-sky-50
+        hover:text-sky-600
+        hover:border-sky-300
+        dark:hover:bg-sky-950/30
       `,
                   !reasoning && !agentMod
                     ? `
-          border-emerald-300
-          bg-emerald-50
-          text-emerald-600
+          border-sky-300
+          bg-sky-50
+          text-sky-600
           shadow-sm
-          dark:border-emerald-700
-          dark:bg-emerald-950/30
-          dark:text-emerald-400
+          dark:border-sky-700
+          dark:bg-sky-950/30
+          dark:text-sky-400
         `
                     : `
           border-gray-200
@@ -311,14 +311,14 @@ export function NextMessageInput({
                       ? `
             scale-105
             bg-gradient-to-br
-            from-emerald-400
-            to-teal-500
+            from-sky-400
+            to-cyan-500
             text-white
             shadow-sm
-            shadow-emerald-300/50
+            shadow-sky-300/50
             ring-1
-            ring-emerald-200
-            dark:ring-emerald-700
+            ring-sky-200
+            dark:ring-sky-700
           `
                       : `
             bg-gray-100
@@ -520,7 +520,21 @@ export function NextMessageInput({
               <Button
                 type="button"
                 onClick={stopOutputMessage}
-                className="size-7 rounded-sm"
+                className="
+        size-7 rounded-sm
+        !bg-white/20
+        text-sky-700
+        border border-sky-300/50
+        shadow-none
+        backdrop-blur-md
+        hover:!bg-white/35
+        hover:text-sky-800
+        disabled:opacity-50
+        dark:!bg-transparent
+        dark:text-sky-300
+        dark:border-sky-700/50
+        dark:hover:!bg-sky-950/30
+      "
               >
                 <CircleStop className="size-4" />
               </Button>
@@ -528,7 +542,22 @@ export function NextMessageInput({
               <Button
                 type="button"
                 onClick={submit}
-                className="size-7 rounded-sm"
+                className="
+        size-7 rounded-sm
+        !bg-white/20
+        text-sky-700
+        border border-sky-300/50
+        shadow-none
+        backdrop-blur-md
+        hover:!bg-white/35
+        hover:text-sky-800
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+        dark:!bg-transparent
+        dark:text-sky-300
+        dark:border-sky-700/50
+        dark:hover:!bg-sky-950/30
+      "
                 disabled={
                   sendDisabled || isUploading || sendLoading || !value.trim()
                 }

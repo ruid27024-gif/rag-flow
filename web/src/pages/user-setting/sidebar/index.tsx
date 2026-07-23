@@ -87,7 +87,7 @@ export function SideBar() {
   const { logout } = useLogout();
 
   return (
-    <aside className="w-[303px] bg-bg-base flex flex-col">
+    <aside className="w-[303px] bg-transparent flex flex-col">
       <div className="px-6 flex gap-2 items-center">
         <RAGFlowAvatar
           avatar={userInfo?.avatar}
@@ -103,11 +103,35 @@ export function SideBar() {
             <div key={idx}>
               <div key={idx} className="mx-6 my-5 ">
                 <Button
-                  variant={hoverKey ? 'secondary' : 'ghost'}
-                  className={cn('w-full justify-between gap-2.5 p-3 relative', {
-                    'bg-bg-card text-text-primary': active === item.key,
-                    'bg-bg-base text-text-secondary': active !== item.key,
-                  })}
+                  variant="ghost"
+                  className={cn(
+                    `
+      w-full justify-between gap-2.5 p-3 relative
+      !bg-transparent
+      text-slate-600
+      hover:!bg-sky-100/45
+      hover:text-sky-800
+      shadow-none
+      transition-all duration-200
+
+      dark:!bg-transparent
+      dark:text-slate-400
+      dark:hover:!bg-sky-950/30
+      dark:hover:text-sky-300
+    `,
+                    active === item.key &&
+                      `
+        !bg-sky-100/60
+        text-sky-800
+        border border-sky-200/60
+        shadow-sm shadow-sky-100/40
+
+        dark:!bg-sky-950/30
+        dark:text-sky-300
+        dark:border-sky-800/50
+        dark:shadow-none
+      `,
+                  )}
                   onClick={handleMenuClick(item.key)}
                 >
                   <section className="flex items-center gap-2.5">

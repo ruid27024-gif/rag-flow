@@ -76,7 +76,7 @@ export default {
       nicknamePlaceholder: '请输入名称',
       register: '创建账户',
       continue: '继续',
-      title: '造纸研发知识库',
+      title: '医疗诊断知识库',
       annotation: '知识库及智能决策系统',
       Company: '恒丰纸业',
       start: '立即开始',

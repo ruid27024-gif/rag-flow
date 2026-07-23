@@ -56,6 +56,7 @@ type Locale = ConfigProviderProps['locale'];
 
 function Root({ children }: React.PropsWithChildren) {
   const { theme: themeragflow } = useTheme();
+
   const getLocale = (lng: string) =>
     AntLanguageMap[lng as keyof typeof AntLanguageMap] ?? enUS;
 
@@ -67,6 +68,18 @@ function Root({ children }: React.PropsWithChildren) {
   });
 
   const [isUserInteracting, setIsUserInteracting] = useState(true);
+
+  const randomBackground = React.useMemo(() => {
+    const blueGradients = [
+      'linear-gradient(90deg, #d6eef8 0%, #edf8fc 22%, #ffffff 50%, #edf8fc 78%, #d6eef8 100%)',
+      'radial-gradient(circle at 20% 30%, rgba(190,230,248,0.65) 0%, rgba(238,248,252,0.75) 32%, rgba(255,255,255,1) 68%, rgba(220,240,248,0.85) 100%)',
+      'linear-gradient(135deg, #cfeefa 0%, #f5fbfe 35%, #ffffff 55%, #e1f4fb 100%)',
+      'radial-gradient(circle at 80% 20%, rgba(206,236,249,0.75) 0%, rgba(246,251,253,1) 40%, rgba(255,255,255,1) 62%, rgba(216,238,248,0.9) 100%)',
+      'linear-gradient(120deg, #d8eff8 0%, #ffffff 42%, #f8fcfe 58%, #cfeaf6 100%)',
+    ];
+
+    return blueGradients[Math.floor(Math.random() * blueGradients.length)];
+  }, []);
 
   return (
     <>
@@ -88,12 +101,19 @@ function Root({ children }: React.PropsWithChildren) {
         }}
         locale={locale}
       >
-        <SidebarProvider className="h-full HandlebackgroundUrl">
+        <SidebarProvider
+          className="h-full HandlebackgroundUrl"
+          style={{
+            background: themeragflow === 'dark' ? undefined : randomBackground,
+          }}
+        >
           <App>{children}</App>
         </SidebarProvider>
-        <Sonner position={'top-right'} expand richColors closeButton></Sonner>
+
+        <Sonner position={'top-right'} expand richColors closeButton />
         <Toaster />
       </ConfigProvider>
+
       {/* <ReactQueryDevtools buttonPosition={'top-left'} initialIsOpen={false} /> */}
     </>
   );

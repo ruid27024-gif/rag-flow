@@ -404,23 +404,27 @@ export function KnowledgeBaseFormField({
                 <button
                   type="button"
                   className="
-                  group inline-flex h-9 items-center gap-2 rounded-lg
-                  border border-slate-200 bg-white px-3.5
-                  text-sm font-medium text-slate-700
-                  shadow-sm transition-all duration-200 ease-out
-                  hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 hover:shadow-md
-                  active:scale-[0.98] active:bg-slate-100
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-1
-                  /* 暗黑模式适配 */
-                  dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
-                  dark:hover:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-white
-                  dark:active:bg-slate-600
+  group inline-flex h-9 items-center gap-2 rounded-lg
+  border border-sky-300/50 bg-white/20 px-3.5
+  text-sm font-medium text-sky-800
+  shadow-none backdrop-blur-md
+  transition-all duration-200 ease-out
+
+  hover:border-sky-400/60 hover:bg-white/35 hover:text-sky-900 hover:shadow-sm
+  active:scale-[0.98] active:bg-sky-100/40
+
+  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60 focus-visible:ring-offset-1
+
+  dark:border-sky-700/50 dark:bg-transparent dark:text-sky-300
+  dark:hover:border-sky-600 dark:hover:bg-sky-950/30 dark:hover:text-sky-200
+  dark:active:bg-sky-900/30
+
                 "
                   onClick={openMultiSelect}
                 >
                   {/* 书籍图标 */}
                   <svg
-                    className="h-4 w-4 text-slate-500 dark:text-slate-400"
+                    className="h-4 w-4 text-sky-600 dark:text-sky-400"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -436,17 +440,17 @@ export function KnowledgeBaseFormField({
                   <span>知识库</span>
 
                   {/* 数字徽章：保持深色背景+白色文字，在黑白模式下都清晰 */}
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-slate-200 bg-slate-100 px-1.5 text-xs font-bold text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-50 dark:text-slate-900">
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-sky-300/50 bg-sky-100/60 px-1.5 text-xs font-bold text-sky-800 shadow-sm dark:border-sky-700/60 dark:bg-sky-950/40 dark:text-sky-300">
                     {count ?? 0}
                   </span>
 
-                  <span className="text-xs font-medium text-slate-500 tracking-wide dark:text-slate-400">
+                  <span className="text-xs font-medium text-sky-600 tracking-wide dark:text-sky-400">
                     已选
                   </span>
 
                   {/* 下拉箭头 */}
                   <svg
-                    className="ml-0.5 h-3.5 w-3.5 text-slate-400 transition-transform duration-200 group-hover:rotate-180 dark:text-slate-500"
+                    className="ml-0.5 h-3.5 w-3.5 text-sky-500 transition-transform duration-200 group-hover:rotate-180 dark:text-sky-500"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"

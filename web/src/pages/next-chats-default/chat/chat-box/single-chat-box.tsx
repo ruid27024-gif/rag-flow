@@ -488,32 +488,17 @@ export function SingleChatBox({
         <div className="flex flex-1 min-h-0 w-full items-center justify-center px-5">
           <div className="w-full max-w-[860px] -translate-y-8">
             {/* 简洁 Logo 标题 */}
-            <div className="mb-8 flex items-center justify-center gap-4 text-center">
+            <div className="mb-8 flex items-center justify-center text-center">
               <img
-                src="/hf_pic.png"
-                // alt="恒丰纸业"
+                src="/hengyue.png"
+                alt="恒丰纸业"
                 className="
-    h-16
-    w-16
-    object-contain
-    drop-shadow-[0_10px_18px_rgba(16,185,129,0.18)]
-  "
+      h-16
+      w-auto
+      object-contain
+      drop-shadow-[0_10px_18px_rgba(16,185,129,0.18)]
+    "
               />
-
-              <div
-                className="
-                text-4xl
-                font-extrabold
-                tracking-tight
-                text-emerald-900
-                dark:text-emerald-100
-              "
-                style={{
-                  fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, Georgia, "Times New Roman", serif`,
-                }}
-              >
-                恒丰纸业
-              </div>
             </div>
 
             {/* 居中的输入框，外层更直角一点 */}

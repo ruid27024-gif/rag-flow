@@ -367,13 +367,7 @@ export default function Chat() {
           ></Sessions> */}
 
         {/* <div className="flex flex-1 min-h-0 pb-1 overflow-hidden"> */}
-        <div
-          className="
-    flex flex-1 min-h-0 pb-1 overflow-hidden
-    bg-[#F3FAF7]
-    dark:bg-transparent
-  "
-        >
+        <div className="flex flex-1 min-h-0 pb-1 overflow-hidden bg-[radial-gradient(circle_at_0%_20%,rgba(216,238,248,0.45)_0%,rgba(235,246,251,0.32)_22%,rgba(249,252,253,0)_50%),linear-gradient(90deg,rgba(235,246,251,1)_0%,rgba(249,252,253,1)_45%,rgba(246,250,252,1)_100%)] dark:bg-none dark:bg-transparent">
           {/* 左侧会话列表：自己内部滚动 */}
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
@@ -427,14 +421,13 @@ export default function Chat() {
           </div>
         </div> */}
 
-          <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
-            {/* <div
-  className="
+          <div
+            className="
     flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden
-    bg-[#E3F5F1]
-    dark:bg-[#071A16]
+    bg-[linear-gradient(90deg,#d8eef8_0%,#eef8fc_18%,#ffffff_50%,#eef8fc_82%,#d8eef8_100%)]
+    dark:bg-none dark:bg-transparent
   "
-> */}
+          >
             <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div
