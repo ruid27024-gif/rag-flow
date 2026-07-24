@@ -139,6 +139,10 @@ export const getFileLogsTableColumns = (
   isDeleting?: boolean,
 ) => {
   // const { t } = useTranslate('knowledgeDetails');
+  const TaskTypeMap: Record<string, string> = {
+    parse_author_info: '提取',
+    parse: '解析',
+  };
 
   const columns: ColumnDef<IFileLogItem & DocumentLog>[] = [
     // {
@@ -301,11 +305,15 @@ export const getFileLogsTableColumns = (
         cellClassName: 'max-w-[20vw] text-left',
         headerClassName: 'text-left',
       },
-      cell: ({ row }) => (
-        <div className="text-text-primary text-left">
-          {row.original.task_type}
-        </div>
-      ),
+      cell: ({ row }) => {
+        const taskType = row.original.task_type;
+
+        return (
+          <div className="text-text-primary text-left">
+            {TaskTypeMap[taskType] || taskType}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'latest_task_scene_text',

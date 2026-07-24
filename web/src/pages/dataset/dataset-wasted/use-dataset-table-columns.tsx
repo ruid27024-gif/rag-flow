@@ -207,8 +207,11 @@ export function useDatasetTableColumns({
         <div className="text-text-primary">
           {row.original.source_type === 'local' ||
           row.original.source_type === '' ? (
-            <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
-              <MonitorUp className="text-accent-primary" size={16} />
+            <div className="flex items-center gap-2">
+              <div className="bg-accent-primary-5 w-6 h-6 rounded-full flex items-center justify-center">
+                <MonitorUp className="text-accent-primary" size={16} />
+              </div>
+              <span className="text-sm">本地</span>
             </div>
           ) : (
             <div className="w-6 h-6 flex items-center justify-center">

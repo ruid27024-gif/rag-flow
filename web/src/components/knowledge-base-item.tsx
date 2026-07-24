@@ -5,6 +5,7 @@ import { useBuildQueryVariableOptions } from '@/pages/agent/hooks/use-get-begin-
 import { UserOutlined } from '@ant-design/icons';
 import { Avatar as AntAvatar, Form, Select, Space } from 'antd';
 import { toLower } from 'lodash';
+import { Database } from 'lucide-react';
 import { useMemo, useRef } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -281,14 +282,18 @@ function buildQueryVariableOptionsByShowVariable(showVariable?: boolean) {
 export function KnowledgeBaseFormField({
   showVariable = false,
   hideLabel = false,
+  onDropdownClose,
 }: {
   showVariable?: boolean;
   hideLabel?: boolean;
+  onDropdownClose?: () => void | Promise<void>;
 }) {
   const form = useFormContext();
   const { t } = useTranslation();
 
   const multiSelectRef = useRef<HTMLDivElement>(null);
+  // 标记本次打开下拉后，知识库是否发生过变化
+  const changedRef = useRef(false);
 
   const { list: knowledgeList } = useFetchKnowledgeList(true);
 
@@ -400,64 +405,81 @@ export function KnowledgeBaseFormField({
             )}
 
             <FormControl>
-              <div className="relative inline-flex h-9 items-center">
+              <div className="relative flex h-[35px] w-full items-center">
                 <button
                   type="button"
                   className="
-                  group inline-flex h-9 items-center gap-2 rounded-lg
-                  border border-slate-200 bg-white px-3.5
-                  text-sm font-medium text-slate-700
-                  shadow-sm transition-all duration-200 ease-out
-                  hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 hover:shadow-md
-                  active:scale-[0.98] active:bg-slate-100
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-1
-                  /* 暗黑模式适配 */
-                  dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200
-                  dark:hover:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-white
-                  dark:active:bg-slate-600
-                "
+      group flex h-[35px] w-full items-center justify-start gap-2
+      rounded-md
+      bg-transparent
+      px-3
+      text-sm font-medium
+      text-gray-700 dark:text-gray-300
+      shadow-none
+      transition-all duration-300
+
+      hover:bg-white/70 dark:hover:bg-white/10
+      hover:text-blue-600 dark:hover:text-blue-400
+      hover:shadow-[0_4px_14px_rgba(15,23,42,0.10)]
+      dark:hover:shadow-[0_4px_14px_rgba(0,0,0,0.35)]
+
+      active:scale-[0.98]
+      active:bg-white/80 dark:active:bg-white/15
+      active:shadow-[0_6px_18px_rgba(15,23,42,0.14)]
+
+      focus-visible:outline-none
+      focus-visible:ring-2
+      focus-visible:ring-blue-200/70 dark:focus-visible:ring-blue-800/70
+    "
                   onClick={openMultiSelect}
                 >
                   {/* 书籍图标 */}
-                  <svg
-                    className="h-4 w-4 text-slate-500 dark:text-slate-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
+                  <Database className="h-4 w-4 shrink-0 text-gray-500 transition-colors group-hover:text-blue-500 dark:text-gray-400 dark:group-hover:text-blue-400" />
+
+                  <span
+                    className="
+    shrink-0
+    text-gray-700 dark:text-gray-300
+    transition-colors
+    group-hover:text-blue-600 dark:group-hover:text-blue-400
+  "
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                    />
-                  </svg>
+                    知识库
+                  </span>
 
-                  <span>知识库</span>
-
-                  {/* 数字徽章：保持深色背景+白色文字，在黑白模式下都清晰 */}
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-slate-200 bg-slate-100 px-1.5 text-xs font-bold text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-50 dark:text-slate-900">
+                  <span
+                    className="
+    inline-flex h-5 min-w-5 shrink-0 items-center justify-center
+    rounded-md
+    bg-gray-100 dark:bg-zinc-700
+    px-1.5
+    text-xs font-bold
+    text-gray-700 dark:text-gray-200
+    transition-colors
+    group-hover:bg-blue-50 group-hover:text-blue-600
+    dark:group-hover:bg-blue-950 dark:group-hover:text-blue-300
+  "
+                  >
                     {count ?? 0}
                   </span>
 
-                  <span className="text-xs font-medium text-slate-500 tracking-wide dark:text-slate-400">
+                  <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">
                     已选
                   </span>
 
-                  {/* 下拉箭头 */}
-                  <svg
-                    className="ml-0.5 h-3.5 w-3.5 text-slate-400 transition-transform duration-200 group-hover:rotate-180 dark:text-slate-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
+                  {/* <svg
+  className="ml-auto h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-200 group-hover:rotate-180 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400"
+  fill="none"
+  viewBox="0 0 24 24"
+  stroke="currentColor"
+  strokeWidth={2.5}
+>
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    d="M19 9l-7 7-7-7"
+  />
+</svg> */}
                 </button>
 
                 {/* 隐藏的 MultiSelect 触发器 */}
@@ -466,13 +488,24 @@ export function KnowledgeBaseFormField({
                   className="pointer-events-none absolute left-0 top-full z-10 h-0 w-0 overflow-hidden opacity-0"
                 >
                   <MultiSelect
+                    {...field}
                     options={options}
-                    onValueChange={field.onChange}
+                    value={field.value ?? []}
+                    defaultValue={field.value ?? []}
+                    onValueChange={(value) => {
+                      changedRef.current = true;
+                      field.onChange(value);
+                    }}
+                    onOpenChange={(open) => {
+                      // 下拉关闭，并且本次有改动，才自动保存
+                      if (!open && changedRef.current) {
+                        changedRef.current = false;
+                        onDropdownClose?.();
+                      }
+                    }}
                     placeholder={t('chat.knowledgeBasesMessage')}
                     variant="inverted"
                     maxCount={0}
-                    defaultValue={field.value}
-                    {...field}
                   />
                 </div>
               </div>

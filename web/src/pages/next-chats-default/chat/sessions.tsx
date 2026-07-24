@@ -17,7 +17,12 @@ import {
 } from '@/hooks/use-chat-request';
 import { cn } from '@/lib/utils';
 import { Tooltip } from 'antd';
-import { PanelLeftClose, PanelRightClose } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  PanelLeftClose,
+  PanelRightClose,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
@@ -35,11 +40,16 @@ import { IConversation } from '@/interfaces/database/chat';
 type SessionProps = Pick<
   ReturnType<typeof useHandleClickConversationCard>,
   'handleConversationCardClick'
-> & { switchSettingVisible(): void; hasSingleChatBox: boolean };
+> & {
+  switchSettingVisible(): void;
+  hasSingleChatBox: boolean;
+  toolbar?: ReactNode;
+};
 export function Sessions({
   hasSingleChatBox,
   handleConversationCardClick,
   switchSettingVisible,
+  toolbar,
 }: SessionProps) {
   const { t } = useTranslation();
   const {
@@ -161,6 +171,7 @@ export function Sessions({
     }
   }, [removeConversation, selectedConversationIds]);
 
+  const [conversationCollapsed, setConversationCollapsed] = useState(false);
   if (!visible) {
     return (
       <aside
@@ -263,23 +274,37 @@ export function Sessions({
         />
       </div>
 
+      {/* ===== Knowledge Base Toolbar ===== */}
+      {toolbar && <div className="mt-4 w-full">{toolbar}</div>}
+
       {/* ===== New Chat Button ===== */}
       <div className="flex flex-col gap-2 mb-0 pt-3 w-full">
         <button
+          type="button"
           onClick={addTemporaryConversation}
           className="
-          flex items-center justify-center gap-2
-          h-[35px] w-full px-4
-          rounded-md
-          border border-gray-200 dark:border-zinc-700
-          bg-gray-100 dark:bg-zinc-800
-          text-gray-700 dark:text-gray-300
-          hover:bg-blue-50 dark:hover:bg-blue-950
-          hover:border-blue-300 dark:hover:border-blue-700
-          hover:text-blue-600 dark:hover:text-blue-400
-          hover:shadow-sm
-          transition-all duration-300
-        "
+              flex h-[35px] w-full items-center justify-start gap-2
+              rounded-md
+              bg-transparent
+              px-3
+              text-sm font-medium
+              text-gray-700 dark:text-gray-300
+              shadow-none
+              transition-all duration-300
+
+              hover:bg-white/70 dark:hover:bg-white/10
+              hover:text-blue-600 dark:hover:text-blue-400
+              hover:shadow-[0_4px_14px_rgba(15,23,42,0.10)]
+              dark:hover:shadow-[0_4px_14px_rgba(0,0,0,0.35)]
+
+              active:scale-[0.98]
+              active:bg-white/80 dark:active:bg-white/15
+              active:shadow-[0_6px_18px_rgba(15,23,42,0.14)]
+
+              focus-visible:outline-none
+              focus-visible:ring-2
+              focus-visible:ring-blue-200/70 dark:focus-visible:ring-blue-800/70
+            "
         >
           <svg
             className="w-4 h-4"
@@ -295,12 +320,45 @@ export function Sessions({
       </div>
 
       {/* ===== Search ===== */}
-      <div className="flex flex-col gap-2 mb-1 pt-3 w-full">
-        <SearchInput
-          onChange={handleInputChange}
-          value={searchString}
-          placeholder="搜索历史对话"
-        />
+      <div className="mb-1 pt-2 w-full">
+        <div className="mb-1 pt-2 w-full">
+          <SearchInput
+            onChange={handleInputChange}
+            value={searchString}
+            placeholder="搜索历史对话"
+            className="
+          h-[35px] w-full
+          rounded-md
+
+          !border-none
+          !bg-transparent
+          !shadow-none
+
+          px-3
+          text-sm
+          text-gray-700 dark:text-gray-300
+          transition-all duration-300
+
+          hover:!border-none
+          hover:!bg-white/70 dark:hover:!bg-white/10
+          hover:shadow-[0_4px_14px_rgba(15,23,42,0.10)]
+          dark:hover:shadow-[0_4px_14px_rgba(0,0,0,0.35)]
+
+          focus:!border-none
+          focus:!shadow-none
+          focus-visible:!border-none
+          focus-visible:!outline-none
+
+          focus-within:!border-none
+          focus-within:!bg-white/80 dark:focus-within:!bg-white/10
+          focus-within:shadow-[0_4px_14px_rgba(15,23,42,0.12)]
+          focus-within:ring-2
+          focus-within:ring-blue-200/70 dark:focus-within:ring-blue-800/70
+
+          placeholder:text-gray-400
+        "
+          />
+        </div>
       </div>
 
       {/* ===== Conversation Title + Manage ===== */}
@@ -310,66 +368,101 @@ export function Sessions({
             {t('chat.conversations')}
           </span>
 
-          <span
+          {/* <span
             className="
-            text-[11px] font-medium
-            text-blue-600 dark:text-blue-400
-            bg-blue-50 dark:bg-blue-950
-            px-2 py-0.5
-            rounded-full
-            border border-blue-100 dark:border-blue-800
-          "
+              text-[11px] font-medium
+              text-blue-600 dark:text-blue-400
+              bg-blue-50 dark:bg-blue-950
+              px-2 py-0.5
+              rounded-full
+              border border-blue-100 dark:border-blue-800
+            "
           >
             {conversationList.length}
-          </span>
+          </span> */}
         </div>
 
-        {!batchMode ? (
+        <div className="flex items-center gap-1">
+          {!batchMode ? (
+            <button
+              type="button"
+              className="
+                text-xs px-2 py-1 rounded-md
+                text-gray-500 dark:text-gray-400
+                hover:text-red-600 dark:hover:text-red-400
+                hover:bg-red-50 dark:hover:bg-red-950
+                transition-colors
+              "
+              onClick={() => {
+                setBatchMode(true);
+                setSelectedConversationIds([]);
+                setConversationCollapsed(false); // 进入管理时自动展开
+              }}
+            >
+              管理
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="
+                text-xs px-2 py-1 rounded-md
+                text-blue-600 dark:text-blue-400
+                hover:bg-blue-50 dark:hover:bg-blue-950
+                transition-colors
+              "
+              onClick={() => {
+                if (
+                  conversationList.length > 0 &&
+                  selectedConversationIds.length === conversationList.length
+                ) {
+                  handleClearSelected();
+                } else {
+                  handleSelectAll();
+                }
+              }}
+            >
+              {conversationList.length > 0 &&
+              selectedConversationIds.length === conversationList.length
+                ? '取消全选'
+                : '全选'}
+            </button>
+          )}
+
           <button
             type="button"
+            aria-label={conversationCollapsed ? '展开对话' : '收起对话'}
+            title={conversationCollapsed ? '展开对话' : '收起对话'}
             className="
-      text-xs px-2 py-1 rounded-md
-      text-gray-500 dark:text-gray-400
-      hover:text-red-600 dark:hover:text-red-400
-      hover:bg-red-50 dark:hover:bg-red-950
-      transition-colors
-    "
+              inline-flex size-7 items-center justify-center
+              rounded-md
+              text-gray-400 dark:text-gray-500
+              transition-all duration-200
+              hover:bg-gray-100 dark:hover:bg-zinc-800
+              hover:text-gray-700 dark:hover:text-gray-200
+            "
             onClick={() => {
-              setBatchMode(true);
-              setSelectedConversationIds([]);
+              setConversationCollapsed((prev) => !prev);
             }}
           >
-            管理
+            {conversationCollapsed ? (
+              <ChevronDown className="size-4" />
+            ) : (
+              <ChevronUp className="size-4" />
+            )}
           </button>
-        ) : (
-          <button
-            type="button"
-            className="
-      text-xs px-2 py-1 rounded-md
-      text-blue-600 dark:text-blue-400
-      hover:bg-blue-50 dark:hover:bg-blue-950
-    "
-            onClick={() => {
-              if (
-                conversationList.length > 0 &&
-                selectedConversationIds.length === conversationList.length
-              ) {
-                handleClearSelected();
-              } else {
-                handleSelectAll();
-              }
-            }}
-          >
-            {conversationList.length > 0 &&
-            selectedConversationIds.length === conversationList.length
-              ? '取消全选'
-              : '全选'}
-          </button>
-        )}
+        </div>
       </div>
 
       {/* ===== Conversation List ===== */}
-      <div className="space-y-1 flex-1 overflow-auto pr-1">
+
+      <div
+        className={cn(
+          'space-y-1 overflow-auto pr-1 transition-all duration-300',
+          conversationCollapsed
+            ? 'max-h-0 flex-none overflow-hidden opacity-0'
+            : 'flex-1 opacity-100',
+        )}
+      >
         {conversationList.map((x) => {
           const checked = selectedConversationIds.includes(x.id);
           const isEditing = editingConversationId === x.id;
@@ -394,7 +487,7 @@ export function Sessions({
                 },
               )}
             >
-              <CardContent className="px-2 py-2 flex justify-between items-center group gap-2">
+              <CardContent className="pl-[2em] pr-2 py-2 flex justify-between items-center group gap-2">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   {batchMode && (
                     <input

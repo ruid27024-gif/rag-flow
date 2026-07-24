@@ -124,7 +124,7 @@ export default {
       raptor: 'RAPTOR',
       processingType: '处理类型',
       // dataPipeline: '数据管道',
-      dataPipeline: '内置解析方法',
+      dataPipeline: '解析方法',
       operations: '操作',
       taskId: '任务ID',
       duration: '耗时',

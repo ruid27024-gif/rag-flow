@@ -1244,7 +1244,7 @@ async def rename():
             if not check_kb_team_write_permission(kb, current_user.id):
                 return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
             if pathlib.Path(req["name"].lower()).suffix != pathlib.Path(doc.name.lower()).suffix:
-                return get_json_result(data=False, message="The extension of file can't be changed", code=RetCode.ARGUMENT_ERROR)
+                return get_json_result(data=False, message="文件的扩展名无法更改。", code=RetCode.ARGUMENT_ERROR)
             if len(req["name"].encode("utf-8")) > FILE_NAME_LEN_LIMIT:
                 return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
 

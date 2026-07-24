@@ -158,7 +158,12 @@ const ExpandedInput = Input;
 
 const SearchInput = (props: InputProps) => {
   return (
-    <Input {...props} prefix={<Search className="ml-2 mr-1 size-[1em]" />} />
+    <Input
+      {...props}
+      prefix={
+        <Search className="ml-3 mr-2 h-4 w-4 shrink-0 text-gray-500 dark:text-gray-400" />
+      }
+    />
   );
 };
 

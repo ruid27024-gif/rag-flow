@@ -519,16 +519,35 @@ export function NextMessageInput({
             {sendLoading ? (
               <Button
                 type="button"
+                variant="ghost"
                 onClick={stopOutputMessage}
-                className="size-7 rounded-sm"
+                className="
+                  size-7 rounded-sm
+                  bg-transparent
+                  text-red-500
+                  shadow-none
+                  hover:bg-red-50 hover:text-red-600
+                  dark:hover:bg-red-950/40 dark:hover:text-red-400
+                "
               >
                 <CircleStop className="size-4" />
               </Button>
             ) : (
               <Button
                 type="button"
+                variant="ghost"
                 onClick={submit}
-                className="size-7 rounded-sm"
+                className="
+                  size-7 rounded-sm
+                  bg-transparent
+                  text-gray-500
+                  shadow-none
+                  hover:bg-emerald-50 hover:text-emerald-600
+                  dark:text-gray-400
+                  dark:hover:bg-emerald-950/40 dark:hover:text-emerald-400
+                  disabled:opacity-40
+                  disabled:hover:bg-transparent
+                "
                 disabled={
                   sendDisabled || isUploading || sendLoading || !value.trim()
                 }

@@ -253,10 +253,12 @@ export function DatasetActionCell({
                 .filter(([key]) => Fields.some((x) => x === key))
                 .map(([key, value], idx) => {
                   return (
-                    <li key={idx} className="flex gap-2">
-                      {/* {key}: */}
-                      {FieldNameMap[key] || key}:
-                      <div>
+                    <li key={idx} className="flex gap-2 items-start">
+                      <span className="shrink-0 whitespace-nowrap">
+                        {FieldNameMap[key] || key}:
+                      </span>
+
+                      <div className="min-w-0 flex-1 break-words">
                         {key in FunctionMap
                           ? FunctionMap[key as keyof typeof FunctionMap](value)
                           : value}

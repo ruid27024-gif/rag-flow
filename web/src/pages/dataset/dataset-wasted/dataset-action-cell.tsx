@@ -12,24 +12,48 @@ import {
 } from '@/components/ui/tooltip';
 import { DocumentType } from '@/constants/knowledge';
 import {
-  DocumentApiAction,
-  useRemoveWastedDocument,
+  useRemoveDocument,
   useRunDocument,
-  useSetDocumentStatus,
 } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { getAuthorization } from '@/utils/authorization-util';
 import { formatFileSize } from '@/utils/common-util';
-import { formatDate } from '@/utils/date';
+// import { formatDate } from '@/utils/date';
 import { downloadDocument } from '@/utils/file-util';
-import { useQueryClient } from '@tanstack/react-query';
-import { Download, Eye, PenLine, RotateCcw, Trash2 } from 'lucide-react';
+import { Download, Eye, PenLine, Play, Trash2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { UseRenameDocumentShowType } from './use-rename-document';
 import { isParserRunning } from './utils';
 
 const Fields = ['name', 'size', 'type', 'create_time', 'update_time'];
+const FieldNameMap: Record<string, string> = {
+  name: '名称',
+  size: '大小',
+  type: '类型',
+  create_time: '创建时间',
+  update_time: '更新时间',
+};
+
+const formatDate = (dateStr: string | number | Date) => {
+  if (!dateStr) return '-';
+
+  const date = new Date(dateStr);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(dateStr);
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
 
 const FunctionMap = {
   size: formatFileSize,
@@ -46,14 +70,11 @@ export function DatasetActionCell({
   const [logOpen, setLogOpen] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [logLoading, setLogLoading] = useState(false);
-  const queryClient = useQueryClient();
   const isRunning = isParserRunning(run);
   const isVirtualDocument = type === DocumentType.Virtual;
 
-  const { removeWastedDocument } = useRemoveWastedDocument();
-  const { setDocumentStatus } = useSetDocumentStatus();
+  const { removeDocument } = useRemoveDocument();
   const { runDocumentByIds } = useRunDocument();
-
   const handleParse = useCallback(() => {
     runDocumentByIds({
       documentIds: [id],
@@ -101,26 +122,92 @@ export function DatasetActionCell({
     });
   }, [id, record.name]);
 
-  const handleRestore = useCallback(async () => {
-    await setDocumentStatus({
-      status: true,
-      documentId: id,
-    });
-
-    await queryClient.refetchQueries({
-      queryKey: [DocumentApiAction.FetchWastedDocumentList],
-      type: 'active',
-    });
-  }, [id, setDocumentStatus, queryClient]);
-
   const handleRemove = useCallback(() => {
-    removeWastedDocument(id);
-  }, [id, removeWastedDocument]);
+    removeDocument(id);
+  }, [id, removeDocument]);
 
   const handleRename = useCallback(() => {
     showRenameModal(record);
   }, [record, showRenameModal]);
 
+  // return (
+  //   <section className="flex gap-4 items-center text-text-sub-title-invert opacity-0 group-hover:opacity-100 transition-opacity">
+  //     <Button
+  //       variant="transparent"
+  //       className="border-none hover:bg-bg-card text-text-primary"
+  //       size={'sm'}
+  //       disabled={isRunning || readonly}
+  //       onClick={handleRename}
+  //     >
+  //       <PenLine />
+  //     </Button>
+  //     <HoverCard>
+  //       <HoverCardTrigger>
+  //         <Button
+  //           variant="transparent"
+  //           className="border-none hover:bg-bg-card text-text-primary"
+  //           disabled={isRunning}
+  //           size={'sm'}
+  //         >
+  //           <Eye />
+  //         </Button>
+  //       </HoverCardTrigger>
+  //       <HoverCardContent className="w-[40vw] max-h-[40vh] overflow-auto">
+  //         <ul className="space-y-2">
+  //           {Object.entries(record)
+  //             .filter(([key]) => Fields.some((x) => x === key))
+
+  //             .map(([key, value], idx) => {
+  //               return (
+  //                 <li key={idx} className="flex gap-2">
+  //                   {key}:
+  //                   <div>
+  //                     {key in FunctionMap
+  //                       ? FunctionMap[key as keyof typeof FunctionMap](value)
+  //                       : value}
+  //                   </div>
+  //                 </li>
+  //               );
+  //             })}
+  //         </ul>
+  //       </HoverCardContent>
+  //     </HoverCard>
+
+  //     {isVirtualDocument || (
+  //       <Button
+  //         variant="transparent"
+  //         className="border-none hover:bg-bg-card text-text-primary"
+  //         onClick={handleParse}
+  //         disabled={isRunning || readonly}
+  //         size={'sm'}
+  //       >
+  //         <Play />
+  //       </Button>
+  //     )}
+
+  //     {isVirtualDocument || (
+  //       <Button
+  //         variant="transparent"
+  //         className="border-none hover:bg-bg-card text-text-primary"
+  //         onClick={onDownloadDocument}
+  //         disabled={isRunning || readonly}
+  //         size={'sm'}
+  //       >
+  //         <Download />
+  //       </Button>
+  //     )}
+  //     <ConfirmDeleteDialog onOk={handleRemove} hidden={readonly}>
+  //       <Button
+  //         variant="transparent"
+  //         className="border-none hover:bg-bg-card text-text-primary"
+  //         size={'sm'}
+  //         disabled={isRunning || readonly}
+  //       >
+  //         <Trash2 />
+  //       </Button>
+  //     </ConfirmDeleteDialog>
+  //   </section>
+  // );
   return (
     <>
       <section className="flex gap-4 items-center text-text-sub-title-invert opacity-0 group-hover:opacity-100 transition-opacity">
@@ -166,9 +253,12 @@ export function DatasetActionCell({
                 .filter(([key]) => Fields.some((x) => x === key))
                 .map(([key, value], idx) => {
                   return (
-                    <li key={idx} className="flex gap-2">
-                      {key}:
-                      <div>
+                    <li key={idx} className="flex gap-2 items-start">
+                      <span className="shrink-0 whitespace-nowrap">
+                        {FieldNameMap[key] || key}:
+                      </span>
+
+                      <div className="min-w-0 flex-1 break-words">
                         {key in FunctionMap
                           ? FunctionMap[key as keyof typeof FunctionMap](value)
                           : value}
@@ -180,7 +270,7 @@ export function DatasetActionCell({
           </HoverCardContent>
         </HoverCard>
 
-        {/* {isVirtualDocument || (
+        {isVirtualDocument || (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -197,7 +287,7 @@ export function DatasetActionCell({
               <p>解析</p>
             </TooltipContent>
           </Tooltip>
-        )} */}
+        )}
         {/* 
     {isVirtualDocument || (
       <Tooltip>
@@ -236,22 +326,6 @@ export function DatasetActionCell({
             </TooltipContent>
           </Tooltip>
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="transparent"
-              className="border-none hover:bg-bg-card text-text-primary"
-              size="sm"
-              disabled={readonly}
-              onClick={handleRestore}
-            >
-              <RotateCcw />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>恢复</p>
-          </TooltipContent>
-        </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -270,7 +344,7 @@ export function DatasetActionCell({
           </TooltipTrigger>
 
           <TooltipContent>
-            <p>彻底删除</p>
+            <p>删除</p>
           </TooltipContent>
         </Tooltip>
       </section>

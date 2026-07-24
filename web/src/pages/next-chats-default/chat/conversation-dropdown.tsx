@@ -110,20 +110,26 @@ export function ConversationDropdown({
     [conversation, onRename],
   );
 
+  const conversationHasId = Boolean(conversation?.id);
+  const isTemporary = Boolean((conversation as any)?.is_new);
+  const canRename = conversationHasId && !isTemporary;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
 
       <DropdownMenuContent>
         {/* 重命名 */}
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault();
-          }}
-          onClick={handleRenameClick}
-        >
-          {t('common.rename') || '重命名'} <Pencil />
-        </DropdownMenuItem>
+        {canRename && (
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+            }}
+            onClick={handleRenameClick}
+          >
+            {t('common.rename') || '重命名'} <Pencil />
+          </DropdownMenuItem>
+        )}
 
         {/* 删除 */}
         <ConfirmDeleteDialog onOk={handleDelete}>

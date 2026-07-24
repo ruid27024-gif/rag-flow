@@ -376,7 +376,7 @@ def init_settings():
     MAIL_FRONTEND_URL = SMTP_CONF.get("mail_frontend_url", "")
 
     global DOC_MAXIMUM_SIZE, DOC_BULK_SIZE, EMBEDDING_BATCH_SIZE
-    DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 128 * 1024 * 1024))
+    DOC_MAXIMUM_SIZE = int(os.environ.get("MAX_CONTENT_LENGTH", 5120 * 1024 * 1024))
     DOC_BULK_SIZE = int(os.environ.get("DOC_BULK_SIZE", 4))
     EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", 16))
 
