@@ -2,7 +2,7 @@
 /.env.local
 /.umirc.local.ts
 /config/config.local.ts
-/src/.umi/*
+/src/.umi c/*
 /src/.umi-production/*
 /src/.umi-test
 /dist

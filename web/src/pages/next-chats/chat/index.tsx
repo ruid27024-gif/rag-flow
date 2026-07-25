@@ -35,6 +35,7 @@ import { useParams } from 'umi';
 import { z } from 'zod';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
+import { SavingButton } from './app-settings/saving-button';
 import { useChatSettingSchema } from './app-settings/use-chat-setting-schema';
 import { MultipleChatBox } from './chat-box/multiple-chat-box';
 import { SingleChatBox } from './chat-box/single-chat-box';
@@ -505,7 +506,7 @@ export default function Chat() {
           />
 
           <Card className="flex-1 min-w-0 bg-transparent border h-full">
-          
+
             <CardContent className="flex p-0 h-full">
               <Card className="flex flex-col flex-1 bg-transparent min-w-0">
                 <CardHeader className={cn('py-2 px-5')}>
@@ -530,7 +531,7 @@ export default function Chat() {
                 </CardHeader>
 
                 <CardContent className="flex-1 p-0 min-h-0">
-                
+
                   <SingleChatBox
                     controller={controller}
                     stopOutputMessage={stopOutputMessage}
@@ -556,29 +557,11 @@ export default function Chat() {
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
             switchSettingVisible={openChatSettings}
-            toolbar={
-              !settingVisible && !referenceVisible && !sourcePreviewVisible ? (
-                <div className="w-full">
-                  <KnowledgeBaseFormField
-                    hideLabel
-                    onDropdownClose={() => {
-                      form.handleSubmit(async (values) => {
-                        await onSubmit(values, {
-                          silent: true,
-                        });
-
-                        message.success('知识库已保存');
-                      }, onInvalid)();
-                    }}
-                  />
-                </div>
-              ) : null
-            }
           />
 
           <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
             <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
-              {/* <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div
                   className={cn('flex items-center gap-1', {
                     hidden:
@@ -596,7 +579,7 @@ export default function Chat() {
                     className="bg-white text-black hover:bg-gray-100 border"
                   />
                 </div>
-              </div> */}
+              </div>
             </div>
 
             <div className="flex flex-1 min-h-0 overflow-hidden">

@@ -37,6 +37,7 @@ import { useParams } from 'umi';
 import { z } from 'zod';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
+import { SavingButton } from './app-settings/saving-button';
 import { useChatSettingSchema } from './app-settings/use-chat-setting-schema';
 import { MultipleChatBox } from './chat-box/multiple-chat-box';
 import { SingleChatBox } from './chat-box/single-chat-box';
@@ -174,6 +175,22 @@ export default function Chat() {
     },
   });
 
+  // // 表单values的提交逻辑
+  // async function onSubmit(values: FormSchemaType) {
+  //   // 移除llm_setting
+  //   const nextValues: Record<string, any> = removeUselessFieldsFromValues(
+  //     values,
+  //     'llm_setting.',
+  //   );
+
+  //   // 调用 Hook 中的 setDialog 保存数据
+  //   setDialog({
+  //     ...omit(data, 'operator_permission'), // 保留原数据但剔除权限字段
+  //     ...nextValues, // 合并新修改的值
+  //     dialog_id: id, // 确保带上 ID
+  //   });
+  // }
+  // 在 Chat 组件中
   async function onSubmit(
     values: FormSchemaType,
     options?: { silent?: boolean; successMessage?: string },
@@ -341,6 +358,15 @@ export default function Chat() {
         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
         className="h-full flex flex-col pr-5"
       >
+        {/* <div className="flex flex-1 min-h-0 pb-1">
+
+          <Sessions
+            hasSingleChatBox={hasSingleChatBox}
+            handleConversationCardClick={handleSessionClick}
+            switchSettingVisible={switchSettingVisible}
+          ></Sessions> */}
+
+        {/* <div className="flex flex-1 min-h-0 pb-1 overflow-hidden"> */}
         <div
           className="
     flex flex-1 min-h-0 pb-1 overflow-hidden
@@ -353,29 +379,64 @@ export default function Chat() {
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
             switchSettingVisible={switchSettingVisible}
-            toolbar={
-              !settingVisible && !referenceVisible && !sourcePreviewVisible ? (
-                <div className="w-full">
-                  <KnowledgeBaseFormField
-                    hideLabel
-                    onDropdownClose={() => {
-                      form.handleSubmit(async (values) => {
-                        await onSubmit(values, {
-                          silent: true,
-                        });
-
-                        message.success('知识库已保存');
-                      }, onInvalid)();
-                    }}
-                  />
-                </div>
-              ) : null
-            }
           />
 
-          <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+          {/* 右侧整体区域 */}
+          {/* <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+
             <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
-              {/* <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div
+                  className={cn('flex items-center gap-1', {
+                    hidden: settingVisible,
+                  })}
+                >
+                  <div className="w-auto">
+                    <KnowledgeBaseFormField hideLabel />
+                  </div>
+
+                  <SavingButton
+                    loading={loading}
+                    className="bg-white text-black hover:bg-gray-100 border"
+                  />
+                </div>
+              </div>
+            </div>
+
+
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+
+              <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+                <SingleChatBox
+                  controller={controller}
+                  stopOutputMessage={stopOutputMessage}
+                  conversation={currentConversation}
+                />
+              </div>
+
+
+              <ChatSettings
+                className={cn('shrink-0', {
+                  hidden: !settingVisible,
+                })}
+                switchSettingVisible={switchSettingVisible}
+                onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+                loading={loading}
+              />
+            </div>
+          </div>
+        </div> */}
+
+          <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+            {/* <div
+  className="
+    flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden
+    bg-[#E3F5F1]
+    dark:bg-[#071A16]
+  "
+> */}
+            <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div
                   className={cn('flex items-center gap-1', {
                     hidden:
@@ -392,8 +453,8 @@ export default function Chat() {
                     loading={loading}
                     className="bg-white text-black hover:bg-gray-100 border"
                   />
-                </div> */}
-              {/* </div> */}
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-1 min-h-0 overflow-hidden">
