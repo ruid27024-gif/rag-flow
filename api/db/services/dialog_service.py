@@ -392,6 +392,19 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
     # 按标签 / 元数据筛选文档
     if dialog.meta_data_filter:
+        # {
+        #     "author": {
+        #         "张三": ["doc1", "doc2"],
+        #         "李四": ["doc3"]
+        #     },
+        #     "year": {
+        #         "2024": ["doc1"],
+        #         "2023": ["doc2", "doc3"]
+        #     },
+        #     "tags": {
+        #         "['合同', '法律']": ["doc1"]
+        #     }
+        # }
         metas = DocumentService.get_meta_by_kbs(dialog.kb_ids)
         attachments = await apply_meta_data_filter(
             dialog.meta_data_filter,

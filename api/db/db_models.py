@@ -1451,6 +1451,82 @@ class OaApproval(Model):
         database = DB
         db_table = "oa_approval"
 
+class Role(DataBaseModel):
+    id = AutoField(primary_key=True)
+
+    role_name = CharField(max_length=64, unique=True)
+
+    file_permission_level = IntegerField(default=1)
+    operation_permission_mask = IntegerField(default=0)
+
+    need_approval = BooleanField(default=True)
+    approval_order = IntegerField(default=0)
+
+    department_id = TextField(null=True)
+
+    is_admin = BooleanField(default=False)
+    cover_child_dept = BooleanField(default=False)
+
+    enabled = BooleanField(default=True)
+
+    created_by = CharField(max_length=32, null=True)
+    created_time = BigIntegerField(null=True)
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        db_table = "role"
+
+# 新增 权限表
+
+
+# 新增 角色权限关联表
+class RoleUser(DataBaseModel):
+    id = AutoField(primary_key=True)
+
+    role_id = IntegerField(index=True)
+    user_id = CharField(max_length=64, index=True)
+
+    created_by = CharField(max_length=64, null=True)
+    created_time = BigIntegerField(null=True)
+
+    class Meta:
+        db_table = "role_user"
+        indexes = (
+            (('user_id',), True),
+        )
+
+
+class KnowledgeTagType(DataBaseModel):
+    id = BigAutoField()
+    type_code = CharField(max_length=64, unique=True)
+    type_name = CharField(max_length=128)
+    multi_select = BooleanField(default=False)
+    required = BooleanField(default=False)
+    sort_order = IntegerField(default=0)
+    enabled = BooleanField(default=True)
+    create_time = DateTimeField(default=datetime.now)
+    update_time = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = "knowledge_tag_type"
+
+
+class KnowledgeTagOption(DataBaseModel):
+    id = BigAutoField()
+    type_code = CharField(max_length=64, index=True)
+    option_code = CharField(max_length=64)
+    option_name = CharField(max_length=128)
+    sort_order = IntegerField(default=0)
+    enabled = BooleanField(default=True)
+    create_time = DateTimeField(default=datetime.now)
+    update_time = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = "knowledge_tag_option"
+        indexes = (
+            (("type_code", "option_code"), True),
+        )
+
 
 def migrate_db():
     logging.disable(logging.ERROR)

@@ -1610,3 +1610,212 @@ async def move():
 
     except Exception as e:
         return server_error_response(e)
+    
+from pathlib import Path
+import asyncio
+# 改成你服务器上真实要展示的文件夹
+FILE_TREE_BASE_DIR = Path('/home/zyb/rag-flow/agnet_skills/skills').resolve()
+
+def build_file_tree(directory: Path, base_dir: Path):
+    directory = directory.resolve()
+    base_dir = base_dir.resolve()
+
+    # 防止递归到根目录之外
+    if directory != base_dir and base_dir not in directory.parents:
+        raise ValueError("Invalid directory path")
+
+    result = []
+
+    for item in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+        # 不展示隐藏文件，比如 .git、.env
+        if item.name.startswith("."):
+            continue
+
+        node = {
+            "name": item.name,
+            "path": str(item.relative_to(base_dir)),
+            "type": "directory" if item.is_dir() else "file",
+        }
+
+        if item.is_dir():
+            node["children"] = build_file_tree(item, base_dir)
+
+        result.append(node)
+
+    return result
+
+@manager.route('/tree', methods=['GET'])  # noqa: F821
+# @login_required
+async def get_file_tree():
+    try:
+        base_dir = FILE_TREE_BASE_DIR
+
+        if not base_dir.exists():
+            return get_data_error_result(message="Directory not found!")
+
+        if not base_dir.is_dir():
+            return get_data_error_result(message="Path is not a directory!")
+
+        tree = await asyncio.to_thread(build_file_tree, base_dir, base_dir)
+
+        return get_json_result(data=tree)
+
+    except Exception as e:
+        return server_error_response(e)
+
+
+def read_file_content(file_path: Path, base_dir: Path):
+    file_path = file_path.resolve()
+    base_dir = base_dir.resolve()
+
+    # 防止通过 ../../ 读取到目录外
+    if file_path != base_dir and base_dir not in file_path.parents:
+        raise ValueError("Invalid file path")
+
+    if not file_path.exists():
+        raise FileNotFoundError("File not found!")
+
+    if not file_path.is_file():
+        raise ValueError("Path is not a file!")
+
+    # 限制可预览的文件类型
+    allow_suffixes = {
+        ".txt",
+        ".md",
+        ".json",
+        ".csv",
+        ".log",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".html",
+        ".css",
+        ".less",
+        ".yaml",
+        ".yml",
+        ".xml",
+    }
+
+    suffix = file_path.suffix.lower()
+
+    if suffix not in allow_suffixes:
+        raise ValueError(f"Unsupported file type: {suffix}")
+
+    # 限制文件大小，比如最大 2MB
+    max_size = 2 * 1024 * 1024
+
+    if file_path.stat().st_size > max_size:
+        raise ValueError("File is too large to preview!")
+
+    # 优先 utf-8，失败后尝试 gbk
+    try:
+        return file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return file_path.read_text(encoding="gbk", errors="ignore")
+
+
+@manager.route('/content', methods=['POST'])  # noqa: F821
+# @login_required
+async def get_file_content():
+    try:
+        req = await get_request_json()
+
+        relative_path = (req.get("path") or "").strip()
+
+        if not relative_path:
+            return get_data_error_result(message="File path is required!")
+
+        base_dir = FILE_TREE_BASE_DIR.resolve()
+
+        if not base_dir.exists():
+            return get_data_error_result(message="Directory not found!")
+
+        if not base_dir.is_dir():
+            return get_data_error_result(message="Path is not a directory!")
+
+        file_path = base_dir / relative_path
+
+        content = await asyncio.to_thread(read_file_content, file_path, base_dir)
+
+        return get_json_result(
+            data={
+                "name": file_path.name,
+                "path": relative_path,
+                "suffix": file_path.suffix,
+                "content": content,
+            }
+        )
+
+    except FileNotFoundError as e:
+        return get_data_error_result(message=str(e))
+
+    except ValueError as e:
+        return get_data_error_result(message=str(e))
+
+    except Exception as e:
+        return server_error_response(e)
+
+import mimetypes
+import asyncio
+from urllib.parse import quote
+from quart import Response
+
+@manager.route('/download', methods=['POST'])  # noqa: F821
+# @login_required
+async def download_file():
+    try:
+        req = await get_request_json()
+
+        relative_path = (req.get("path") or "").strip()
+        preview = bool(req.get("preview", False))
+
+        if not relative_path:
+            return get_data_error_result(message="File path is required!")
+
+        base_dir = FILE_TREE_BASE_DIR.resolve()
+        file_path = (base_dir / relative_path).resolve()
+
+        # 防止 ../../ 目录穿越
+        if file_path != base_dir and base_dir not in file_path.parents:
+            return get_data_error_result(message="Invalid file path!")
+
+        if not file_path.exists():
+            return get_data_error_result(message="File not found!")
+
+        if not file_path.is_file():
+            return get_data_error_result(message="Path is not a file!")
+
+        mime_type, _ = mimetypes.guess_type(str(file_path))
+
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        # 读取二进制文件
+        file_bytes = await asyncio.to_thread(file_path.read_bytes)
+
+        filename = file_path.name
+        quoted_filename = quote(filename)
+
+        # preview=True 用于 PDF/图片在线预览
+        # preview=False 用于下载
+        disposition_type = "inline" if preview else "attachment"
+
+        headers = {
+            "Content-Disposition": (
+                f"{disposition_type}; "
+                f"filename*=UTF-8''{quoted_filename}"
+            ),
+            "Content-Length": str(len(file_bytes)),
+            "Cache-Control": "no-cache",
+        }
+
+        return Response(
+            file_bytes,
+            mimetype=mime_type,
+            headers=headers,
+        )
+
+    except Exception as e:
+        return server_error_response(e)

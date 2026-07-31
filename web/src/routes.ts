@@ -147,6 +147,95 @@ const routes = [
       },
     ],
   },
+  {
+    path: '/filetree',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/filetree',
+        component: '@/pages/filetree',
+      },
+    ],
+  },
+
+  {
+    path: '/knowledge-tag',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/knowledge-tag',
+        component: '@/pages/knowledge-tag',
+      },
+    ],
+  },
+
+  {
+    path: '/person-role',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/person-role',
+        component: '@/pages/person-role',
+      },
+    ],
+  },
+
+  {
+    path: '/role',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/role',
+        component: '@/pages/role',
+      },
+      {
+        path: '/role/create',
+        component: '@/pages/role/create',
+      },
+      {
+        path: '/role/edit/:id',
+        component: '@/pages/role/edit',
+      },
+    ],
+  },
+
+  {
+    path: '/role-person-manage',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/role-person-manage',
+        component: '@/pages/role-person-manage',
+      },
+    ],
+  },
+  // {
+  //   path: '/role/create',
+  //   layout: false,
+  //   component: '@/layouts/next',
+  //   routes: [
+  //     {
+  //       path: '/role/create',
+  //       component: '@/pages/role/create',
+  //     },
+  //   ],
+  // },
+  //   {
+  //   path: '/role',
+  //   layout: false,
+  //   component: '@/layouts/next',
+  //   routes: [
+  //     {
+  //       path: '/role',
+  //       component: '@/pages/role',
+  //     },
+  //   ],
+  // },
 
   {
     path: Routes.Datasets,

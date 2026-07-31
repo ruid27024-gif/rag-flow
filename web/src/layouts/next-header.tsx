@@ -226,6 +226,9 @@ export function Header() {
     if (pathname === '/dashboard' || pathname.startsWith('/dialog')) {
       return '/dashboard';
     }
+    if (pathname.startsWith('/role') || pathname === '/knowledge-tag') {
+      return Routes.AdminFiles;
+    }
     if (pathname.startsWith('/next-search')) {
       return InitSearchAppApiPath;
     }

@@ -36,6 +36,7 @@ import {
   RefreshCw,
   Settings,
   ShieldCheck,
+  Tags,
   Trash2,
   Users,
 } from 'lucide-react'; // 确保引入了 RefreshCw 图标
@@ -47,6 +48,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'umi';
 import { DialogConfigModal } from './DialogConfigModal';
 
 interface Group {
@@ -131,6 +133,7 @@ export interface CandidateUser {
 }
 
 const AdminFiles = () => {
+  const navigate = useNavigate();
   const { t } = useTranslation();
   const { data: userInfo } = useFetchUserInfo();
   const isGroupAdmin = userInfo?.role_level === 2;
@@ -1014,6 +1017,39 @@ const AdminFiles = () => {
                 <div>
                   <h3 className="font-medium text-lg">参考库权限管理</h3>
                   <p className="text-sm text-gray-500">查看组内参考库</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 角色管理卡片 */}
+            <Card
+              className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => navigate('/role-person-manage')}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-lg">角色管理</h3>
+                  <p className="text-sm text-gray-500">管理角色权限配置</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => navigate('/knowledge-tag')}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Tags className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-lg">知识库标签管理</h3>
+                  <p className="text-sm text-gray-500">
+                    管理知识库标签类型和选项
+                  </p>
                 </div>
               </CardContent>
             </Card>
