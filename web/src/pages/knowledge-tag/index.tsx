@@ -514,6 +514,11 @@ const KnowledgeTagPage: React.FC = () => {
 
   const columns: ColumnsType<TagType> = [
     {
+      title: '排序',
+      dataIndex: 'sort_order',
+      width: 80,
+    },
+    {
       title: '类型名称',
       dataIndex: 'type_name',
       width: 160,
@@ -539,11 +544,7 @@ const KnowledgeTagPage: React.FC = () => {
         return value ? <Tag color="red">必填</Tag> : <Tag>非必填</Tag>;
       },
     },
-    {
-      title: '排序',
-      dataIndex: 'sort_order',
-      width: 80,
-    },
+
     {
       title: '选项',
       dataIndex: 'options',
@@ -786,6 +787,11 @@ const KnowledgeTagPage: React.FC = () => {
             expandedRowRender: (record) => {
               const optionColumns: ColumnsType<TagOption> = [
                 {
+                  title: '排序',
+                  dataIndex: 'sort_order',
+                  width: 100,
+                },
+                {
                   title: '选项名称',
                   dataIndex: 'option_name',
                   width: 180,
@@ -795,11 +801,7 @@ const KnowledgeTagPage: React.FC = () => {
                   dataIndex: 'option_code',
                   width: 220,
                 },
-                {
-                  title: '排序',
-                  dataIndex: 'sort_order',
-                  width: 100,
-                },
+
                 {
                   title: '状态',
                   dataIndex: 'enabled',
@@ -914,6 +916,10 @@ const KnowledgeTagPage: React.FC = () => {
         width={760}
       >
         <Form form={typeForm} layout="vertical">
+          <Form.Item label="排序" name="sort_order">
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+
           <Form.Item
             label="类型编码"
             name="type_code"
@@ -949,10 +955,6 @@ const KnowledgeTagPage: React.FC = () => {
             <Switch checkedChildren="启用" unCheckedChildren="禁用" />
           </Form.Item>
 
-          <Form.Item label="排序" name="sort_order">
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-
           {typeModalMode === 'create' && (
             <Form.List name="options">
               {(fields, { add, remove }) => (
@@ -967,6 +969,10 @@ const KnowledgeTagPage: React.FC = () => {
                       align="baseline"
                       style={{ display: 'flex', marginBottom: 8 }}
                     >
+                      <Form.Item {...field} name={[field.name, 'sort_order']}>
+                        <InputNumber min={0} placeholder="排序" />
+                      </Form.Item>
+
                       <Form.Item
                         {...field}
                         name={[field.name, 'option_code']}
@@ -981,10 +987,6 @@ const KnowledgeTagPage: React.FC = () => {
                         rules={[{ required: true, message: '请输入选项名称' }]}
                       >
                         <Input placeholder="选项名称，例如 内部" />
-                      </Form.Item>
-
-                      <Form.Item {...field} name={[field.name, 'sort_order']}>
-                        <InputNumber min={0} placeholder="排序" />
                       </Form.Item>
 
                       <Button danger onClick={() => remove(field.name)}>
@@ -1012,6 +1014,10 @@ const KnowledgeTagPage: React.FC = () => {
         destroyOnClose
       >
         <Form form={optionForm} layout="vertical">
+          <Form.Item label="排序" name="sort_order">
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+
           <Form.Item label="类型编码" name="type_code">
             <Input disabled />
           </Form.Item>
@@ -1033,10 +1039,6 @@ const KnowledgeTagPage: React.FC = () => {
             rules={[{ required: true, message: '请输入选项名称' }]}
           >
             <Input placeholder="例如：操作工" />
-          </Form.Item>
-
-          <Form.Item label="排序" name="sort_order">
-            <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
 
           <Form.Item label="是否启用" name="enabled" valuePropName="checked">

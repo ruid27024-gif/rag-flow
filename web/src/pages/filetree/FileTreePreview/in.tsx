@@ -9,7 +9,7 @@ import {
   RightOutlined,
 } from '@ant-design/icons';
 import { Button, Empty, Spin, Tooltip, message, theme } from 'antd';
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import {
@@ -22,12 +22,6 @@ import remarkGfm from 'remark-gfm';
 
 import DOMPurify from 'dompurify';
 import mammoth from 'mammoth';
-
-import { IHighlight, PdfHighlighter, PdfLoader } from 'react-pdf-highlighter';
-
-import { Spin as UiSpin } from '@/components/ui/spin';
-import FileError from '@/pages/document-viewer/file-error';
-
 import './index.less';
 
 interface FileTreeNode {
@@ -38,7 +32,7 @@ interface FileTreeNode {
 
   /**
    * 前端展示用名称
-   * name/path 保留后端真实值
+   * name 仍然保留后端原始 ID 或文件名
    */
   displayName?: string;
 }
@@ -53,13 +47,7 @@ interface FileInfo {
 interface FileTreePreviewProps {
   open: boolean;
   onClose: () => void;
-
-  /**
-   * 当前知识库 ID
-   */
-  kbId?: string;
 }
-
 type PreviewType =
   | 'text'
   | 'markdown'
@@ -68,65 +56,7 @@ type PreviewType =
   | 'docx'
   | 'unsupported';
 
-interface PdfPreviewProps {
-  url: string;
-}
-
-/**
- * PDF 预览组件
- * 使用 react-pdf-highlighter，避免浏览器原生 PDF 工具栏/打印按钮
- */
-const PdfPreview: React.FC<PdfPreviewProps> = memo(({ url }) => {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-
-  return (
-    <div
-      ref={scrollRef}
-      style={{
-        height: '100%',
-        width: '100%',
-        overflow: 'auto',
-        background: '#f5f5f5',
-      }}
-    >
-      <PdfLoader
-        url={url}
-        beforeLoad={
-          <div
-            style={{
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <UiSpin />
-          </div>
-        }
-        errorMessage={<FileError />}
-      >
-        {(pdfDocument: any) => (
-          <PdfHighlighter
-            pdfDocument={pdfDocument}
-            highlights={[] as IHighlight[]}
-            scrollRef={scrollRef}
-            onScrollChange={() => {}}
-            enableAreaSelection={() => false}
-            onSelectionFinished={() => null as any}
-          />
-        )}
-      </PdfLoader>
-    </div>
-  );
-});
-
-PdfPreview.displayName = 'PdfPreview';
-
-const FileTreePreview: React.FC<FileTreePreviewProps> = ({
-  open,
-  onClose,
-  kbId,
-}) => {
+const FileTreePreview: React.FC<FileTreePreviewProps> = ({ open, onClose }) => {
   const { token } = theme.useToken();
 
   const [tree, setTree] = useState<FileTreeNode[]>([]);
@@ -141,18 +71,10 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
   const [docxHtml, setDocxHtml] = useState('');
 
   /**
-   * PDF / 图片 Blob 预览地址
+   * pdf / image 这种二进制预览地址
    */
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewType, setPreviewType] = useState<PreviewType>('text');
-
-  /**
-   * 左侧宽度可拖拽
-   */
-  const [leftWidth, setLeftWidth] = useState(240);
-  const [isResizingLeft, setIsResizingLeft] = useState(false);
-  const resizeStartX = useRef(0);
-  const resizeStartWidth = useRef(240);
 
   const isDark = token.colorBgContainer === '#141414';
   const codeTheme = isDark ? oneDark : oneLight;
@@ -270,15 +192,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
     });
   };
 
-  const resetPreviewState = () => {
-    setSelectedFile(null);
-    setFileInfo(null);
-    setFileContent('');
-    setDocxHtml('');
-    setPreviewType('text');
-    clearPreviewUrl();
-  };
-
   const findFirstFile = (nodes: FileTreeNode[]): FileTreeNode | null => {
     for (const node of nodes) {
       if (node.type === 'file') {
@@ -297,29 +210,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
     return null;
   };
 
-  /**
-   * 当前后端已经按 kb_id 过滤。
-   *
-   * 管理员返回：
-   * [
-   *   {
-   *     name: "user_id",
-   *     type: "directory",
-   *     children: [...]
-   *   }
-   * ]
-   *
-   * 普通用户返回：
-   * [
-   *   {
-   *     name: "xxx.pdf",
-   *     type: "file"
-   *   }
-   * ]
-   *
-   * 所以只需要收集第一层目录作为 user_id。
-   */
-  const collectFirstLevelUserIds = (nodes: FileTreeNode[]) => {
+  const collectKbIds = (nodes: FileTreeNode[]) => {
     return [
       ...new Set(
         nodes
@@ -330,19 +221,44 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
     ];
   };
 
-  /**
-   * 只替换第一层目录：
-   * user_id -> nickname
-   */
-  const applyUserDisplayNameToTree = (
+  const collectUserIds = (nodes: FileTreeNode[]) => {
+    const userIds: string[] = [];
+
+    nodes.forEach((kbNode) => {
+      if (kbNode.type !== 'directory') {
+        return;
+      }
+
+      kbNode.children?.forEach((userNode) => {
+        if (userNode.type === 'directory') {
+          userIds.push(userNode.name);
+        }
+      });
+    });
+
+    return [...new Set(userIds.filter(Boolean))];
+  };
+
+  const applyDisplayNameToTree = (
     nodes: FileTreeNode[],
+    kbNameMap: Record<string, string>,
     userNameMap: Record<string, string>,
     level = 0,
   ): FileTreeNode[] => {
     return nodes.map((node) => {
       let displayName = node.name;
 
+      /**
+       * 第一层：kb_id -> 知识库名称
+       */
       if (level === 0 && node.type === 'directory') {
+        displayName = kbNameMap[node.name] || node.name;
+      }
+
+      /**
+       * 第二层：user_id -> 用户昵称
+       */
+      if (level === 1 && node.type === 'directory') {
         displayName = userNameMap[node.name] || node.name;
       }
 
@@ -350,61 +266,48 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
         ...node,
         displayName,
         children: node.children?.length
-          ? applyUserDisplayNameToTree(node.children, userNameMap, level + 1)
+          ? applyDisplayNameToTree(
+              node.children,
+              kbNameMap,
+              userNameMap,
+              level + 1,
+            )
           : node.children,
       };
     });
   };
-
-  /**
-   * 根据 user_id 批量获取昵称映射
-   */
-  const loadUserNameMap = async (
-    userIds: string[],
-  ): Promise<Record<string, string>> => {
-    if (!userIds.length) {
-      return {};
-    }
-
+  const loadTreeNameMap = async (): Promise<{
+    kb: Record<string, string>;
+    user: Record<string, string>;
+  }> => {
     const res = await fetch('/v1/file/tree/name_map', {
       method: 'POST',
       credentials: 'include',
       headers: authHeaders,
-      body: JSON.stringify({
-        user_ids: userIds,
-        kb_ids: [],
-      }),
+      body: JSON.stringify({}),
     });
 
     const result = await res.json();
 
     if (!res.ok || result.code !== 0) {
-      throw new Error(result.message || '获取用户名称映射失败');
+      throw new Error(result.message || '获取名称映射失败');
     }
 
-    return result.data?.user || {};
+    return {
+      kb: result.data?.kb || {},
+      user: result.data?.user || {},
+    };
   };
 
   const loadTree = async () => {
     try {
-      if (!kbId) {
-        setTree([]);
-        resetPreviewState();
-        message.error('缺少知识库 ID');
-        return;
-      }
-
       setLoading(true);
-      resetPreviewState();
 
-      const res = await fetch(
-        `/v1/file/tree?kb_id=${encodeURIComponent(kbId)}`,
-        {
-          method: 'GET',
-          credentials: 'include',
-          headers: authHeaders,
-        },
-      );
+      const res = await fetch('/v1/file/tree', {
+        method: 'GET',
+        credentials: 'include',
+        headers: authHeaders,
+      });
 
       const result = await res.json();
 
@@ -414,34 +317,42 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
 
       const data: FileTreeNode[] = result.data || [];
 
-      const userIds = collectFirstLevelUserIds(data);
+      const kbIds = collectKbIds(data);
+      const userIds = collectUserIds(data);
 
+      let kbNameMap: Record<string, string> = {};
       let userNameMap: Record<string, string> = {};
 
       try {
-        userNameMap = await loadUserNameMap(userIds);
+        const nameMap = await loadTreeNameMap(kbIds, userIds);
+        kbNameMap = nameMap.kb;
+        userNameMap = nameMap.user;
       } catch (e: any) {
-        message.warning(e.message || '获取用户名称映射失败，将展示 ID');
+        message.warning(e.message || '获取名称映射失败，将展示 ID');
       }
 
-      const displayTree = applyUserDisplayNameToTree(data, userNameMap);
+      const displayTree = applyDisplayNameToTree(data, kbNameMap, userNameMap);
 
       setTree(displayTree);
 
+      /**
+       * 默认展开第一层目录
+       */
       const firstLevelDirs = displayTree
-        .filter((item) => item.type === 'directory')
-        .map((item) => item.path);
+        .filter((item: FileTreeNode) => item.type === 'directory')
+        .map((item: FileTreeNode) => item.path);
 
       setExpandedPaths(firstLevelDirs);
 
+      /**
+       * 默认选中第一个文件
+       */
       const firstFile = findFirstFile(displayTree);
 
       if (firstFile) {
         handleSelectFile(firstFile);
       }
     } catch (e: any) {
-      setTree([]);
-      resetPreviewState();
       message.error(e.message || '获取目录失败');
     } finally {
       setLoading(false);
@@ -449,7 +360,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
   };
 
   /**
-   * 加载文本/代码/Markdown 内容
+   * 加载文本/代码/Markdown内容
    */
   const loadFileContent = async (file: FileTreeNode) => {
     try {
@@ -501,6 +412,9 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
         }),
       });
 
+      /**
+       * 如果后端返回 JSON 错误，避免拿 JSON 当 blob 渲染
+       */
       const contentType = res.headers.get('content-type') || '';
 
       if (contentType.includes('application/json')) {
@@ -524,9 +438,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
     }
   };
 
-  /**
-   * 加载 docx 预览
-   */
   const loadDocxPreview = async (file: FileTreeNode) => {
     try {
       setFileLoading(true);
@@ -615,6 +526,9 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
       return;
     }
 
+    /**
+     * .doc 老格式，纯前端不建议直接预览
+     */
     if (isDocFile(node)) {
       setPreviewType('unsupported');
       return;
@@ -627,7 +541,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
 
     setPreviewType('unsupported');
   };
-
   /**
    * 复制只对文本/Markdown/代码可用
    */
@@ -641,7 +554,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
   };
 
   /**
-   * 下载文件
+   * 下载所有类型文件：直接走后端 /download
    */
   const handleDownload = async () => {
     if (!selectedFile) {
@@ -692,7 +605,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, kbId]);
+  }, [open]);
 
   /**
    * 组件卸载时释放 blob url
@@ -705,41 +618,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
     };
   }, [previewUrl]);
 
-  /**
-   * 左侧拖拽调整宽度
-   */
-  const handleLeftResizeMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizingLeft(true);
-    resizeStartX.current = e.clientX;
-    resizeStartWidth.current = leftWidth;
-  };
-
-  useEffect(() => {
-    if (!isResizingLeft) {
-      return;
-    }
-
-    const onMouseMove = (e: MouseEvent) => {
-      const delta = e.clientX - resizeStartX.current;
-      const nextWidth = resizeStartWidth.current + delta;
-
-      setLeftWidth(Math.min(420, Math.max(180, nextWidth)));
-    };
-
-    const onMouseUp = () => {
-      setIsResizingLeft(false);
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-  }, [isResizingLeft]);
-
   if (!open) {
     return null;
   }
@@ -748,8 +626,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
     const isDirectory = node.type === 'directory';
     const isExpanded = expandedPaths.includes(node.path);
     const isSelected = selectedFile?.path === node.path;
-
-    const title = node.displayName || node.name;
 
     return (
       <div key={node.path}>
@@ -813,7 +689,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
             )}
           </span>
 
-          <Tooltip title={title}>
+          <Tooltip title={node.displayName || node.name}>
             <span
               style={{
                 overflow: 'hidden',
@@ -822,7 +698,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
                 flex: 1,
               }}
             >
-              {title}
+              {node.displayName || node.name}
             </span>
           </Tooltip>
         </div>
@@ -858,7 +734,17 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
 
     if (previewType === 'pdf') {
       return previewUrl ? (
-        <PdfPreview url={previewUrl} />
+        <iframe
+          src={previewUrl}
+          title={selectedFile.name}
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            display: 'block',
+            background: '#fff',
+          }}
+        />
       ) : (
         <div
           style={{
@@ -911,8 +797,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
             borderRadius: 8,
             lineHeight: '26px',
             fontSize: 14,
-            overflow: 'auto',
-            height: '100%',
           }}
           dangerouslySetInnerHTML={{
             __html: docxHtml,
@@ -931,9 +815,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
             color: token.colorText,
             fontSize: 14,
             lineHeight: '24px',
-            padding: 16,
-            overflow: 'auto',
-            height: '100%',
           }}
         >
           <ReactMarkdown
@@ -983,31 +864,22 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
 
     if (previewType === 'text') {
       return (
-        <div
-          style={{
-            height: '100%',
-            overflow: 'auto',
+        <SyntaxHighlighter
+          language={getLanguageBySuffix(fileInfo?.suffix || selectedFile.name)}
+          style={codeTheme}
+          showLineNumbers
+          wrapLongLines
+          customStyle={{
+            margin: 0,
+            borderRadius: 8,
+            fontSize: 13,
+            lineHeight: '22px',
+            background: token.colorFillQuaternary,
+            minHeight: '100%',
           }}
         >
-          <SyntaxHighlighter
-            language={getLanguageBySuffix(
-              fileInfo?.suffix || selectedFile.name,
-            )}
-            style={codeTheme}
-            showLineNumbers
-            wrapLongLines
-            customStyle={{
-              margin: 0,
-              borderRadius: 8,
-              fontSize: 13,
-              lineHeight: '22px',
-              background: token.colorFillQuaternary,
-              minHeight: '100%',
-            }}
-          >
-            {fileContent || '暂无内容'}
-          </SyntaxHighlighter>
-        </div>
+          {fileContent || '暂无内容'}
+        </SyntaxHighlighter>
       );
     }
 
@@ -1032,7 +904,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
       {/* 左侧 */}
       <div
         style={{
-          width: leftWidth,
+          width: 240,
           flexShrink: 0,
           borderRight: `1px solid ${token.colorBorderSecondary}`,
           padding: 14,
@@ -1045,22 +917,9 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
             fontWeight: 600,
             marginBottom: 10,
             color: token.colorTextSecondary,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
           }}
         >
-          <span>文件</span>
-
-          {/* <Tooltip title="关闭">
-            <Button
-              size="small"
-              type="text"
-              icon={<CloseOutlined />}
-              onClick={onClose}
-            />
-          </Tooltip> */}
+          文件
         </div>
 
         {loading ? (
@@ -1078,17 +937,6 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无文件" />
         )}
       </div>
-
-      {/* 拖拽分隔条 */}
-      <div
-        onMouseDown={handleLeftResizeMouseDown}
-        style={{
-          width: 6,
-          cursor: 'col-resize',
-          flexShrink: 0,
-          background: isResizingLeft ? token.colorPrimary : 'transparent',
-        }}
-      />
 
       {/* 右侧 */}
       <div
@@ -1122,7 +970,7 @@ const FileTreePreview: React.FC<FileTreePreviewProps> = ({
               whiteSpace: 'nowrap',
             }}
           >
-            {selectedFile?.displayName || selectedFile?.name || '请选择文件'}
+            {selectedFile?.name || '请选择文件'}
           </div>
 
           <div style={{ display: 'flex', gap: 4 }}>

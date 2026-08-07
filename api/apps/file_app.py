@@ -27,6 +27,7 @@ from api.db.services.document_service import DocumentService
 from api.db.services.file2document_service import File2DocumentService
 from api.db.services.group_service import GroupService
 from api.db.services.user_group_service import UserGroupService
+from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.utils.api_utils import server_error_response, get_data_error_result, validate_request
 from common.misc_utils import get_uuid
 from common.constants import RetCode, FileSource
@@ -1614,7 +1615,7 @@ async def move():
 from pathlib import Path
 import asyncio
 # 改成你服务器上真实要展示的文件夹
-FILE_TREE_BASE_DIR = Path('/home/zyb/rag-flow/agnet_skills/skills').resolve()
+FILE_TREE_BASE_DIR = Path('/home/zyb/rag-flow/runtime/staging_upload').resolve()
 
 def build_file_tree(directory: Path, base_dir: Path):
     directory = directory.resolve()
@@ -1644,9 +1645,9 @@ def build_file_tree(directory: Path, base_dir: Path):
 
     return result
 
-@manager.route('/tree', methods=['GET'])  # noqa: F821
+@manager.route('/tree1', methods=['GET'])  # noqa: F821
 # @login_required
-async def get_file_tree():
+async def get_file_tree1():
     try:
         base_dir = FILE_TREE_BASE_DIR
 
@@ -1657,6 +1658,81 @@ async def get_file_tree():
             return get_data_error_result(message="Path is not a directory!")
 
         tree = await asyncio.to_thread(build_file_tree, base_dir, base_dir)
+
+        return get_json_result(data=tree)
+
+    except Exception as e:
+        return server_error_response(e)
+
+@manager.route('/tree', methods=['GET'])  # noqa: F821
+# @login_required
+async def get_file_tree():
+    try:
+        kb_id = request.args.get("kb_id")
+
+        if not kb_id:
+            return get_json_result(
+                data=False,
+                message='Lack of "kb_id"',
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        user_id = current_user.id
+        base_dir = FILE_TREE_BASE_DIR
+
+        if not base_dir.exists():
+            return get_data_error_result(message="Directory not found!")
+
+        if not base_dir.is_dir():
+            return get_data_error_result(message="Path is not a directory!")
+
+        e, kb = KnowledgebaseService.get_by_id(kb_id)
+
+        if not e:
+            return get_data_error_result(message="Can't find this dataset!")
+
+        # if not check_kb_team_write_permission(kb, user_id):
+        #     return get_json_result(
+        #         data=False,
+        #         message="No authorization.",
+        #         code=RetCode.AUTHENTICATION_ERROR,
+        #     )
+
+        # 管理员判断
+        is_admin = bool(AdminUser.query(
+            user_id=current_user.id,
+            role_level=1,
+        ))
+
+        kb_dir = (base_dir / kb_id).resolve()
+
+        if kb_dir != base_dir and base_dir not in kb_dir.parents:
+            return get_data_error_result(message="Invalid kb_id!")
+
+        if not kb_dir.exists():
+            return get_json_result(data=[])
+
+        if not kb_dir.is_dir():
+            return get_data_error_result(message="KB path is not a directory!")
+
+        if is_admin:
+            # 管理员：展示当前 KB 下所有用户文件夹
+            tree = await asyncio.to_thread(build_file_tree, kb_dir, base_dir)
+            return get_json_result(data=tree)
+
+        # 普通用户：只展示自己的文件，不展示 user_id 文件夹
+        user_dir = (kb_dir / user_id).resolve()
+
+        if user_dir != base_dir and base_dir not in user_dir.parents:
+            return get_data_error_result(message="Invalid user directory!")
+
+        if not user_dir.exists():
+            return get_json_result(data=[])
+
+        if not user_dir.is_dir():
+            return get_data_error_result(message="User path is not a directory!")
+
+        tree = await asyncio.to_thread(build_file_tree, user_dir, base_dir)
 
         return get_json_result(data=tree)
 
@@ -1816,6 +1892,32 @@ async def download_file():
             mimetype=mime_type,
             headers=headers,
         )
+
+    except Exception as e:
+        return server_error_response(e)
+
+@manager.route("/tree/name_map", methods=["POST"])  # noqa: F821
+@login_required
+async def get_tree_name_map():
+    try:
+        req = await request.json
+
+        if not req:
+            req = {}
+
+        kb_ids = req.get("kb_ids")
+        user_ids = req.get("user_ids")
+
+        from api.db.services.user_service import UserService
+
+        # kb_ids / user_ids 为 None 或 [] 时，Service 内部会返回所有
+        kb_name_map = KnowledgebaseService.get_name_map_by_ids(kb_ids)
+        user_name_map = UserService.get_name_map_by_ids(user_ids)
+
+        return get_json_result(data={
+            "kb": kb_name_map,
+            "user": user_name_map,
+        })
 
     except Exception as e:
         return server_error_response(e)

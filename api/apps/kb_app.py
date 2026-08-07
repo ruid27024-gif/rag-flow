@@ -263,12 +263,12 @@ def detail():
     kb_id = request.args["kb_id"]
 
     try:
-        if not KnowledgebaseService.accessible(kb_id, current_user.id):
-            return get_json_result(
-                data=False,
-                message='Only owner of dataset authorized for this operation.',
-                code=RetCode.OPERATING_ERROR,
-            )
+        # if not KnowledgebaseService.accessible(kb_id, current_user.id):
+        #     return get_json_result(
+        #         data=False,
+        #         message='Only owner of dataset authorized for this operation.',
+        #         code=RetCode.OPERATING_ERROR,
+        #     )
 
         kb = KnowledgebaseService.get_detail(kb_id)
         if not kb:
@@ -410,7 +410,7 @@ async def list_kbs2():
         if not owner_ids:
             from api.db.services.user_group_service import UserGroupService
             tenants = UserGroupService.get_team_tenant_ids(current_user.id)
-            kbs, total = KnowledgebaseService.get_by_tenant_ids2(
+            kbs, total = KnowledgebaseService.get_by_tenant_ids3(
                 tenants, current_user.id, page_number,
                 items_per_page, orderby, desc, keywords, parser_id,
                 admin_bypass=bool(is_admin)
@@ -1276,3 +1276,28 @@ async def check_embedding():
         return get_json_result(data={"summary": summary, "results": results})
     return get_json_result(code=RetCode.NOT_EFFECTIVE, message="Embedding model switch failed: the average similarity between old and new vectors is below 0.9, indicating incompatible vector spaces.", data={"summary": summary, "results": results})
 
+
+@manager.route("name_map", methods=["POST"])  # noqa: F821
+@login_required
+async def get_kb_name_map():
+    try:
+        req = await request.json
+
+        kb_ids = req.get("kb_ids", [])
+
+        if not isinstance(kb_ids, list):
+            return get_json_result(
+                data=False,
+                message="kb_ids must be a list.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        # 去重，过滤空值
+        kb_ids = list({str(kb_id) for kb_id in kb_ids if kb_id})
+
+        name_map = KnowledgebaseService.get_name_map_by_ids(kb_ids)
+
+        return get_json_result(data=name_map)
+
+    except Exception as e:
+        return server_error_response(e)

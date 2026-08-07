@@ -1527,6 +1527,55 @@ class KnowledgeTagOption(DataBaseModel):
             (("type_code", "option_code"), True),
         )
 
+class StagedFile(DataBaseModel):
+    id = CharField(primary_key=True)
+
+    batch_id = CharField(max_length=32, index=True, null=True)
+
+    kb_id = CharField(index=True)
+    tenant_id = CharField(index=True)
+    user_id = CharField(index=True)
+
+    filename = CharField()
+    path = CharField()
+    size = IntegerField(default=0)
+
+    status = CharField(default="pending")
+    # pending / approved / committing / committed / rejected / failed / deleted
+
+    doc_id = CharField(null=True, index=True)
+
+    # 上传时生成的审批人快照
+    approval_level_1 = JSONField(null=True)
+    approval_level_2 = JSONField(null=True)
+
+    created_at = DateTimeField(default=datetime.now)
+    approved_at = DateTimeField(null=True)
+    approved_by = CharField(null=True)
+    committed_at = DateTimeField(null=True)
+    error_msg = TextField(null=True)
+
+    class Meta:
+        table_name = "staged_file"
+
+
+# 2. 暂存文件标签表
+class StagedFileTag(DataBaseModel):
+    id = BigAutoField()
+
+    stage_id = CharField(max_length=32, index=True)
+    type_code = CharField(max_length=64, index=True)
+    option_code = CharField(max_length=64, index=True)
+
+    create_time = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = "staged_file_tag"
+        indexes = (
+            (("stage_id", "type_code", "option_code"), True),
+        )
+
+
 
 def migrate_db():
     logging.disable(logging.ERROR)

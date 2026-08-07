@@ -32,6 +32,7 @@ import {
 } from '@/services/user-service';
 import { Spin, Transfer } from 'antd';
 import {
+  FolderTree,
   Plus,
   RefreshCw,
   Settings,
@@ -1049,6 +1050,23 @@ const AdminFiles = () => {
                   <h3 className="font-medium text-lg">知识库标签管理</h3>
                   <p className="text-sm text-gray-500">
                     管理知识库标签类型和选项
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="w-[264px] cursor-pointer hover:shadow-lg transition-shadow"
+              onClick={() => navigate('/filetree-admin')}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                  <FolderTree className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-lg">上传待审批</h3>
+                  <p className="text-sm text-gray-500">
+                    查看和管理待审批上传文件
                   </p>
                 </div>
               </CardContent>

@@ -164,6 +164,37 @@ class UserService(CommonService):
         users = cls.model.select()
         return list(users)
 
+    @classmethod
+    @DB.connection_context()
+    def get_name_map_by_ids(cls, user_ids=None):
+        """
+        user_ids 为空或不传时，返回所有有效用户的 id -> nickname/email 映射
+        user_ids 不为空时，只返回指定用户的映射
+        """
+        query = (
+            cls.model
+            .select(
+                cls.model.id,
+                cls.model.nickname,
+                cls.model.email,
+            )
+            .where(
+                cls.model.status == StatusEnum.VALID.value,
+            )
+        )
+
+        if user_ids:
+            user_ids = list({str(user_id) for user_id in user_ids if user_id})
+            if user_ids:
+                query = query.where(cls.model.id.in_(user_ids))
+
+        rows = query.dicts()
+
+        return {
+            row["id"]: row.get("nickname") or row.get("email") or row["id"]
+            for row in rows
+        }
+
 
 class TenantService(CommonService):
     """Service class for managing tenant-related database operations.
@@ -317,3 +348,5 @@ class UserTenantService(CommonService):
             return user_tenant
         except peewee.DoesNotExist:
             return None
+
+    

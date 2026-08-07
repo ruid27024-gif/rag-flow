@@ -139,7 +139,7 @@ export default function Dataset() {
             hideModal={hideDocumentUploadModal}
             onOk={onDocumentUploadOk}
             loading={documentUploadLoading}
-            showParseOnCreation
+            // showParseOnCreation
           ></FileUploadDialog>
         )}
         {createVisible && (

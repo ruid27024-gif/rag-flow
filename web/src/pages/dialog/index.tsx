@@ -17,6 +17,7 @@ import {
   Empty,
   Layout,
   Row,
+  Select,
   Spin,
   Statistic,
   Table,
@@ -24,7 +25,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import axios from 'axios'; // 假设你使用 axios
+import axios from 'axios';
 import React, {
   useCallback,
   useEffect,
@@ -65,18 +66,20 @@ interface SelectedMember extends Member {
   group_name: string;
 }
 
-// 1. 定义对话（Conversation）接口
 interface ConversationInfo {
   id: string;
   name: string;
-  message: any[]; // 对应后端的 JSONField，通常是一个包含消息对象的数组
+  message: any[];
+  create_date?: string;
+  conversation_create_date?: string;
 }
 
-// 2. 定义应用（Dialog）接口，内部嵌套 Conversation
 interface DialogInfo {
   id: string;
   name: string;
-  conversations: ConversationInfo[]; // 核心：直接对应后端返回的嵌套数组
+  create_date?: string;
+  dialog_create_date?: string;
+  conversations: ConversationInfo[];
 }
 
 const periodOptions = [
@@ -87,15 +90,21 @@ const periodOptions = [
   { label: '年', value: 'year' },
 ];
 
-/**
- * 页面外壳 (纯净版)
- */
-// const DashboardShell = ({ children }) => {
-//   return (
-//     <div className="relative h-screen overflow-y-auto p-6">{children}</div>
-//   );
-// };
-const DashboardShell = ({ children }) => {
+const departmentOptions = [
+  { label: '全部', value: '全部' },
+  { label: '工艺研究一室', value: '100146' },
+  { label: '工艺研究二室', value: '100147' },
+  { label: '工艺研究三室', value: '100148' },
+  { label: '新品事业部研发部', value: '100051' },
+  { label: '数字化管理中心', value: '100380' },
+];
+
+const getDisplayTime = (value?: string | null) => {
+  if (!value) return '-';
+  return value;
+};
+
+const DashboardShell = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="relative flex h-screen min-h-0 flex-col overflow-hidden p-6">
       {children}
@@ -104,7 +113,32 @@ const DashboardShell = ({ children }) => {
 };
 
 const GroupMemberStatsPage: React.FC = () => {
-  // 定义导出函数
+  const navigate = useNavigate();
+
+  const [switchSide, setSwitchSide] = useState<'left' | 'right'>('right');
+  const [period, setPeriod] = useState<Period>('all');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [dialogs, setDialogs] = useState<DialogInfo[]>([]);
+  const [dialogLoading, setDialogLoading] = useState(false);
+  const [groups, setGroups] = useState<GroupStats[]>([]);
+  const [selectedMember, setSelectedMember] = useState<SelectedMember | null>(
+    null,
+  );
+  const [expandedConvKeys, setExpandedConvKeys] = useState<string[]>([]);
+  const [activeGroupKeys, setActiveGroupKeys] = useState<string[]>([]);
+  const [organizationCode, setOrganizationCode] = useState('全部');
+
+  const fetchingRef = useRef(false);
+
+  const handleGoBoard = useCallback(() => {
+    setSwitchSide('left');
+
+    window.setTimeout(() => {
+      navigate('/dashboard');
+    }, 250);
+  }, [navigate]);
+
   const handleExportExcel = async (
     tenantId: string,
     dialogId: string,
@@ -129,13 +163,6 @@ const GroupMemberStatsPage: React.FC = () => {
 
       console.timeEnd('export_excel_request');
 
-      console.log('导出接口已返回:', response);
-      console.log('导出接口状态码:', response.status);
-      console.log('导出接口 headers:', response.headers);
-      console.log('导出接口 content-type:', response.headers['content-type']);
-      console.log('导出文件 blob:', response.data);
-      console.log('导出文件大小 bytes:', response.data?.size);
-
       const contentType = response.headers['content-type'];
 
       if (
@@ -144,8 +171,6 @@ const GroupMemberStatsPage: React.FC = () => {
         )
       ) {
         const errorText = await response.data.text();
-
-        console.log('导出接口返回非 Excel 内容:', errorText);
 
         let errorMessage = '导出失败，请重试';
 
@@ -163,31 +188,25 @@ const GroupMemberStatsPage: React.FC = () => {
         throw new Error(errorMessage);
       }
 
-      console.time('export_excel_blob_download');
-      // 1. 生成精确到时分秒的日期字符串 (格式: YYYYMMDD_HHmmss)
-
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, '0');
-      const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(
+        now.getDate(),
+      )}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(
+        now.getSeconds(),
+      )}`;
 
-      // 2. 处理对话名称（防止包含特殊字符导致下载失败或文件名异常）
       const safeDialogName =
         dialogName?.replace(/[\\/:*?"<>|]/g, '_') || 'unknown_dialog';
 
-      // 3. 拼接最终文件名
       const fileName = `${safeDialogName}_${dateStr}.xlsx`;
 
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-      console.log('构造后的下载 blob:', blob);
-      console.log('构造后的下载 blob size:', blob.size);
-
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
-
-      console.log('生成的 blob url:', url);
 
       link.href = url;
       link.download = fileName;
@@ -199,10 +218,8 @@ const GroupMemberStatsPage: React.FC = () => {
 
       setTimeout(() => {
         URL.revokeObjectURL(url);
-        console.log('blob url 已释放:', url);
       }, 5000);
 
-      console.timeEnd('export_excel_blob_download');
       console.timeEnd('export_excel_total');
 
       message.success({
@@ -220,35 +237,99 @@ const GroupMemberStatsPage: React.FC = () => {
     }
   };
 
-  const [switchSide, setSwitchSide] = useState<'left' | 'right'>('right');
-  const navigate = useNavigate();
-  const handleGoBoard = useCallback(() => {
-    setSwitchSide('left');
+  const handleExportDepartmentExcel = async () => {
+    try {
+      message.loading({ content: '正在生成日志文件...', key: 'exporting' });
 
-    window.setTimeout(() => {
-      navigate('/dashboard');
-    }, 250);
-  }, [navigate]);
+      const response = await axios.post(
+        '/v1/api/user_dialogs_export_excel_all',
+        {
+          organizationCode,
+        },
+        {
+          responseType: 'blob',
+        },
+      );
 
-  // 记录当前展开的 Conversation ID 数组
-  const [expandedConvKeys, setExpandedConvKeys] = useState<string[]>([]);
-  const [period, setPeriod] = useState<Period>('all');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  // 【新增】存储当前选中用户的对话数据
-  const [dialogs, setDialogs] = useState<DialogInfo[]>([]);
-  const [dialogLoading, setDialogLoading] = useState(false);
+      const contentType = response.headers['content-type'];
 
-  const [groups, setGroups] = useState<GroupStats[]>([]);
-  const [selectedMember, setSelectedMember] = useState<SelectedMember | null>(
-    null,
-  );
+      if (
+        !contentType?.includes(
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+      ) {
+        const errorText = await response.data.text();
 
-  const fetchingRef = useRef(false);
+        let errorMessage = '导出失败，请重试';
 
-  /**
-   * 获取组成员统计数据
-   */
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage =
+            errorJson.message ||
+            errorJson.retmsg ||
+            errorJson.error ||
+            errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(
+        now.getDate(),
+      )}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(
+        now.getSeconds(),
+      )}`;
+
+      const selectedDepartment =
+        departmentOptions.find((item) => item.value === organizationCode)
+          ?.label ||
+        organizationCode ||
+        '全部';
+
+      const safeDepartmentName = selectedDepartment.replace(
+        /[\\/:*?"<>|]/g,
+        '_',
+      );
+
+      const fileName = `${safeDepartmentName}_${dateStr}.xlsx`;
+
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+
+      link.href = url;
+      link.download = fileName;
+      link.style.visibility = 'hidden';
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 5000);
+
+      message.success({
+        content: '日志文件已开始下载',
+        key: 'exporting',
+      });
+    } catch (error) {
+      console.error('Export failed:', error);
+
+      message.error({
+        content: error instanceof Error ? error.message : '导出失败，请重试',
+        key: 'exporting',
+      });
+    }
+  };
+
   const fetchGroupMemberStats = useCallback(async (currentPeriod: Period) => {
     if (fetchingRef.current) {
       return;
@@ -279,21 +360,6 @@ const GroupMemberStatsPage: React.FC = () => {
 
       let list: GroupStats[] = [];
 
-      /**
-       * 兼容两种返回：
-       * 1. 直接返回数组
-       * [
-       *   { group_id, group_name, members: [] }
-       * ]
-       *
-       * 2. get_json_result 格式
-       * {
-       *   code: 0,
-       *   data: [
-       *     { group_id, group_name, members: [] }
-       *   ]
-       * }
-       */
       if (Array.isArray(json)) {
         list = json;
       } else if (Array.isArray(json?.data)) {
@@ -304,9 +370,6 @@ const GroupMemberStatsPage: React.FC = () => {
 
       setGroups(list);
 
-      /**
-       * 默认选中第一个有成员的组里的第一个人
-       */
       const firstGroupWithMember = list.find(
         (group) => Array.isArray(group.members) && group.members.length > 0,
       );
@@ -333,22 +396,14 @@ const GroupMemberStatsPage: React.FC = () => {
       fetchingRef.current = false;
     }
   }, []);
-  const [activeGroupKeys, setActiveGroupKeys] = useState<string[]>([]);
-  //   useEffect(() => {
-  //   if (groups.length > 0) {
-  //     setActiveGroupKeys(groups.map((group) => group.group_id));
-  //   }
-  // }, [groups]);
-  /**
-   * 【新增】根据用户 ID 获取对话列表
-   */
+
   const fetchUserDialogs = useCallback(async (userId: string) => {
     if (!userId) return;
 
     try {
       setDialogLoading(true);
+
       const res = await fetch('/v1/api/user_dialogs_and_conversations', {
-        // 替换为实际的后端接口地址
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -364,12 +419,8 @@ const GroupMemberStatsPage: React.FC = () => {
       }
 
       const json = await res.json();
-
-      // 兼容返回格式（直接数组或 { data: [] }）
       const list = Array.isArray(json) ? json : json?.data || [];
-      //       console.log(list)
       setDialogs(list);
-      console.log(dialogs);
     } catch (error) {
       console.error('获取用户对话失败:', error);
       message.error('获取对话记录失败');
@@ -379,36 +430,23 @@ const GroupMemberStatsPage: React.FC = () => {
     }
   }, []);
 
-  /**
-   * 页面进入默认请求 all
-   */
   useEffect(() => {
     fetchGroupMemberStats('all');
   }, [fetchGroupMemberStats]);
 
-  /**
-   * 【新增】当选中的人员发生变化时，重新获取对话数据
-   */
   useEffect(() => {
     if (selectedMember?.user_id) {
-      console.log(selectedMember.user_id);
       fetchUserDialogs(selectedMember.user_id);
     } else {
-      setDialogs([]); // 如果没有选中人，清空对话列表
+      setDialogs([]);
     }
   }, [selectedMember, fetchUserDialogs]);
 
-  /**
-   * 切换统计周期
-   */
   const handlePeriodChange = async (value: Period) => {
     setPeriod(value);
     await fetchGroupMemberStats(value);
   };
 
-  /**
-   * 点击左侧人员
-   */
   const handleSelectMember = (group: GroupStats, member: Member) => {
     setSelectedMember({
       ...member,
@@ -417,26 +455,10 @@ const GroupMemberStatsPage: React.FC = () => {
     });
   };
 
-  /**
-   * 全部组 Token 总数
-   */
-  const allTokenTotal = useMemo(() => {
-    return groups.reduce(
-      (sum, group) => sum + Number(group.total_tokens || 0),
-      0,
-    );
-  }, [groups]);
-
-  /**
-   * 当前用户应用数量
-   */
   const appTotal = useMemo(() => {
     return Array.isArray(dialogs) ? dialogs.length : 0;
   }, [dialogs]);
 
-  /**
-   * 当前用户对话数量
-   */
   const conversationTotal = useMemo(() => {
     if (!Array.isArray(dialogs)) return 0;
 
@@ -449,9 +471,6 @@ const GroupMemberStatsPage: React.FC = () => {
     }, 0);
   }, [dialogs]);
 
-  /**
-   * 当前用户消息总数
-   */
   const messageTotal = useMemo(() => {
     if (!Array.isArray(dialogs)) return 0;
 
@@ -463,7 +482,6 @@ const GroupMemberStatsPage: React.FC = () => {
       const currentDialogMessageTotal = conversations.reduce(
         (convSum, conv) => {
           const messages = Array.isArray(conv.message) ? conv.message : [];
-
           return convSum + messages.length;
         },
         0,
@@ -473,29 +491,10 @@ const GroupMemberStatsPage: React.FC = () => {
     }, 0);
   }, [dialogs]);
 
-  /**
-   * 全部组问答总数
-   */
-  const allDialogTotal = useMemo(() => {
-    return groups.reduce(
-      (sum, group) => sum + Number(group.total_dialogs || 0),
-      0,
-    );
-  }, [groups]);
-
-  /**
-   * 当前选中人员所在组
-   */
-  const selectedGroup = useMemo(() => {
-    if (!selectedMember) return null;
-
-    return groups.find((group) => group.group_id === selectedMember.group_id);
-  }, [groups, selectedMember]);
-
   return (
     <>
       <DashboardShell>
-        <div className="mb-7 flex items-center justify-between">
+        <div className="mb-7 flex items-center justify-between gap-4">
           <h1
             className="
               m-0
@@ -511,62 +510,63 @@ const GroupMemberStatsPage: React.FC = () => {
             <TeamOutlined className="text-green-700" />
             团队数据仪表盘
           </h1>
+
           <div
             className="
-    relative
-    flex
-    h-9
-    w-[160px]
-    items-center
-    rounded-full
-    border
-    border-slate-200
-    bg-slate-100
-    p-1
-    transition-colors
-    dark:border-white/[0.08]
-    dark:bg-white/[0.06]
-  "
+              relative
+              flex
+              h-9
+              w-[160px]
+              items-center
+              rounded-full
+              border
+              border-slate-200
+              bg-slate-100
+              p-1
+              transition-colors
+              dark:border-white/[0.08]
+              dark:bg-white/[0.06]
+            "
           >
             <div
               className={`
-      absolute
-      left-1
-      top-1
-      h-7
-      w-[76px]
-      rounded-full
-      bg-white
-      shadow-sm
-      transition-transform
-      duration-300
-      ease-out
-      dark:bg-[#00BEB4]
-      ${switchSide === 'left' ? 'translate-x-0' : 'translate-x-[76px]'}
-    `}
+                absolute
+                left-1
+                top-1
+                h-7
+                w-[76px]
+                rounded-full
+                bg-white
+                shadow-sm
+                transition-transform
+                duration-300
+                ease-out
+                dark:bg-[#00BEB4]
+                ${switchSide === 'left' ? 'translate-x-0' : 'translate-x-[76px]'}
+              `}
             />
 
             <button
               type="button"
               className={`
-      relative
-      z-10
-      flex
-      h-7
-      flex-1
-      items-center
-      justify-center
-      rounded-full
-      p-0
-      text-sm
-      leading-none
-      transition-colors
-      ${
-        switchSide === 'left'
-          ? 'text-slate-900 dark:text-white'
-          : 'text-slate-500 dark:text-slate-400'
-      }
-    `}
+                relative
+                z-10
+                flex
+                h-7
+                flex-1
+                items-center
+                justify-center
+                rounded-full
+                p-0
+                text-sm
+                leading-none
+                transition-colors
+                ${
+                  switchSide === 'left'
+                    ? 'text-slate-900 dark:text-white'
+                    : 'text-slate-500 dark:text-slate-400'
+                }
+              `}
               onClick={handleGoBoard}
             >
               看板
@@ -575,24 +575,24 @@ const GroupMemberStatsPage: React.FC = () => {
             <button
               type="button"
               className={`
-      relative
-      z-10
-      flex
-      h-7
-      flex-1
-      items-center
-      justify-center
-      rounded-full
-      p-0
-      text-sm
-      leading-none
-      transition-colors
-      ${
-        switchSide === 'right'
-          ? 'text-slate-900 dark:text-white'
-          : 'text-slate-500 dark:text-slate-400'
-      }
-    `}
+                relative
+                z-10
+                flex
+                h-7
+                flex-1
+                items-center
+                justify-center
+                rounded-full
+                p-0
+                text-sm
+                leading-none
+                transition-colors
+                ${
+                  switchSide === 'right'
+                    ? 'text-slate-900 dark:text-white'
+                    : 'text-slate-500 dark:text-slate-400'
+                }
+              `}
               onClick={(event) => {
                 event.preventDefault();
               }}
@@ -600,6 +600,30 @@ const GroupMemberStatsPage: React.FC = () => {
               日志
             </button>
           </div>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-slate-200/70 bg-transparent px-4 py-3 dark:border-white/[0.08]">
+          <div className="flex items-center gap-2">
+            <TeamOutlined className="text-green-700 dark:text-green-400" />
+            <Text strong className="dark:text-slate-100">
+              部门日志导出
+            </Text>
+          </div>
+
+          <Select
+            style={{ width: 240 }}
+            value={organizationCode}
+            options={departmentOptions}
+            onChange={(value) => setOrganizationCode(value)}
+          />
+
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleExportDepartmentExcel}
+          >
+            导出
+          </Button>
         </div>
 
         <Layout className="stats-page">
@@ -798,7 +822,6 @@ const GroupMemberStatsPage: React.FC = () => {
                     </Col>
                   </Row>
 
-                  {/* 【新增】对话记录表格展示区域 */}
                   <div style={{ marginTop: 24 }}>
                     <Title level={4}>对话记录</Title>
 
@@ -825,28 +848,19 @@ const GroupMemberStatsPage: React.FC = () => {
                               </Text>
                             ),
                           },
-
-                          // ✅ 新增这一列：操作/导出
                           {
-                            title: '操作',
-                            key: 'action',
-                            width: 150, // 根据按钮宽度调整
+                            title: '主题创建时间',
+                            dataIndex: 'dialog_create_date',
+                            key: 'dialog_create_date',
+                            width: 180,
                             align: 'center',
-                            render: (_, record) => (
-                              <Button
-                                type="primary"
-                                size="small"
-                                icon={<DownloadOutlined />} // 可选：添加一个下载图标
-                                onClick={() =>
-                                  handleExportExcel(
-                                    selectedMember.user_id,
-                                    record.id,
-                                    record.name,
-                                  )
-                                }
-                              >
-                                导出日志
-                              </Button>
+                            render: (_value, record) => (
+                              <Text type="secondary">
+                                {getDisplayTime(
+                                  record.dialog_create_date ||
+                                    record.create_date,
+                                )}
+                              </Text>
                             ),
                           },
                           {
@@ -855,14 +869,52 @@ const GroupMemberStatsPage: React.FC = () => {
                             key: 'conv_count',
                             width: 120,
                             align: 'center',
-                            render: (conversations) => (
-                              <Tag color="blue">
-                                {Array.isArray(conversations)
-                                  ? conversations.length
-                                  : 0}{' '}
-                                个对话
-                              </Tag>
-                            ),
+                            render: (conversations) => {
+                              const count = Array.isArray(conversations)
+                                ? conversations.length
+                                : 0;
+
+                              return (
+                                <Tag color={count > 0 ? 'blue' : 'default'}>
+                                  {count} 个对话
+                                </Tag>
+                              );
+                            },
+                          },
+                          {
+                            title: '操作',
+                            key: 'action',
+                            width: 150,
+                            align: 'center',
+                            render: (_, record) => {
+                              const conversations = Array.isArray(
+                                record.conversations,
+                              )
+                                ? record.conversations
+                                : [];
+
+                              const disabled = conversations.length === 0;
+
+                              return (
+                                <Button
+                                  type="primary"
+                                  size="small"
+                                  icon={<DownloadOutlined />}
+                                  disabled={disabled}
+                                  onClick={() => {
+                                    if (disabled) return;
+
+                                    handleExportExcel(
+                                      selectedMember.user_id,
+                                      record.id,
+                                      record.name,
+                                    );
+                                  }}
+                                >
+                                  导出日志
+                                </Button>
+                              );
+                            },
                           },
                         ]}
                         expandable={{
@@ -881,7 +933,6 @@ const GroupMemberStatsPage: React.FC = () => {
                               <div style={{ paddingLeft: '2em' }}>
                                 <div
                                   onClick={(event) => {
-                                    // 防止点击内层区域时触发外层 Dialog 的收起
                                     event.stopPropagation();
                                   }}
                                 >
@@ -889,7 +940,9 @@ const GroupMemberStatsPage: React.FC = () => {
                                     dataSource={conversations}
                                     showHeader={false}
                                     rowKey={(convRecord) =>
-                                      `${String(dialogRecord.id)}-${String(convRecord.id)}`
+                                      `${String(dialogRecord.id)}-${String(
+                                        convRecord.id,
+                                      )}`
                                     }
                                     pagination={false}
                                     size="small"
@@ -897,7 +950,6 @@ const GroupMemberStatsPage: React.FC = () => {
                                     expandable={{
                                       expandedRowKeys: expandedConvKeys,
                                       showExpandColumn: false,
-
                                       expandedRowRender: (convRecord) => {
                                         const messages = Array.isArray(
                                           convRecord.message,
@@ -919,7 +971,7 @@ const GroupMemberStatsPage: React.FC = () => {
                                             dataIndex: 'role',
                                             key: 'role',
                                             width: 120,
-                                            render: (role) => {
+                                            render: (role: string) => {
                                               if (role === 'user') {
                                                 return (
                                                   <Tag color="green">用户</Tag>
@@ -947,7 +999,7 @@ const GroupMemberStatsPage: React.FC = () => {
                                             title: '消息详情',
                                             dataIndex: 'content',
                                             key: 'content',
-                                            render: (content) => (
+                                            render: (content: any) => (
                                               <Text>{content || '-'}</Text>
                                             ),
                                           },
@@ -956,7 +1008,6 @@ const GroupMemberStatsPage: React.FC = () => {
                                         return (
                                           <div
                                             onClick={(event) => {
-                                              // 防止点击消息表格时，又触发 Conversation 行的展开/收起
                                               event.stopPropagation();
                                             }}
                                           >
@@ -986,9 +1037,9 @@ const GroupMemberStatsPage: React.FC = () => {
                                       onClick: (event) => {
                                         event.stopPropagation();
 
-                                        const currentKey = `${String(dialogRecord.id)}-${String(
-                                          convRecord.id,
-                                        )}`;
+                                        const currentKey = `${String(
+                                          dialogRecord.id,
+                                        )}-${String(convRecord.id)}`;
 
                                         setExpandedConvKeys((prev) =>
                                           prev.includes(currentKey)
@@ -1010,7 +1061,7 @@ const GroupMemberStatsPage: React.FC = () => {
                                           <span
                                             style={{
                                               fontWeight: 600,
-                                              color: '#FF69B4', // 直接用纯正的 HotPink，不加任何渐变
+                                              color: '#FF69B4',
                                             }}
                                           >
                                             {text || '新对话'}
@@ -1018,9 +1069,23 @@ const GroupMemberStatsPage: React.FC = () => {
                                         ),
                                       },
                                       {
+                                        dataIndex: 'conversation_create_date',
+                                        key: 'conversation_create_date',
+                                        width: 180,
+                                        align: 'center',
+                                        render: (_value, record) => (
+                                          <Text type="secondary">
+                                            {getDisplayTime(
+                                              record.conversation_create_date ||
+                                                record.create_date,
+                                            )}
+                                          </Text>
+                                        ),
+                                      },
+                                      {
                                         dataIndex: 'message',
                                         key: 'message',
-                                        width: 50,
+                                        width: 90,
                                         align: 'center',
                                         render: (messages) => (
                                           <Tag color="pink">

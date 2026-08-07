@@ -19,7 +19,7 @@ from datetime import datetime
 from peewee import fn, JOIN
 
 from api.db import TenantPermission
-from api.db.db_models import DB, Document, Group, Knowledgebase, User, UserTenant, UserCanvas, AdminUser, UserGroup
+from api.db.db_models import DB, Document, Group, Knowledgebase, User, UserTenant, UserCanvas, AdminUser, UserGroup,SyncPerson,RoleUser,Role
 from api.db.services.common_service import CommonService
 from common import settings
 from common.time_utils import current_timestamp, datetime_format
@@ -29,6 +29,7 @@ from common.misc_utils import get_uuid
 from common.constants import RetCode, StatusEnum
 from api.constants import DATASET_NAME_LIMIT
 from api.utils.api_utils import get_parser_config, get_data_error_result
+import json
 
 
 class KnowledgebaseService(CommonService):
@@ -684,6 +685,372 @@ class KnowledgebaseService(CommonService):
             res = res[offset : offset + items_per_page]
         return res, count
 
+
+    # 1. 解析角色部门
+    @staticmethod
+    def parse_department_ids(department_id):
+        """
+        Role.department_id 支持：
+        1. 单个部门ID: "dept001"
+        2. 逗号分隔: "dept001,dept002"
+        3. JSON数组: ["dept001", "dept002"]
+        """
+        if not department_id:
+            return []
+
+        department_id = str(department_id).strip()
+
+        if not department_id:
+            return []
+
+        if department_id.startswith("["):
+            try:
+                data = json.loads(department_id)
+                return [str(i).strip() for i in data if i]
+            except Exception:
+                return []
+
+        if "," in department_id:
+            return [i.strip() for i in department_id.split(",") if i.strip()]
+
+        return [department_id]
+
+    # 2. 获取用户角色
+    @classmethod
+    def get_user_role(cls, user_id):
+        """
+        根据 user_id 获取用户角色。
+        """
+        role_user = RoleUser.get_or_none(RoleUser.user_id == user_id)
+
+        if not role_user:
+            return None
+
+        return Role.get_or_none(Role.id == role_user.role_id)
+
+    # 3. 获取角色部门 ID
+    @classmethod
+    def get_role_department_ids(cls, role):
+        """
+        根据角色获取部门ID列表。
+        """
+        if not role:
+            return []
+
+        if not role.enabled:
+            return []
+
+        if not role.department_id:
+            return []
+
+        dept_ids = cls.parse_department_ids(role.department_id)
+
+        if role.cover_child_dept:
+            child_dept_ids = cls.get_child_department_ids(dept_ids)
+            dept_ids = list(set(dept_ids + child_dept_ids))
+
+        return dept_ids
+
+    @classmethod
+    def get_child_department_ids(cls, dept_ids):
+        """
+        TODO: 后续如果有部门树，在这里递归获取子部门ID。
+        """
+        return []
+
+    # 根据本门id获取用户id
+    @classmethod
+    def get_user_ids_by_department_ids(cls, dept_ids, current_user_id=None):
+        """
+        根据部门ID获取部门下系统用户ID。
+
+        SyncPerson.organizationCode in dept_ids
+            -> SyncPerson.phone
+            -> User.email
+            -> User.id
+        """
+        result_user_ids = []
+
+        if current_user_id:
+            result_user_ids.append(current_user_id)
+
+        if not dept_ids:
+            return list(set(result_user_ids))
+
+        persons = (
+            SyncPerson
+            .select(SyncPerson.phone)
+            .where(
+                (SyncPerson.organizationCode.in_(dept_ids)) &
+                (SyncPerson.phone.is_null(False)) &
+                (SyncPerson.phone != "")
+            )
+        )
+
+        phones = [p.phone for p in persons if p.phone]
+
+        if not phones:
+            return list(set(result_user_ids))
+
+        users = (
+            User
+            .select(User.id)
+            .where(
+                (User.email.in_(phones)) &
+                (User.status == "1")
+            )
+        )
+
+        result_user_ids.extend([u.id for u in users])
+
+        return list(set(result_user_ids))
+    # 5. 根据部门 ID 获取部门参考库 tenant_id
+    @classmethod
+    def get_department_reference_tenant_ids(cls, dept_ids):
+        """
+        部门ID -> 部门参考库tenant_id
+
+        配置：
+        {
+            "部门ID": "部门参考库虚拟tenant_id"
+        }
+        """
+        if not dept_ids:
+            return []
+
+        cfg_map = getattr(settings, "DEPARTMENT_REFERENCE_TENANT_MAP", None)
+
+        # 兼容旧配置名
+        if cfg_map is None:
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+
+        tenant_ids = []
+
+        for dept_id in dept_ids:
+            tenant_id = cfg_map.get(str(dept_id))
+            if tenant_id:
+                tenant_ids.append(tenant_id)
+
+        return list(set(tenant_ids))
+
+    # 6. 根据部门 ID 获取部门名称
+    @classmethod
+    def get_department_name_map(cls, dept_ids):
+        """
+        根据部门ID获取部门名称。
+
+        SyncPerson.organizationCode -> 部门ID
+        SyncPerson.organize -> 部门名称
+        """
+        if not dept_ids:
+            return {}
+
+        persons = (
+            SyncPerson
+            .select(
+                SyncPerson.organizationCode,
+                SyncPerson.organize
+            )
+            .where(
+                (SyncPerson.organizationCode.in_(dept_ids)) &
+                (SyncPerson.organizationCode.is_null(False)) &
+                (SyncPerson.organizationCode != "")
+            )
+        )
+
+        dept_name_map = {}
+
+        for p in persons:
+            if p.organizationCode and p.organize:
+                dept_name_map[p.organizationCode] = p.organize
+
+        return dept_name_map
+
+    @classmethod
+    @DB.connection_context()
+    def get_by_tenant_ids3(cls, joined_tenant_ids, user_id,
+                            page_number, items_per_page,
+                            orderby, desc, keywords,
+                            parser_id=None,
+                            admin_bypass=False
+                            ):
+
+        fields = [
+            cls.model.id,
+            cls.model.avatar,
+            cls.model.name,
+            cls.model.language,
+            cls.model.description,
+            cls.model.tenant_id,
+            cls.model.permission,
+            cls.model.doc_num,
+            cls.model.token_num,
+            cls.model.chunk_num,
+            cls.model.parser_id,
+            cls.model.embd_id,
+
+            User.nickname,
+            User.email,
+            User.avatar.alias("tenant_avatar"),
+
+            cls.model.update_time,
+
+            SyncPerson.organizationCode.alias("department_id"),
+            SyncPerson.organize.alias("department_name"),
+        ]
+
+        kbs = (
+            cls.model
+            .select(*fields)
+            .join(
+                User,
+                JOIN.LEFT_OUTER,
+                on=(cls.model.tenant_id == User.id)
+            )
+            .join(
+                SyncPerson,
+                JOIN.LEFT_OUTER,
+                on=(User.email == SyncPerson.phone)
+            )
+        )
+
+        # 如果不是超级管理员
+        if not admin_bypass:
+            role = cls.get_user_role(user_id)
+
+            if not role or not role.enabled:
+                kbs = kbs.where(cls.model.tenant_id == user_id)
+
+            else:
+                dept_ids = cls.get_role_department_ids(role)
+
+                visible_user_ids = cls.get_user_ids_by_department_ids(
+                    dept_ids,
+                    current_user_id=user_id
+                )
+
+                base_expr = cls.model.tenant_id.in_(visible_user_ids)
+
+                if settings.REFERENCE_TENANT_ID:
+                    base_expr = base_expr | (
+                        cls.model.tenant_id == settings.REFERENCE_TENANT_ID
+                    )
+
+                department_reference_tenant_ids = cls.get_department_reference_tenant_ids(dept_ids)
+
+                if department_reference_tenant_ids:
+                    base_expr = base_expr | (
+                        cls.model.tenant_id.in_(department_reference_tenant_ids)
+                    )
+
+                kbs = kbs.where(base_expr)
+
+        kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
+
+        if keywords:
+            kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
+            
+        if parser_id:
+            kbs = kbs.where(cls.model.parser_id == parser_id)
+
+        if desc:
+            kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
+        else:
+            kbs = kbs.order_by(cls.model.getter_by(orderby).asc())
+
+        count = kbs.count()
+
+        res = list(kbs.dicts())
+
+        cfg_map = getattr(settings, "DEPARTMENT_REFERENCE_TENANT_MAP", None)
+
+        if cfg_map is None:
+            cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+
+        reversed_map = {v: k for k, v in cfg_map.items()}
+
+        print(reversed_map)
+
+        reference_dept_ids = list(set(reversed_map.values()))
+        dept_name_map = cls.get_department_name_map(reference_dept_ids)
+
+        public_id = settings.REFERENCE_TENANT_ID
+
+        color_3_kbs = []
+        color_2_kbs = []
+        other_kbs = []
+
+        for kb in res:
+            tenant_id = kb.get("tenant_id")
+
+            kb["color"] = 99
+            kb["kb_type"] = "normal"
+
+            kb["group_id"] = kb.get("department_id")
+            kb["group_name"] = kb.get("department_name")
+
+            if public_id and tenant_id == public_id:
+                kb["department_id"] = None
+                kb["department_name"] = "全局参考库"
+                kb["group_id"] = None
+                kb["group_name"] = "全局参考库"
+                kb["kb_type"] = "global_reference"
+                kb["color"] = 3
+
+            elif tenant_id in reversed_map:
+                dept_id = reversed_map.get(tenant_id)
+                dept_name = dept_name_map.get(dept_id)
+
+                kb["department_id"] = dept_id
+                kb["department_name"] = dept_name
+                kb["group_id"] = dept_id
+                kb["group_name"] = dept_name
+                kb["kb_type"] = "department_reference"
+                kb["color"] = 3
+
+            color = kb.get("color")
+
+            if color == 3:
+                color_3_kbs.append(kb)
+            elif color == 2:
+                color_2_kbs.append(kb)
+            else:
+                other_kbs.append(kb)
+
+        res = color_3_kbs + color_2_kbs + other_kbs
+
+        if page_number and items_per_page:
+            def custom_sort_key(x):
+                name = x.get("group_name")
+
+                if name is None:
+                    return (0, "")
+
+                if name == "全局参考库":
+                    return (1, "")
+
+                if name == "工艺研究一室":
+                    return (2, "")
+
+                if name == "工艺研究二室":
+                    return (3, "")
+
+                if name == "工艺研究三室":
+                    return (4, "")
+
+                if name == "新品事业部研发部":
+                    return (5, "")
+
+                return (6, "")
+
+            res = sorted(res, key=custom_sort_key)
+
+            offset = (page_number - 1) * items_per_page
+            res = res[offset: offset + items_per_page]
+
+        return res, count
+    
+
     @classmethod
     @DB.connection_context()
     def get_all_kb_by_tenant_ids(cls, tenant_ids, user_id):
@@ -1222,3 +1589,33 @@ class KnowledgebaseService(CommonService):
             'update_date': datetime_format(datetime.now())
         }
         return cls.model.update(update_dict).where(cls.model.id == kb_id).execute()
+
+    @classmethod
+    @DB.connection_context()
+    def get_name_map_by_ids(cls, kb_ids=None):
+        """
+        kb_ids 为空或不传时，返回所有有效知识库的 id -> name 映射
+        kb_ids 不为空时，只返回指定知识库的映射
+        """
+        query = (
+            cls.model
+            .select(
+                cls.model.id,
+                cls.model.name,
+            )
+            .where(
+                cls.model.status == StatusEnum.VALID.value,
+            )
+        )
+
+        if kb_ids:
+            kb_ids = list({str(kb_id) for kb_id in kb_ids if kb_id})
+            if kb_ids:
+                query = query.where(cls.model.id.in_(kb_ids))
+
+        rows = query.dicts()
+
+        return {
+            row["id"]: row["name"]
+            for row in rows
+        }

@@ -54,6 +54,51 @@ export const enum DocumentApiAction {
   FetchWastedDocumentFilter = 'fetchWastedDocumentFilter',
 }
 
+// export const useUploadNextDocument = () => {
+//   const queryClient = useQueryClient();
+//   const { id } = useParams();
+
+//   const {
+//     data,
+//     isPending: loading,
+//     mutateAsync,
+//   } = useMutation<ResponseType<IDocumentInfo[]>, Error, File[]>({
+//     mutationKey: [DocumentApiAction.UploadDocument],
+//     mutationFn: async (fileList) => {
+//       const formData = new FormData();
+//       formData.append('kb_id', id!);
+//       fileList.forEach((file: any) => {
+//         formData.append('file', file);
+//       });
+
+//       try {
+//         const ret = await kbService.document_upload(formData);
+//         const code = get(ret, 'data.code');
+
+//         if (code === 0 || code === 500) {
+//           queryClient.invalidateQueries({
+//             queryKey: [DocumentApiAction.FetchDocumentList],
+//           });
+//         }
+//         return ret?.data;
+//       } catch (error) {
+//         console.warn(error);
+//         return {
+//           code: 500,
+//           message: error + '',
+//         };
+//       }
+//     },
+//   });
+
+//   return { uploadDocument: mutateAsync, loading, data };
+// };
+
+type UploadDocumentPayload = {
+  fileList: File[];
+  tags?: Record<string, string[]>;
+};
+
 export const useUploadNextDocument = () => {
   const queryClient = useQueryClient();
   const { id } = useParams();
@@ -62,14 +107,19 @@ export const useUploadNextDocument = () => {
     data,
     isPending: loading,
     mutateAsync,
-  } = useMutation<ResponseType<IDocumentInfo[]>, Error, File[]>({
+  } = useMutation<ResponseType<any>, Error, UploadDocumentPayload>({
     mutationKey: [DocumentApiAction.UploadDocument],
-    mutationFn: async (fileList) => {
+
+    mutationFn: async ({ fileList, tags }) => {
       const formData = new FormData();
+
       formData.append('kb_id', id!);
+
       fileList.forEach((file: any) => {
         formData.append('file', file);
       });
+
+      formData.append('tags', JSON.stringify(tags || {}));
 
       try {
         const ret = await kbService.document_upload(formData);
@@ -80,9 +130,11 @@ export const useUploadNextDocument = () => {
             queryKey: [DocumentApiAction.FetchDocumentList],
           });
         }
+
         return ret?.data;
       } catch (error) {
         console.warn(error);
+
         return {
           code: 500,
           message: error + '',
@@ -91,7 +143,11 @@ export const useUploadNextDocument = () => {
     },
   });
 
-  return { uploadDocument: mutateAsync, loading, data };
+  return {
+    uploadDocument: mutateAsync,
+    loading,
+    data,
+  };
 };
 
 export const useFetchDocumentList = () => {

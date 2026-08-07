@@ -25,11 +25,13 @@ from api.apps import current_user, login_required
 from api.common.check_team_permission import check_kb_team_permission, check_kb_team_write_permission
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.db import VALID_FILE_TYPES, FileType
-from api.db.db_models import Task, SyncDept, SyncPerson
+from api.db.db_models import Task, SyncDept, SyncPerson,StagedFileTag,StagedFile,KnowledgeTagOption,KnowledgeTagType
 from api.db.services import duplicate_name
 from api.db.services.document_service import DocumentService, doc_upload_and_parse
 from common.metadata_utils import meta_filter, convert_conditions
 from api.db.services.file2document_service import File2DocumentService
+from api.db.services.stagedfile_service import StagedFileService
+
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.task_service import TaskService, cancel_all_task_of
@@ -49,6 +51,7 @@ from deepdoc.parser.html_parser import RAGFlowHtmlParser
 from rag.nlp import search, rag_tokenizer
 from common import settings
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
+from api.db.db_models import DB
 
 # 新增报告推送接口
 @manager.route("/upload/report", methods=["POST"])  # noqa: F821
@@ -318,86 +321,468 @@ async def upload_report():
         return server_error_response(e)
 
 
-# 知识库的上传
+# # 知识库的上传
+# @manager.route("/upload", methods=["POST"])  # noqa: F821
+# @login_required
+# @validate_request("kb_id")
+# async def upload():
+#     # 获取知识库id
+#     form = await request.form
+#     kb_id = form.get("kb_id")
+
+#     if not kb_id:
+#         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+    
+#     # 获取文件
+#     files = await request.files
+#     if "file" not in files:
+#         return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
+
+    
+#     file_objs = files.getlist("file")
+#     for file_obj in file_objs:
+#         if file_obj.filename == "":
+#             return get_json_result(data=False, message="No file selected!", code=RetCode.ARGUMENT_ERROR)
+#         if len(file_obj.filename.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
+#             return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
+
+#     # 获取知识库行信息
+#     e, kb = KnowledgebaseService.get_by_id(kb_id)
+#     if not e:
+#         raise LookupError("Can't find this dataset!")
+    
+#     # 鉴权 
+#     if not check_kb_team_write_permission(kb, current_user.id):
+#         return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+#     # 上传到文本库
+#     err, files = await asyncio.to_thread(FileService.upload_document, kb, file_objs, current_user.id)
+#     if err:
+#         quota_errs = [e for e in err if isinstance(e, str) and e.startswith("QUOTA:")]
+#         if quota_errs:
+#             msg = "\n".join([e.split("QUOTA:", 1)[1].strip() for e in quota_errs])
+#             return get_json_result(data=files, message=msg, code=RetCode.OPERATING_ERROR)
+#         return get_json_result(data=files, message="\n".join(err), code=RetCode.SERVER_ERROR)
+    
+#     if not files:
+#         return get_json_result(data=files, message="There seems to be an issue with your file format. Please verify it is correct and not corrupted.", code=RetCode.DATA_ERROR)
+    
+#     files = [f[0] for f in files]  # remove the blob
+
+#     # 如果上传完成，则对上传的每个文件进行作者信息解析任务
+#     from api.db.db_utils import bulk_insert_into_db
+#     from rag.utils.redis_conn import REDIS_CONN
+#     from datetime import datetime
+#     tasks = []
+#     for file in files:
+#         DocumentService.update_by_id(
+#             file["id"],
+#             {
+#                 "run": TaskStatus.RUNNING.value,
+#                 "progress": 0,
+#                 "progress_msg": "",
+#                 "process_begin_at": datetime.now(),
+#             },
+#         )
+#         task = {
+#             "id": get_uuid(),
+#             "doc_id": file["id"],
+#             "task_type": "parse_author_info",
+#             "progress": 0.0,
+#             "from_page": 0,
+#             "to_page": 100000000,
+#             "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+#         }
+#         tasks.append(task)
+
+#     if tasks:
+#         bulk_insert_into_db(Task, tasks, True)
+#         for task in tasks:
+#             REDIS_CONN.queue_product(settings.get_svr_queue_name(0), message=task)
+
+#     return get_json_result(data=files)
+
+def validate_knowledge_tags(tags: dict):
+    """
+    前端传入格式：
+    {
+        "subject": ["medicine"],
+        "doc_type": ["paper"],
+        "keyword": ["ai", "imaging"]
+    }
+
+    返回 normalized_tags：
+    {
+        "subject": ["medicine"],
+        "doc_type": ["paper"],
+        "keyword": ["ai", "imaging"]
+    }
+    """
+
+    if not isinstance(tags, dict):
+        raise ValueError("Tags must be an object.")
+
+    tag_types = list(
+        KnowledgeTagType.select()
+        .where(KnowledgeTagType.enabled == True)
+    )
+
+    type_map = {
+        t.type_code: t
+        for t in tag_types
+    }
+
+    options = list(
+        KnowledgeTagOption.select()
+        .where(KnowledgeTagOption.enabled == True)
+    )
+
+    option_map = {}
+
+    for opt in options:
+        option_map.setdefault(opt.type_code, set()).add(opt.option_code)
+
+    normalized = {}
+
+    # 校验前端传过来的标签
+    for type_code, selected_options in tags.items():
+        if type_code not in type_map:
+            raise ValueError(f"Invalid tag type: {type_code}")
+
+        if not isinstance(selected_options, list):
+            raise ValueError(f"Tag value of {type_code} must be a list.")
+
+        # 去重，保持顺序
+        selected_options = list(dict.fromkeys(selected_options))
+
+        tag_type = type_map[type_code]
+
+        # 单选标签不能传多个
+        if not tag_type.multi_select and len(selected_options) > 1:
+            raise ValueError(f"{tag_type.type_name} only allows single select.")
+
+        valid_options = option_map.get(type_code, set())
+
+        for option_code in selected_options:
+            if option_code not in valid_options:
+                raise ValueError(
+                    f"Invalid option {option_code} for tag type {type_code}."
+                )
+
+        normalized[type_code] = selected_options
+
+    # 校验必填标签
+    for tag_type in tag_types:
+        if tag_type.required:
+            selected = normalized.get(tag_type.type_code)
+
+            if not selected:
+                raise ValueError(f"{tag_type.type_name} is required.")
+
+    return normalized
+
 @manager.route("/upload", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("kb_id")
 async def upload():
-    # 获取知识库id
+    import os
+    import json
+    import logging
+    from pathlib import Path
+    from datetime import datetime
+
+    # =========================
+    # 1. 获取表单参数
+    # =========================
     form = await request.form
+
+    # 先固定当前用户 ID，后面不要反复直接用 current_user.id
+    if not current_user or not getattr(current_user, "id", None):
+        return get_json_result(
+            data=False,
+            message="No authorization.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    user_id = current_user.id
+
+
     kb_id = form.get("kb_id")
+    tags_text = form.get("tags")
+    # parse_on_creation_text = form.get("parseOnCreation", "false")
+    # parse_on_approval = str(parse_on_creation_text).lower() in [
+    #     "true",
+    #     "1",
+    #     "yes",
+    #     "on",
+    # ]
 
     if not kb_id:
-        return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
-    
-    # 获取文件
-    files = await request.files
-    if "file" not in files:
-        return get_json_result(data=False, message="No file part!", code=RetCode.ARGUMENT_ERROR)
+        return get_json_result(
+            data=False,
+            message='Lack of "KB ID"',
+            code=RetCode.ARGUMENT_ERROR,
+        )
 
-    
+    # =========================
+    # 2. 解析 tags
+    # =========================
+    try:
+        tags = json.loads(tags_text or "{}")
+    except Exception:
+        return get_json_result(
+            data=False,
+            message="Invalid tags format.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # =========================
+    # 3. 校验 tags
+    # =========================
+    try:
+        normalized_tags = validate_knowledge_tags(tags)
+    except Exception as e:
+        return get_json_result(
+            data=False,
+            message=str(e),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # =========================
+    # 4. 获取文件
+    # =========================
+    files = await request.files
+
+    if "file" not in files:
+        return get_json_result(
+            data=False,
+            message="No file part!",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
     file_objs = files.getlist("file")
+
+    if not file_objs:
+        return get_json_result(
+            data=False,
+            message="No file selected!",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # =========================
+    # 5. 基础文件校验
+    # =========================
     for file_obj in file_objs:
         if file_obj.filename == "":
-            return get_json_result(data=False, message="No file selected!", code=RetCode.ARGUMENT_ERROR)
-        if len(file_obj.filename.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
-            return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
+            return get_json_result(
+                data=False,
+                message="No file selected!",
+                code=RetCode.ARGUMENT_ERROR,
+            )
 
-    # 获取知识库行信息
+        if len(file_obj.filename.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
+            return get_json_result(
+                data=False,
+                message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        filetype = filename_type(file_obj.filename)
+
+        if filetype == FileType.OTHER.value:
+            return get_json_result(
+                data=False,
+                message=f"{file_obj.filename}: This type of file has not been supported yet!",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+    # =========================
+    # 6. 获取知识库
+    # =========================
     e, kb = KnowledgebaseService.get_by_id(kb_id)
+
     if not e:
         raise LookupError("Can't find this dataset!")
-    
-    # 鉴权 
-    if not check_kb_team_write_permission(kb, current_user.id):
-        return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
-    # 上传到文本库
-    err, files = await asyncio.to_thread(FileService.upload_document, kb, file_objs, current_user.id)
-    if err:
-        quota_errs = [e for e in err if isinstance(e, str) and e.startswith("QUOTA:")]
-        if quota_errs:
-            msg = "\n".join([e.split("QUOTA:", 1)[1].strip() for e in quota_errs])
-            return get_json_result(data=files, message=msg, code=RetCode.OPERATING_ERROR)
-        return get_json_result(data=files, message="\n".join(err), code=RetCode.SERVER_ERROR)
-    
-    if not files:
-        return get_json_result(data=files, message="There seems to be an issue with your file format. Please verify it is correct and not corrupted.", code=RetCode.DATA_ERROR)
-    
-    files = [f[0] for f in files]  # remove the blob
-
-    # 如果上传完成，则对上传的每个文件进行作者信息解析任务
-    from api.db.db_utils import bulk_insert_into_db
-    from rag.utils.redis_conn import REDIS_CONN
-    from datetime import datetime
-    tasks = []
-    for file in files:
-        DocumentService.update_by_id(
-            file["id"],
-            {
-                "run": TaskStatus.RUNNING.value,
-                "progress": 0,
-                "progress_msg": "",
-                "process_begin_at": datetime.now(),
-            },
+    # =========================
+    # 7. 权限校验
+    # =========================
+    if not check_kb_team_write_permission(kb, user_id):
+        return get_json_result(
+            data=False,
+            message="No authorization.",
+            code=RetCode.AUTHENTICATION_ERROR,
         )
-        task = {
-            "id": get_uuid(),
-            "doc_id": file["id"],
-            "task_type": "parse_author_info",
-            "progress": 0.0,
-            "from_page": 0,
-            "to_page": 100000000,
-            "begin_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        tasks.append(task)
 
-    if tasks:
-        bulk_insert_into_db(Task, tasks, True)
-        for task in tasks:
-            REDIS_CONN.queue_product(settings.get_svr_queue_name(0), message=task)
+    # 本次上传实际审批链。不要直接使用 get_kb_approvers，
+    # 因为需要排除上传人自己。
+    approval_chain = StagedFileService.get_upload_approvers(
+        kb_id=kb.id,
+        uploader_user_id=user_id,
+    )
+    level_1_approvers = approval_chain.get("level_1", [])
+    level_2_approvers = approval_chain.get("level_2", [])
 
-    return get_json_result(data=files)
+    # =========================
+    # 8. 生成本次上传批次 ID
+    # =========================
+    batch_id = get_uuid()
+
+    # =========================
+    # 9. 创建服务器本地暂存目录
+    # =========================
+    # 默认放到项目目录下：/home/zyb/rag-flow/runtime/staging_upload
+    # 当前文件：/home/zyb/rag-flow/api/apps/document_app.py
+    # parents[0] = /home/zyb/rag-flow/api/apps
+    # parents[1] = /home/zyb/rag-flow/api
+    # parents[2] = /home/zyb/rag-flow
+    # runtime/staging_upload/{kb_id}/{user_id}/文件名
+    project_root = Path(__file__).resolve().parents[2]
+
+    base_stage_dir = os.environ.get(
+        "STAGING_UPLOAD_DIR",
+        str(project_root / "runtime" / "staging_upload"),
+    )
+
+    stage_dir = os.path.join(
+        base_stage_dir,
+        kb.id,
+        user_id,
+    )
+
+    os.makedirs(stage_dir, exist_ok=True)
+
+    staged_files = []
+
+    # 如果中途失败，用于清理已经保存的本地文件
+    saved_paths = []
+
+    try:
+        # =========================
+        # 10. 循环处理每个文件
+        # =========================
+
+        def get_available_stage_path(stage_dir, filename):
+            safe_name = Path(filename).name
+            stem = Path(safe_name).stem
+            suffix = Path(safe_name).suffix
+
+            candidate = os.path.join(stage_dir, safe_name)
+            index = 1
+
+            while os.path.exists(candidate):
+                candidate = os.path.join(
+                    stage_dir,
+                    f"{stem}({index}){suffix}",
+                )
+                index += 1
+
+            return candidate
+        for file_obj in file_objs:
+            filename = file_obj.filename
+
+            stage_id = get_uuid()
+
+            suffix = Path(filename).suffix
+
+            # 实际落盘文件名不要直接使用用户上传的 filename
+            # 防止重名、路径穿越、特殊字符问题
+            # local_filename = f"{stage_id}{suffix}"
+
+            stage_path = get_available_stage_path(stage_dir, filename)
+
+            # 读取上传文件内容
+            blob = file_obj.read()
+
+            # 写入服务器本地暂存区
+            with open(stage_path, "wb") as f:
+                f.write(blob)
+
+            saved_paths.append(stage_path)
+
+            now = datetime.now()
+
+            # =========================
+            # 11. 写入数据库
+            # =========================
+            # 如果你的项目里 DB 是 Peewee 数据库对象，建议使用 DB.atomic()
+            # 如果没有 DB.atomic，可以去掉 with DB.atomic()
+            with DB.atomic():
+                StagedFile.insert({
+                    "id": stage_id,
+                    "batch_id": batch_id,
+                    "kb_id": kb.id,
+                    "tenant_id": kb.tenant_id,
+                    "user_id": user_id,
+                    "filename": filename,
+                    "path": stage_path,
+                    "size": len(blob),
+                    "status": "pending",
+
+                    # 保存上传当时的实际审批人员快照
+                    "approval_level_1": level_1_approvers,
+                    "approval_level_2": level_2_approvers,
+
+                    "created_at": now,
+                }).execute()
+
+                tag_rows = []
+
+                # 本次上传面板选择的一套标签，复制给每个文件
+                for type_code, option_codes in normalized_tags.items():
+                    for option_code in option_codes:
+                        tag_rows.append({
+                            "stage_id": stage_id,
+                            "type_code": type_code,
+                            "option_code": option_code,
+                            "create_time": now,
+                        })
+
+                if tag_rows:
+                    StagedFileTag.insert_many(tag_rows).execute()
+
+            staged_files.append({
+                "id": stage_id,
+                "batch_id": batch_id,
+                "kb_id": kb.id,
+                "tenant_id": kb.tenant_id,
+                "filename": filename,
+                "path": stage_path,
+                "size": len(blob),
+                "status": "pending",
+                "tags": normalized_tags,
+            })
+
+    except Exception as e:
+        logging.exception("Stage upload failed.")
+
+        # =========================
+        # 12. 失败时清理已经落盘的文件
+        # =========================
+        for path in saved_paths:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                logging.exception("Remove staged file failed: %s", path)
+
+        return get_json_result(
+            data=staged_files,
+            message=str(e),
+            code=RetCode.SERVER_ERROR,
+        )
+
+    # =========================
+    # 13. 返回暂存结果
+    # =========================
+    return get_json_result(
+    data={
+        "batch_id": batch_id,
+        "files": staged_files,
+        "approvers": approval_chain,
+    }
+)
+
 
 
 @manager.route("/web_crawl", methods=["POST"])  # noqa: F821
@@ -549,8 +934,9 @@ async def list_docs():
     ok, kb = KnowledgebaseService.get_by_id(kb_id)
     if not ok:
         return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
-    if not check_kb_team_permission(kb, current_user.id):
-        return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
+    
+    # if not check_kb_team_permission(kb, current_user.id):
+    #     return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
     keywords = request.args.get("keywords", "")
 
     page_number = int(request.args.get("page", 0))
@@ -853,8 +1239,8 @@ async def get_filter():
     ok, kb = KnowledgebaseService.get_by_id(kb_id)
     if not ok:
         return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
-    if not check_kb_team_permission(kb, current_user.id):
-        return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
+    # if not check_kb_team_permission(kb, current_user.id):
+    #     return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
 
     keywords = req.get("keywords", "")
 
@@ -1557,3 +1943,39 @@ async def upload_info():
         return get_json_result(data=FileService.upload_info(current_user.id, file, request.args.get("url")))
     except Exception as e:
         return  server_error_response(e)
+
+@manager.route('/staged_file/list', methods=['POST'])
+@login_required
+@validate_request("kb_id")
+async def list_staged_file():
+    req = await get_request_json()
+
+    kb_id = req["kb_id"]
+
+    status = req.get("status")
+    page = int(req.get("page", 1))
+    page_size = int(req.get("page_size", 20))
+
+    if page <= 0:
+        page = 1
+
+    if page_size <= 0:
+        page_size = 20
+
+    if page_size > 100:
+        page_size = 100
+
+    # 如果 current_user 有 tenant_id，就这样取
+    tenant_id = current_user.id
+
+    data = StagedFileService.list_by_kb(
+        kb_id=kb_id,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        status=status,
+        page=page,
+        page_size=page_size,
+        include_deleted=False,
+    )
+
+    return get_json_result(data=data)

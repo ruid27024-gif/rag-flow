@@ -148,13 +148,13 @@ const routes = [
     ],
   },
   {
-    path: '/filetree',
+    path: '/filetree-admin',
     layout: false,
-    component: '@/layouts/next',
+    // component: '@/layouts/next',
     routes: [
       {
-        path: '/filetree',
-        component: '@/pages/filetree',
+        path: '/filetree-admin',
+        component: '@/pages/filetree-admin',
       },
     ],
   },
@@ -409,6 +409,15 @@ const routes = [
       {
         path: `${Routes.DatasetBase}${Routes.DatasetBaseWasted}/:id`,
         component: `@/pages${Routes.DatasetBase}${Routes.DatasetBaseWasted}`,
+      },
+      // 新增这个
+      {
+        path: `${Routes.DatasetBase}/filetree/:id`,
+        component: '@/pages/filetree',
+      },
+      {
+        path: `${Routes.DatasetBase}/stagedfile/:id`,
+        component: '@/pages/stagedfile',
       },
       {
         path: `${Routes.DatasetBase}${Routes.DataSetSetting}/:id`,

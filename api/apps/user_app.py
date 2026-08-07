@@ -1812,3 +1812,27 @@ async def verify_sso_user():
                 code=RetCode.EXCEPTION_ERROR,
             )
 
+@manager.route("/name_map", methods=["POST"])  # noqa: F821
+@login_required
+async def get_user_name_map():
+    try:
+        req = await request.json
+
+        user_ids = req.get("user_ids", [])
+
+        if not isinstance(user_ids, list):
+            return get_json_result(
+                data=False,
+                message="user_ids must be a list.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        user_ids = list({str(user_id) for user_id in user_ids if user_id})
+
+        name_map = UserService.get_name_map_by_ids(user_ids)
+
+        return get_json_result(data=name_map)
+
+    except Exception as e:
+        return server_error_response(e)
+

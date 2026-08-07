@@ -302,6 +302,20 @@ async def list_tag_config_all():
     except Exception as e:
         return server_error_response(e)
 
+# @manager.route('/tag/config', methods=['GET'])  # noqa: F821
+# @login_required
+# async def list_tag_config():
+#     """
+#     标签管理页面使用：返回全部标签类型和选项，包括禁用的
+#     """ 
+#     try:
+
+#         data = KnowledgeTagManageService.list_tag_config()
+#         return get_json_result(data=data)
+
+#     except Exception as e:
+#         return server_error_response(e)
+
 @manager.route('/tag/type/enable', methods=['POST'])  # noqa: F821
 @login_required
 @validate_request("type_code")
@@ -382,3 +396,5 @@ async def delete_tag_option():
 
     except Exception as e:
         return server_error_response(e)
+
+

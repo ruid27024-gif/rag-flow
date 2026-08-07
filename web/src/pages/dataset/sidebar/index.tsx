@@ -11,7 +11,7 @@ import { Routes } from '@/routes';
 import { formatPureDate } from '@/utils/date';
 import { isEmpty } from 'lodash';
 // import { FolderOpen, Logs } from 'lucide-react';
-import { FolderOpen, Logs, Trash2 } from 'lucide-react';
+import { FolderOpen, FolderTree, Logs, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
@@ -50,6 +50,16 @@ export function SideBar({ refreshCount }: PropType) {
         // label: t(`knowledgeDetails.subbarFiles`),
         label: '回收站',
         key: Routes.DatasetBaseWasted,
+      },
+      {
+        icon: <FolderTree className="size-4" />,
+        label: '上传待审批',
+        key: '/filetree',
+      },
+      {
+        icon: <Logs className="size-4" />,
+        label: '上传记录',
+        key: '/stagedfile',
       },
       // {
       //   icon: <Banknote className="size-4" />,
