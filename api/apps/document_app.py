@@ -52,6 +52,7 @@ from rag.nlp import search, rag_tokenizer
 from common import settings
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
 from api.db.db_models import DB
+from api.utils.file_utils import filename_type, read_potential_broken_pdf, thumbnail_img, sanitize_path
 
 # 新增报告推送接口
 @manager.route("/upload/report", methods=["POST"])  # noqa: F821
@@ -481,6 +482,406 @@ def validate_knowledge_tags(tags: dict):
 
     return normalized
 
+# @manager.route("/upload", methods=["POST"])  # noqa: F821
+# @login_required
+# @validate_request("kb_id")
+# async def upload():
+#     import os
+#     import json
+#     import logging
+#     from pathlib import Path
+#     from datetime import datetime
+
+#     # =========================
+#     # 1. 获取表单参数
+#     # =========================
+#     form = await request.form
+
+#     # 先固定当前用户 ID，后面不要反复直接用 current_user.id
+#     if not current_user or not getattr(current_user, "id", None):
+#         return get_json_result(
+#             data=False,
+#             message="No authorization.",
+#             code=RetCode.AUTHENTICATION_ERROR,
+#         )
+
+#     user_id = current_user.id
+
+
+#     kb_id = form.get("kb_id")
+#     tags_text = form.get("tags")
+#     # parse_on_creation_text = form.get("parseOnCreation", "false")
+#     # parse_on_approval = str(parse_on_creation_text).lower() in [
+#     #     "true",
+#     #     "1",
+#     #     "yes",
+#     #     "on",
+#     # ]
+
+#     if not kb_id:
+#         return get_json_result(
+#             data=False,
+#             message='Lack of "KB ID"',
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     # =========================
+#     # 2. 解析 tags
+#     # =========================
+#     try:
+#         tags = json.loads(tags_text or "{}")
+#     except Exception:
+#         return get_json_result(
+#             data=False,
+#             message="Invalid tags format.",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     # =========================
+#     # 3. 校验 tags
+#     # =========================
+#     try:
+#         normalized_tags = validate_knowledge_tags(tags)
+#     except Exception as e:
+#         return get_json_result(
+#             data=False,
+#             message=str(e),
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     # =========================
+#     # 4. 获取文件
+#     # =========================
+#     files = await request.files
+
+#     if "file" not in files:
+#         return get_json_result(
+#             data=False,
+#             message="No file part!",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     file_objs = files.getlist("file")
+
+#     if not file_objs:
+#         return get_json_result(
+#             data=False,
+#             message="No file selected!",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     # =========================
+#     # 5. 基础文件校验
+#     # =========================
+#     for file_obj in file_objs:
+#         if file_obj.filename == "":
+#             return get_json_result(
+#                 data=False,
+#                 message="No file selected!",
+#                 code=RetCode.ARGUMENT_ERROR,
+#             )
+
+#         if len(file_obj.filename.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
+#             return get_json_result(
+#                 data=False,
+#                 message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.",
+#                 code=RetCode.ARGUMENT_ERROR,
+#             )
+
+#         filetype = filename_type(file_obj.filename)
+
+#         if filetype == FileType.OTHER.value:
+#             return get_json_result(
+#                 data=False,
+#                 message=f"{file_obj.filename}: This type of file has not been supported yet!",
+#                 code=RetCode.ARGUMENT_ERROR,
+#             )
+
+#     # =========================
+#     # 6. 获取知识库
+#     # =========================
+#     e, kb = KnowledgebaseService.get_by_id(kb_id)
+
+#     if not e:
+#         raise LookupError("Can't find this dataset!")
+
+#     # =========================
+#     # 7. 权限校验
+#     # =========================
+#     if not check_kb_team_write_permission(kb, user_id):
+#         return get_json_result(
+#             data=False,
+#             message="No authorization.",
+#             code=RetCode.AUTHENTICATION_ERROR,
+#         )
+
+#     # 本次上传实际审批链。不要直接使用 get_kb_approvers，
+#     # 因为需要排除上传人自己。
+#     approval_chain = StagedFileService.get_upload_approvers(
+#         kb_id=kb.id,
+#         uploader_user_id=user_id,
+#     )
+#     level_1_approvers = approval_chain.get("level_1", [])
+#     level_2_approvers = approval_chain.get("level_2", [])
+
+#     # =========================
+#     # 8. 生成本次上传批次 ID
+#     # =========================
+#     batch_id = get_uuid()
+
+#     # =========================
+#     # 9. 创建服务器本地暂存目录
+#     # =========================
+#     # 默认放到项目目录下：/home/zyb/rag-flow/runtime/staging_upload
+#     # 当前文件：/home/zyb/rag-flow/api/apps/document_app.py
+#     # parents[0] = /home/zyb/rag-flow/api/apps
+#     # parents[1] = /home/zyb/rag-flow/api
+#     # parents[2] = /home/zyb/rag-flow
+#     # runtime/staging_upload/{kb_id}/{user_id}/文件名
+#     project_root = Path(__file__).resolve().parents[2]
+
+#     base_stage_dir = os.environ.get(
+#         "STAGING_UPLOAD_DIR",
+#         str(project_root / "runtime" / "staging_upload"),
+#     )
+
+#     stage_dir = os.path.join(
+#         base_stage_dir,
+#         kb.id,
+#         user_id,
+#     )
+
+#     os.makedirs(stage_dir, exist_ok=True)
+
+#     staged_files = []
+
+#     # 如果中途失败，用于清理已经保存的本地文件
+#     saved_paths = []
+
+#     try:
+#         # =========================
+#         # 10. 循环处理每个文件
+#         # =========================
+
+#         def get_available_stage_path(stage_dir, filename):
+#             safe_name = Path(filename).name
+#             stem = Path(safe_name).stem
+#             suffix = Path(safe_name).suffix
+
+#             candidate = os.path.join(stage_dir, safe_name)
+#             index = 1
+
+#             while os.path.exists(candidate):
+#                 candidate = os.path.join(
+#                     stage_dir,
+#                     f"{stem}({index}){suffix}",
+#                 )
+#                 index += 1
+
+#             return candidate
+#         for file_obj in file_objs:
+#             filename = file_obj.filename
+
+#             stage_id = get_uuid()
+
+#             suffix = Path(filename).suffix
+
+#             # 实际落盘文件名不要直接使用用户上传的 filename
+#             # 防止重名、路径穿越、特殊字符问题
+#             # local_filename = f"{stage_id}{suffix}"
+
+#             stage_path = get_available_stage_path(stage_dir, filename)
+
+#             # 读取上传文件内容
+#             blob = file_obj.read()
+
+#             # 写入服务器本地暂存区
+#             with open(stage_path, "wb") as f:
+#                 f.write(blob)
+
+#             saved_paths.append(stage_path)
+
+#             now = datetime.now()
+
+#             # =========================
+#             # 11. 写入数据库
+#             # =========================
+#             # 如果你的项目里 DB 是 Peewee 数据库对象，建议使用 DB.atomic()
+#             # 如果没有 DB.atomic，可以去掉 with DB.atomic()
+#             with DB.atomic():
+#                 StagedFile.insert({
+#                     "id": stage_id,
+#                     "batch_id": batch_id,
+#                     "kb_id": kb.id,
+#                     "tenant_id": kb.tenant_id,
+#                     "user_id": user_id,
+#                     "filename": filename,
+#                     "path": stage_path,
+#                     "size": len(blob),
+#                     "status": "pending",
+
+#                     # 保存上传当时的实际审批人员快照
+#                     "approval_level_1": level_1_approvers,
+#                     "approval_level_2": level_2_approvers,
+
+#                     "created_at": now,
+#                 }).execute()
+
+#                 tag_rows = []
+
+#                 # 本次上传面板选择的一套标签，复制给每个文件
+#                 for type_code, option_codes in normalized_tags.items():
+#                     for option_code in option_codes:
+#                         tag_rows.append({
+#                             "stage_id": stage_id,
+#                             "type_code": type_code,
+#                             "option_code": option_code,
+#                             "create_time": now,
+#                         })
+
+#                 if tag_rows:
+#                     StagedFileTag.insert_many(tag_rows).execute()
+
+#             staged_files.append({
+#                 "id": stage_id,
+#                 "batch_id": batch_id,
+#                 "kb_id": kb.id,
+#                 "tenant_id": kb.tenant_id,
+#                 "filename": filename,
+#                 "path": stage_path,
+#                 "size": len(blob),
+#                 "status": "pending",
+#                 "tags": normalized_tags,
+#             })
+
+#     except Exception as e:
+#         logging.exception("Stage upload failed.")
+
+#         # =========================
+#         # 12. 失败时清理已经落盘的文件
+#         # =========================
+#         for path in saved_paths:
+#             try:
+#                 if os.path.exists(path):
+#                     os.remove(path)
+#             except Exception:
+#                 logging.exception("Remove staged file failed: %s", path)
+
+#         return get_json_result(
+#             data=staged_files,
+#             message=str(e),
+#             code=RetCode.SERVER_ERROR,
+#         )
+
+#     # =========================
+#     # 13. 返回暂存结果
+#     # =========================
+#     return get_json_result(
+#     data={
+#         "batch_id": batch_id,
+#         "files": staged_files,
+#         "approvers": approval_chain,
+#     }
+# )
+
+import hmac
+import hashlib
+import json
+
+
+def make_oa_signature(payload: dict, secret: str) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hmac.new(
+        secret.encode("utf-8"),
+        raw.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+# 模拟发送OA侧
+async def send_oa_approval_request(
+    batch_id,
+    kb,
+    uploader_id,
+    staged_files,
+    normalized_tags,
+    approval_chain,
+):
+    import os
+    import httpx
+    import time
+
+    oa_url = os.environ.get("OA_APPROVAL_URL")
+    callback_url = os.environ.get("OA_CALLBACK_URL")
+    oa_app_id = os.environ.get("OA_APP_ID", "ragflow")
+    oa_secret = os.environ.get("OA_SECRET", "")
+
+    if not oa_url:
+        raise RuntimeError("Missing OA_APPROVAL_URL")
+
+    if not callback_url:
+        raise RuntimeError("Missing OA_CALLBACK_URL")
+
+    payload = {
+        "app_id": oa_app_id,
+        "request_type": "ragflow_document_upload_approval",
+        "batch_id": batch_id,
+        "kb_id": kb.id,
+        "tenant_id": kb.tenant_id,
+        "uploader_user_id": uploader_id,
+        "callback_url": callback_url,
+        "timestamp": int(time.time()),
+        "files": [
+            {
+                "stage_id": f["id"],
+                "filename": f["filename"],
+                "size": f["size"],
+                "url": f["url"],
+                "bucket": f.get("bucket"),
+                "object_name": f.get("object_name"),
+                "tags": f.get("tags", {}),
+            }
+            for f in staged_files
+        ],
+        "tags": normalized_tags,
+        "approvers": approval_chain,
+    }
+
+    signature = make_oa_signature(payload, oa_secret) if oa_secret else ""
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-OA-App-Id": oa_app_id,
+    }
+
+    if signature:
+        headers["X-OA-Signature"] = signature
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            oa_url,
+            json=payload,
+            headers=headers,
+        )
+
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Submit OA approval failed: {resp.status_code}, {resp.text}")
+
+    try:
+        result = resp.json()
+    except Exception:
+        raise RuntimeError(f"Invalid OA response: {resp.text}")
+
+    return result
+
+"""
+校验参数
+保存本地
+上传 MinIO 临时桶
+生成 presigned URL
+写 StagedFile / StagedFileTag
+发给 OA 创建审批单
+保存 OA 返回的 oa_request_id
+"""
 @manager.route("/upload", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("kb_id")
@@ -489,14 +890,12 @@ async def upload():
     import json
     import logging
     from pathlib import Path
-    from datetime import datetime
+    from datetime import datetime, timedelta
+    from io import BytesIO
+    import httpx
 
-    # =========================
-    # 1. 获取表单参数
-    # =========================
     form = await request.form
 
-    # 先固定当前用户 ID，后面不要反复直接用 current_user.id
     if not current_user or not getattr(current_user, "id", None):
         return get_json_result(
             data=False,
@@ -504,18 +903,9 @@ async def upload():
             code=RetCode.AUTHENTICATION_ERROR,
         )
 
-    user_id = current_user.id
-
-
+    uploader_id = current_user.id
     kb_id = form.get("kb_id")
     tags_text = form.get("tags")
-    # parse_on_creation_text = form.get("parseOnCreation", "false")
-    # parse_on_approval = str(parse_on_creation_text).lower() in [
-    #     "true",
-    #     "1",
-    #     "yes",
-    #     "on",
-    # ]
 
     if not kb_id:
         return get_json_result(
@@ -524,9 +914,6 @@ async def upload():
             code=RetCode.ARGUMENT_ERROR,
         )
 
-    # =========================
-    # 2. 解析 tags
-    # =========================
     try:
         tags = json.loads(tags_text or "{}")
     except Exception:
@@ -536,9 +923,6 @@ async def upload():
             code=RetCode.ARGUMENT_ERROR,
         )
 
-    # =========================
-    # 3. 校验 tags
-    # =========================
     try:
         normalized_tags = validate_knowledge_tags(tags)
     except Exception as e:
@@ -548,11 +932,7 @@ async def upload():
             code=RetCode.ARGUMENT_ERROR,
         )
 
-    # =========================
-    # 4. 获取文件
-    # =========================
     files = await request.files
-
     if "file" not in files:
         return get_json_result(
             data=False,
@@ -561,7 +941,6 @@ async def upload():
         )
 
     file_objs = files.getlist("file")
-
     if not file_objs:
         return get_json_result(
             data=False,
@@ -569,9 +948,6 @@ async def upload():
             code=RetCode.ARGUMENT_ERROR,
         )
 
-    # =========================
-    # 5. 基础文件校验
-    # =========================
     for file_obj in file_objs:
         if file_obj.filename == "":
             return get_json_result(
@@ -588,7 +964,6 @@ async def upload():
             )
 
         filetype = filename_type(file_obj.filename)
-
         if filetype == FileType.OTHER.value:
             return get_json_result(
                 data=False,
@@ -596,139 +971,108 @@ async def upload():
                 code=RetCode.ARGUMENT_ERROR,
             )
 
-    # =========================
-    # 6. 获取知识库
-    # =========================
     e, kb = KnowledgebaseService.get_by_id(kb_id)
-
     if not e:
         raise LookupError("Can't find this dataset!")
 
-    # =========================
-    # 7. 权限校验
-    # =========================
-    if not check_kb_team_write_permission(kb, user_id):
+    if not check_kb_team_write_permission(kb, uploader_id):
         return get_json_result(
             data=False,
             message="No authorization.",
             code=RetCode.AUTHENTICATION_ERROR,
         )
 
-    # 本次上传实际审批链。不要直接使用 get_kb_approvers，
-    # 因为需要排除上传人自己。
     approval_chain = StagedFileService.get_upload_approvers(
         kb_id=kb.id,
-        uploader_user_id=user_id,
+        uploader_user_id=uploader_id,
     )
     level_1_approvers = approval_chain.get("level_1", [])
     level_2_approvers = approval_chain.get("level_2", [])
 
-    # =========================
-    # 8. 生成本次上传批次 ID
-    # =========================
     batch_id = get_uuid()
 
-    # =========================
-    # 9. 创建服务器本地暂存目录
-    # =========================
-    # 默认放到项目目录下：/home/zyb/rag-flow/runtime/staging_upload
-    # 当前文件：/home/zyb/rag-flow/api/apps/document_app.py
-    # parents[0] = /home/zyb/rag-flow/api/apps
-    # parents[1] = /home/zyb/rag-flow/api
-    # parents[2] = /home/zyb/rag-flow
-    # runtime/staging_upload/{kb_id}/{user_id}/文件名
     project_root = Path(__file__).resolve().parents[2]
-
     base_stage_dir = os.environ.get(
         "STAGING_UPLOAD_DIR",
         str(project_root / "runtime" / "staging_upload"),
     )
 
-    stage_dir = os.path.join(
-        base_stage_dir,
-        kb.id,
-        user_id,
-    )
-
+    stage_dir = os.path.join(base_stage_dir, kb.id, uploader_id)
     os.makedirs(stage_dir, exist_ok=True)
 
-    staged_files = []
+    temp_bucket = os.environ.get("STAGING_MINIO_BUCKET", "temp-upload")
+    client = settings.STORAGE_IMPL.conn
 
-    # 如果中途失败，用于清理已经保存的本地文件
+    staged_files = []
     saved_paths = []
+    saved_objects = []
+
+    def get_available_stage_path(stage_dir, filename):
+        safe_name = Path(filename).name
+        stem = Path(safe_name).stem
+        suffix = Path(safe_name).suffix
+
+        candidate = os.path.join(stage_dir, safe_name)
+        index = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(stage_dir, f"{stem}({index}){suffix}")
+            index += 1
+        return candidate
 
     try:
-        # =========================
-        # 10. 循环处理每个文件
-        # =========================
+        if not client.bucket_exists(temp_bucket):
+            client.make_bucket(temp_bucket)
 
-        def get_available_stage_path(stage_dir, filename):
-            safe_name = Path(filename).name
-            stem = Path(safe_name).stem
-            suffix = Path(safe_name).suffix
-
-            candidate = os.path.join(stage_dir, safe_name)
-            index = 1
-
-            while os.path.exists(candidate):
-                candidate = os.path.join(
-                    stage_dir,
-                    f"{stem}({index}){suffix}",
-                )
-                index += 1
-
-            return candidate
         for file_obj in file_objs:
             filename = file_obj.filename
-
+            safe_filename = Path(filename).name
             stage_id = get_uuid()
 
-            suffix = Path(filename).suffix
+            object_name = f"{kb.id}/{uploader_id}/{batch_id}/{stage_id}/{safe_filename}"
 
-            # 实际落盘文件名不要直接使用用户上传的 filename
-            # 防止重名、路径穿越、特殊字符问题
-            # local_filename = f"{stage_id}{suffix}"
-
-            stage_path = get_available_stage_path(stage_dir, filename)
-
-            # 读取上传文件内容
             blob = file_obj.read()
 
-            # 写入服务器本地暂存区
+            stage_path = get_available_stage_path(stage_dir, safe_filename)
             with open(stage_path, "wb") as f:
                 f.write(blob)
-
             saved_paths.append(stage_path)
+
+            client.put_object(
+                temp_bucket,
+                object_name,
+                BytesIO(blob),
+                len(blob),
+            )
+            saved_objects.append((temp_bucket, object_name))
+
+            file_url = client.presigned_get_object(
+                temp_bucket,
+                object_name,
+                expires=timedelta(days=7),
+            )
 
             now = datetime.now()
 
-            # =========================
-            # 11. 写入数据库
-            # =========================
-            # 如果你的项目里 DB 是 Peewee 数据库对象，建议使用 DB.atomic()
-            # 如果没有 DB.atomic，可以去掉 with DB.atomic()
             with DB.atomic():
                 StagedFile.insert({
                     "id": stage_id,
                     "batch_id": batch_id,
                     "kb_id": kb.id,
                     "tenant_id": kb.tenant_id,
-                    "user_id": user_id,
+                    "user_id": uploader_id,
                     "filename": filename,
                     "path": stage_path,
                     "size": len(blob),
                     "status": "pending",
-
-                    # 保存上传当时的实际审批人员快照
                     "approval_level_1": level_1_approvers,
                     "approval_level_2": level_2_approvers,
-
+                    "minio_bucket": temp_bucket,
+                    "minio_object_name": object_name,
+                    "url": file_url,
                     "created_at": now,
                 }).execute()
 
                 tag_rows = []
-
-                # 本次上传面板选择的一套标签，复制给每个文件
                 for type_code, option_codes in normalized_tags.items():
                     for option_code in option_codes:
                         tag_rows.append({
@@ -746,19 +1090,125 @@ async def upload():
                 "batch_id": batch_id,
                 "kb_id": kb.id,
                 "tenant_id": kb.tenant_id,
+                "user_id": uploader_id,
                 "filename": filename,
                 "path": stage_path,
+                "bucket": temp_bucket,
+                "object_name": object_name,
+                "url": file_url,
                 "size": len(blob),
                 "status": "pending",
                 "tags": normalized_tags,
             })
 
+        # 提交给 OA
+        oa_url = os.environ.get("OA_APPROVAL_URL")
+        callback_url = os.environ.get("OA_CALLBACK_URL")
+        oa_app_id = os.environ.get("OA_APP_ID", "ragflow")
+        oa_secret = os.environ.get("OA_SECRET", "")
+
+        if not oa_url:
+            raise RuntimeError("Missing OA_APPROVAL_URL")
+        if not callback_url:
+            raise RuntimeError("Missing OA_CALLBACK_URL")
+
+        oa_payload = {
+            "app_id": oa_app_id,
+            "batch_id": batch_id,
+            "kb_id": kb.id,
+            "tenant_id": kb.tenant_id,
+            "uploader_user_id": uploader_id,
+            "callback_url": callback_url,
+            "files": staged_files,
+            "approvers": approval_chain,
+            "timestamp": int(datetime.now().timestamp()),
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-OA-App-Id": oa_app_id,
+        }
+        if oa_secret:
+            headers["X-OA-Signature"] = make_oa_signature(oa_payload, oa_secret)
+
+        async with httpx.AsyncClient(timeout=30) as http_client:
+            resp = await http_client.post(
+                oa_url,
+                json=oa_payload,
+                headers=headers,
+            )
+
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Submit OA approval failed: {resp.status_code}, {resp.text}")
+
+        oa_result = resp.json()
+        oa_request_id = oa_result.get("request_id") or oa_result.get("process_instance_id")
+
+        # 写主表和任务表
+        with DB.atomic():
+            StagedFileApprovalRequest.insert({
+                "id": oa_request_id,
+                "batch_id": batch_id,
+                "kb_id": kb.id,
+                "tenant_id": kb.tenant_id,
+                "uploader_user_id": uploader_id,
+                "status": oa_result.get("status", "pending_level_1"),
+                "current_level": oa_result.get("current_level", 1),
+                "callback_url": callback_url,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            }).execute()
+
+            for f in staged_files:
+                for approver in level_1_approvers:
+                    approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+                    approver_name = approver.get("name") if isinstance(approver, dict) else None
+                    StagedFileApprovalTask.insert({
+                        "approval_id": oa_request_id,
+                        "batch_id": batch_id,
+                        "stage_id": f["id"],
+                        "level": 1,
+                        "approver_user_id": approver_user_id,
+                        "approver_name": approver_name,
+                        "status": "pending",
+                        "created_at": datetime.now(),
+                        "updated_at": datetime.now(),
+                    }).execute()
+
+                for approver in level_2_approvers:
+                    approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+                    approver_name = approver.get("name") if isinstance(approver, dict) else None
+                    StagedFileApprovalTask.insert({
+                        "approval_id": oa_request_id,
+                        "batch_id": batch_id,
+                        "stage_id": f["id"],
+                        "level": 2,
+                        "approver_user_id": approver_user_id,
+                        "approver_name": approver_name,
+                        "status": "waiting",
+                        "created_at": datetime.now(),
+                        "updated_at": datetime.now(),
+                    }).execute()
+
+            StagedFile.update({
+                "status": "oa_submitted",
+            }).where(
+                StagedFile.batch_id == batch_id
+            ).execute()
+
+        return get_json_result(
+            data={
+                "batch_id": batch_id,
+                "oa_request_id": oa_request_id,
+                "oa_status": "submitted",
+                "files": staged_files,
+                "approvers": approval_chain,
+                "oa_response": oa_result,
+            }
+        )
+
     except Exception as e:
         logging.exception("Stage upload failed.")
-
-        # =========================
-        # 12. 失败时清理已经落盘的文件
-        # =========================
         for path in saved_paths:
             try:
                 if os.path.exists(path):
@@ -766,24 +1216,589 @@ async def upload():
             except Exception:
                 logging.exception("Remove staged file failed: %s", path)
 
+        for bucket, obj_name in saved_objects:
+            try:
+                client.remove_object(bucket, obj_name)
+            except Exception:
+                logging.exception("Remove staged minio object failed: %s/%s", bucket, obj_name)
+
         return get_json_result(
             data=staged_files,
             message=str(e),
             code=RetCode.SERVER_ERROR,
         )
 
-    # =========================
-    # 13. 返回暂存结果
-    # =========================
+# OA 侧：创建审批单 (写入主表 和 审批任务表 激活1级 等待2级)
+@manager.route("/oa/approval/create", methods=["POST"])  # OA 侧接口
+async def create_approval_request():
+    import os
+    import json
+    from datetime import datetime
+
+    oa_secret = os.environ.get("OA_SECRET", "")
+    expected_app_id = os.environ.get("OA_APP_ID", "ragflow")
+
+    data = await request.get_json()
+    if not data:
+        return get_json_result(
+            data=False,
+            message="Empty request body.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if data.get("app_id") != expected_app_id:
+        return get_json_result(
+            data=False,
+            message="Invalid app_id.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    recv_signature = request.headers.get("X-OA-Signature", "")
+    if oa_secret:
+        expected_signature = make_oa_signature(data, oa_secret)
+        if recv_signature != expected_signature:
+            return get_json_result(
+                data=False,
+                message="Invalid signature.",
+                code=RetCode.AUTHENTICATION_ERROR,
+            )
+
+    batch_id = data["batch_id"]
+    kb_id = data["kb_id"]
+    tenant_id = data["tenant_id"]
+    uploader_user_id = data["uploader_user_id"]
+    callback_url = data["callback_url"]
+    files = data.get("files", [])
+    approvers = data.get("approvers", {})
+
+    level_1 = approvers.get("level_1", [])
+    level_2 = approvers.get("level_2", [])
+
+    if not files:
+        return get_json_result(
+            data=False,
+            message="no files",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    approval_id = get_uuid()
+
+    if level_1:
+        status = "pending_level_1"
+        current_level = 1
+    elif level_2:
+        status = "pending_level_2"
+        current_level = 2
+    else:
+        status = "approved"
+        current_level = 0
+
+    now = datetime.now()
+
+    with DB.atomic():
+        OAApprovalRequest.insert({
+            "id": approval_id,
+            "batch_id": batch_id,
+            "kb_id": kb_id,
+            "tenant_id": tenant_id,
+            "uploader_user_id": uploader_user_id,
+            "callback_url": callback_url,
+            "status": status,
+            "current_level": current_level,
+            "files_json": files,
+            "approvers_json": approvers,
+            "created_at": now,
+            "updated_at": now,
+        }).execute()
+
+        for f in files:
+            for approver in level_1:
+                approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+                approver_name = approver.get("name") if isinstance(approver, dict) else None
+                OAApprovalTask.insert({
+                    "approval_id": approval_id,
+                    "batch_id": batch_id,
+                    "level": 1,
+                    "approver_user_id": approver_user_id,
+                    "approver_name": approver_name,
+                    "status": "pending",
+                    "created_at": now,
+                    "updated_at": now,
+                }).execute()
+
+            for approver in level_2:
+                approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+                approver_name = approver.get("name") if isinstance(approver, dict) else None
+                OAApprovalTask.insert({
+                    "approval_id": approval_id,
+                    "batch_id": batch_id,
+                    "level": 2,
+                    "approver_user_id": approver_user_id,
+                    "approver_name": approver_name,
+                    "status": "waiting",
+                    "created_at": now,
+                    "updated_at": now,
+                }).execute()
+
     return get_json_result(
-    data={
+        data={
+            "request_id": approval_id,
+            "process_instance_id": approval_id,
+            "status": status,
+            "current_level": current_level,
+        }
+    )
+
+# OA 审批动作处理
+# {
+#   "approval_id": "oa_xxx",
+#   "batch_id": "batch_xxx",
+#   "approver_user_id": "u1",
+#   "approver_name": "张三",
+#   "level": 1,
+#   "action": "approved",
+#   "comment": "同意"
+# }
+
+
+@manager.route("/oa/approval/task/handle", methods=["POST"])
+async def handle_approval_task():
+    import os
+    from datetime import datetime
+
+    oa_secret = os.environ.get("OA_SECRET", "")
+    expected_app_id = os.environ.get("OA_APP_ID", "ragflow")
+
+    data = await request.get_json()
+    if not data:
+        return get_json_result(
+            data=False,
+            message="Empty request body.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    approval_id = data["approval_id"]
+    batch_id = data["batch_id"]
+    approver_user_id = data["approver_user_id"]
+    approver_name = data.get("approver_name", "")
+    level = data["level"]
+    action = data["action"]   # approved / rejected
+    comment = data.get("comment", "")
+
+    approval = OAApprovalRequest.get_or_none(OAApprovalRequest.id == approval_id)
+    if not approval:
+        return get_json_result(
+            data=False,
+            message="approval not found",
+            code=RetCode.NOT_FOUND,
+        )
+
+    if approval.status in ["approved", "rejected"]:
+        return get_json_result(
+            data=True,
+            message="already finished",
+        )
+
+    task = OAApprovalTask.get_or_none(
+        (OAApprovalTask.approval_id == approval_id) &
+        (OAApprovalTask.batch_id == batch_id) &
+        (OAApprovalTask.level == level) &
+        (OAApprovalTask.approver_user_id == approver_user_id)
+    )
+
+    if not task:
+        return get_json_result(
+            data=False,
+            message="task not found",
+            code=RetCode.NOT_FOUND,
+        )
+
+    if task.status in ["approved", "rejected"]:
+        return get_json_result(
+            data=True,
+            message="task already processed",
+        )
+
+    now = datetime.now()
+
+    with DB.atomic():
+        task.status = action
+        task.comment = comment
+        task.action_time = now
+        task.updated_at = now
+        task.save()
+
+    # 每次动作都回调 RAGFlow
+    callback_payload = {
+        "app_id": expected_app_id,
+        "request_id": approval_id,
         "batch_id": batch_id,
-        "files": staged_files,
-        "approvers": approval_chain,
+        "level": level,
+        "approver_user_id": approver_user_id,
+        "approver_name": approver_name,
+        "action": action,
+        "comment": comment,
+        "timestamp": int(now.timestamp()),
     }
-)
+
+    await callback_ragflow(approval, callback_payload, oa_secret)
+
+    if action == "rejected":
+        with DB.atomic():
+            approval.status = "rejected"
+            approval.result = "rejected"
+            approval.comment = comment
+            approval.finished_at = now
+            approval.updated_at = now
+            approval.save()
+
+        return get_json_result(
+            data={
+                "approval_id": approval_id,
+                "result": "rejected",
+            }
+        )
+
+    # 检查当前级别是否全部通过
+    same_level_tasks = list(
+        OAApprovalTask.select().where(
+            (OAApprovalTask.approval_id == approval_id) &
+            (OAApprovalTask.level == level)
+        )
+    )
+
+    if any(t.status == "rejected" for t in same_level_tasks):
+        with DB.atomic():
+            approval.status = "rejected"
+            approval.result = "rejected"
+            approval.comment = comment
+            approval.finished_at = now
+            approval.updated_at = now
+            approval.save()
+
+        return get_json_result(
+            data={
+                "approval_id": approval_id,
+                "result": "rejected",
+            }
+        )
+
+    if not all(t.status == "approved" for t in same_level_tasks):
+        return get_json_result(
+            data={
+                "approval_id": approval_id,
+                "status": f"waiting_level_{level}_others",
+            }
+        )
+
+    # 当前级别都通过，进入下一级
+    next_level = level + 1
+    next_level_tasks = list(
+        OAApprovalTask.select().where(
+            (OAApprovalTask.approval_id == approval_id) &
+            (OAApprovalTask.level == next_level)
+        )
+    )
+
+    if next_level_tasks:
+        with DB.atomic():
+            for t in next_level_tasks:
+                t.status = "pending"
+                t.updated_at = now
+                t.save()
+
+            approval.status = f"pending_level_{next_level}"
+            approval.current_level = next_level
+            approval.updated_at = now
+            approval.save()
+
+        return get_json_result(
+            data={
+                "approval_id": approval_id,
+                "status": f"moved_to_level_{next_level}",
+            }
+        )
+
+    # 没有下一级，最终通过
+    with DB.atomic():
+        approval.status = "approved"
+        approval.result = "approved"
+        approval.finished_at = now
+        approval.updated_at = now
+        approval.save()
+
+    final_payload = {
+        "app_id": expected_app_id,
+        "request_id": approval_id,
+        "batch_id": batch_id,
+        "result": "approved",
+        "comment": "all approved",
+        "timestamp": int(now.timestamp()),
+        "event": "approval_finished",
+    }
+
+    await callback_ragflow(approval, final_payload, oa_secret)
+
+    return get_json_result(
+        data={
+            "approval_id": approval_id,
+            "result": "approved",
+        }
+    )
+
+# OA 回调 RAGFlow
+async def callback_ragflow(approval, payload, oa_secret):
+    import httpx
+
+    signature = make_oa_signature(payload, oa_secret) if oa_secret else ""
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-OA-App-Id": payload["app_id"],
+    }
+    if signature:
+        headers["X-OA-Signature"] = signature
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        await client.post(
+            approval.callback_url,
+            json=payload,
+            headers=headers,
+        )
+
+# RAGFlow 侧完整伪代码
+# {
+#   "app_id": "ragflow",
+#   "request_id": "oa_xxx",
+#   "batch_id": "batch_xxx",
+#   "level": 1,
+#   "approver_user_id": "u1",
+#   "approver_name": "张三",
+#   "action": "approved",
+#   "comment": "同意",
+#   "timestamp": 1730000000
+# }
+
+# {
+#   "app_id": "ragflow",
+#   "request_id": "oa_xxx",
+#   "batch_id": "batch_xxx",
+#   "level": 1,
+#   "approver_user_id": "u2",
+#   "approver_name": "李四",
+#   "action": "rejected",
+#   "comment": "资料不完整",
+#   "timestamp": 1730000001
+# }
 
 
+
+@manager.route("/oa/approval/callback", methods=["POST"])
+async def oa_approval_callback():
+    import os
+    import logging
+    from datetime import datetime
+
+    oa_secret = os.environ.get("OA_SECRET", "")
+    expected_app_id = os.environ.get("OA_APP_ID", "ragflow")
+
+    data = await request.get_json()
+    if not data:
+        return get_json_result(
+            data=False,
+            message="Empty callback body.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if data.get("app_id") != expected_app_id:
+        return get_json_result(
+            data=False,
+            message="Invalid app_id.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    recv_signature = request.headers.get("X-OA-Signature", "")
+    if oa_secret:
+        expected_signature = make_oa_signature(data, oa_secret)
+        if recv_signature != expected_signature:
+            return get_json_result(
+                data=False,
+                message="Invalid signature.",
+                code=RetCode.AUTHENTICATION_ERROR,
+            )
+
+    approval_id = data.get("request_id")
+    batch_id = data.get("batch_id")
+    level = data.get("level")
+    approver_user_id = data.get("approver_user_id")
+    action = data.get("action")   # approved / rejected
+    comment = data.get("comment", "")
+    approver_name = data.get("approver_name", "")
+    event = data.get("event", "task_updated")
+
+    if not approval_id or not batch_id:
+        return get_json_result(
+            data=False,
+            message="Missing approval_id or batch_id.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if action not in ["approved", "rejected"]:
+        return get_json_result(
+            data=False,
+            message="Invalid action.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    approval = StagedFileApprovalRequest.get_or_none(
+        StagedFileApprovalRequest.id == approval_id
+    )
+    if not approval:
+        return get_json_result(
+            data=False,
+            message="Approval request not found.",
+            code=RetCode.NOT_FOUND,
+        )
+
+    now = datetime.now()
+
+    task = StagedFileApprovalTask.get_or_none(
+        (StagedFileApprovalTask.approval_id == approval_id) &
+        (StagedFileApprovalTask.batch_id == batch_id) &
+        (StagedFileApprovalTask.level == level) &
+        (StagedFileApprovalTask.approver_user_id == approver_user_id)
+    )
+
+    if not task:
+        return get_json_result(
+            data=False,
+            message="Approval task not found.",
+            code=RetCode.NOT_FOUND,
+        )
+
+    if task.status in ["approved", "rejected"]:
+        return get_json_result(
+            data={
+                "batch_id": batch_id,
+                "status": "task_already_processed",
+            },
+            message="Task already processed.",
+        )
+
+    with DB.atomic():
+        task.status = action
+        task.comment = comment
+        task.action_time = now
+        task.updated_at = now
+        task.save()
+
+    # 任意一个拒绝，整批拒绝
+    if action == "rejected":
+        with DB.atomic():
+            approval.status = "rejected"
+            approval.result = "rejected"
+            approval.comment = comment
+            approval.finished_at = now
+            approval.updated_at = now
+            approval.save()
+
+            StagedFile.update({
+                StagedFile.status: "rejected",
+            }).where(
+                StagedFile.batch_id == batch_id
+            ).execute()
+
+        return get_json_result(
+            data={
+                "batch_id": batch_id,
+                "result": "rejected",
+            },
+            message="Approval rejected.",
+        )
+
+    # 检查同级是否全部通过
+    all_tasks = list(
+        StagedFileApprovalTask.select().where(
+            StagedFileApprovalTask.approval_id == approval_id
+        )
+    )
+
+    if any(t.status == "rejected" for t in all_tasks):
+        with DB.atomic():
+            approval.status = "rejected"
+            approval.result = "rejected"
+            approval.comment = comment
+            approval.finished_at = now
+            approval.updated_at = now
+            approval.save()
+
+            StagedFile.update({
+                StagedFile.status: "rejected",
+            }).where(
+                StagedFile.batch_id == batch_id
+            ).execute()
+
+        return get_json_result(
+            data={
+                "batch_id": batch_id,
+                "result": "rejected",
+            },
+            message="Approval rejected.",
+        )
+
+    all_done = all(t.status == "approved" for t in all_tasks)
+    if not all_done:
+        return get_json_result(
+            data={
+                "batch_id": batch_id,
+                "status": "waiting_more_approvals",
+            },
+            message="Task updated, waiting other approvers.",
+        )
+
+    # 全部通过 -> 正式入库
+    try:
+        with DB.atomic():
+            approval.status = "approved"
+            approval.result = "approved"
+            approval.comment = comment
+            approval.finished_at = now
+            approval.updated_at = now
+            approval.save()
+
+            StagedFile.update({
+                StagedFile.status: "approved",
+            }).where(
+                StagedFile.batch_id == batch_id
+            ).execute()
+
+        # 正式入库 + 解析
+        import_staged_files_after_approval(batch_id)
+
+        with DB.atomic():
+            StagedFile.update({
+                StagedFile.status: "committed",
+                StagedFile.committed_at: now,
+            }).where(
+                StagedFile.batch_id == batch_id
+            ).execute()
+
+    except Exception as e:
+        logging.exception("Handle approved callback failed.")
+        return get_json_result(
+            data=False,
+            message=str(e),
+            code=RetCode.SERVER_ERROR,
+        )
+
+    return get_json_result(
+        data={
+            "batch_id": batch_id,
+            "result": "approved",
+            "next": "parsed",
+        },
+        message="Approval approved and imported.",
+    )
 
 @manager.route("/web_crawl", methods=["POST"])  # noqa: F821
 @login_required

@@ -1541,13 +1541,18 @@ class StagedFile(DataBaseModel):
     size = IntegerField(default=0)
 
     status = CharField(default="pending")
-    # pending / approved / committing / committed / rejected / failed / deleted
+    # pending / oa_submitted / approved / committing / committed / rejected / failed / deleted
 
     doc_id = CharField(null=True, index=True)
 
     # 上传时生成的审批人快照
     approval_level_1 = JSONField(null=True)
     approval_level_2 = JSONField(null=True)
+
+    # 可选：MinIO 临时信息
+    minio_bucket = CharField(null=True)
+    minio_object_name = CharField(null=True)
+    url = TextField(null=True)
 
     created_at = DateTimeField(default=datetime.now)
     approved_at = DateTimeField(null=True)
@@ -1557,6 +1562,9 @@ class StagedFile(DataBaseModel):
 
     class Meta:
         table_name = "staged_file"
+        indexes = (
+            (("batch_id", "kb_id"), False),
+        )
 
 
 # 2. 暂存文件标签表
@@ -1575,6 +1583,123 @@ class StagedFileTag(DataBaseModel):
             (("stage_id", "type_code", "option_code"), True),
         )
 
+# RAGFlow 审批主表 StagedFileApprovalRequest 这张表用来记录 OA 审批单在 RAGFlow 侧的镜像状态。
+
+class StagedFileApprovalRequest(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)   # oa_request_id
+
+    batch_id = CharField(max_length=32, index=True)
+    kb_id = CharField(max_length=32, index=True)
+    tenant_id = CharField(max_length=32, index=True)
+    uploader_user_id = CharField(max_length=32, index=True)
+
+    status = CharField(max_length=32, default="pending_level_1")
+    # pending_level_1 / pending_level_2 / approved / rejected / cancelled
+
+    current_level = IntegerField(default=1)
+
+    result = CharField(max_length=32, null=True)      # approved / rejected
+    comment = TextField(null=True)
+
+    callback_url = TextField(null=True)
+
+    created_at = DateTimeField(default=datetime.now)
+    updated_at = DateTimeField(default=datetime.now)
+    finished_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = "staged_file_approval_request"
+        indexes = (
+            (("batch_id",), False),
+        )
+
+# RAGFlow 审批明细表 StagedFileApprovalTask 审批任务表 StagedFileApprovalTask 每个审批人一条记录。
+class StagedFileApprovalTask(DataBaseModel):
+    id = BigAutoField()
+
+    approval_id = CharField(max_length=32, index=True)   # 对应 oa_request_id
+    batch_id = CharField(max_length=32, index=True)
+    stage_id = CharField(max_length=32, index=True, null=True)
+
+    level = IntegerField(index=True)                      # 1 / 2
+    approver_user_id = CharField(max_length=32, index=True)
+    approver_name = CharField(max_length=128, null=True)
+
+    status = CharField(max_length=32, default="waiting")
+    # waiting / pending / approved / rejected / skipped
+
+    comment = TextField(null=True)
+    action_time = DateTimeField(null=True)
+
+    created_at = DateTimeField(default=datetime.now)
+    updated_at = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = "staged_file_approval_task"
+        indexes = (
+            (("approval_id", "level", "approver_user_id"), True),
+        )
+
+# OA 审批主表 OAApprovalRequest
+class OAApprovalRequest(DataBaseModel):
+    id = CharField(max_length=32, primary_key=True)   # oa_request_id
+
+    batch_id = CharField(max_length=32, index=True)
+    kb_id = CharField(max_length=32, index=True)
+    tenant_id = CharField(max_length=32, index=True)
+    uploader_user_id = CharField(max_length=32, index=True)
+
+    callback_url = TextField(null=True)
+
+    status = CharField(max_length=32, default="pending_level_1")
+    # pending_level_1 / pending_level_2 / approved / rejected / cancelled
+
+    current_level = IntegerField(default=1)
+
+    result = CharField(max_length=32, null=True)
+    comment = TextField(null=True)
+
+    # 文件信息直接存在这里，不单独建文件表
+    files_json = JSONField(null=True)
+
+    # 审批人快照
+    approvers_json = JSONField(null=True)
+
+    created_at = DateTimeField(default=datetime.now)
+    updated_at = DateTimeField(default=datetime.now)
+    finished_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = "oa_approval_request"
+        indexes = (
+            (("batch_id",), False),
+        )
+
+# OA 审批任务表 OAApprovalTask
+class OAApprovalTask(DataBaseModel):
+    id = BigAutoField()
+
+    approval_id = CharField(max_length=32, index=True)
+    batch_id = CharField(max_length=32, index=True)
+
+    level = IntegerField(index=True)                      # 1 / 2
+    approver_user_id = CharField(max_length=32, index=True)
+    approver_name = CharField(max_length=128, null=True)
+
+    status = CharField(max_length=32, default="waiting")
+    # waiting / pending / approved / rejected / skipped
+
+    comment = TextField(null=True)
+    action_time = DateTimeField(null=True)
+
+    created_at = DateTimeField(default=datetime.now)
+    updated_at = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = "oa_approval_task"
+        indexes = (
+            (("approval_id", "level", "approver_user_id"), True),
+        )
 
 
 def migrate_db():
