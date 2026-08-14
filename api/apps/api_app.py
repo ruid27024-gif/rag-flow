@@ -15,7 +15,7 @@
 #
 from datetime import datetime, timedelta
 from quart import request
-from api.db.db_models import APIToken, Dialog, Conversation, User
+from api.db.db_models import APIToken, Dialog, Conversation, User,SyncPerson
 from api.db.services.api_service import APITokenService, API4ConversationService
 from api.db.services.user_service import UserTenantService
 from api.utils.api_utils import generate_confirmation_token, get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
@@ -27,120 +27,543 @@ import io
 import openpyxl
 from flask import Response
 # ... 其他已有的 import
-@manager.route('/user_dialogs_export_excel', methods=['POST'])
-async def export_user_dialogs_excel():
+
+@manager.route('/user_dialogs_export_excel_all', methods=['POST'])
+async def export_user_dialogs_excel_all():
+    import io
+    import json
     import time
+    from datetime import datetime
 
-    t = time.time()
-    req = await get_request_json()
-    tenant_id = req.get("tenant_id")
-    dialog_id = req.get("dialog_id")
+    from peewee import JOIN, fn
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
 
-    if not tenant_id:
-        return get_data_error_result(message="Tenant_id not found!")
+    start_time = time.time()
 
-    if not dialog_id:
-        return get_data_error_result(message="Dialog_id not found!")
+    # 包括 2026-07-23 当天
+    start_date = datetime(2026, 7, 23, 0, 0, 0)
+
+    def parse_json_if_str(value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+
+        return value
+
+    def parse_messages(raw_message):
+        try:
+            message_data = parse_json_if_str(raw_message)
+
+            if isinstance(message_data, list):
+                return message_data
+
+            if isinstance(message_data, dict):
+                for key in ["messages", "conversation", "history"]:
+                    if isinstance(message_data.get(key), list):
+                        return message_data[key]
+
+                return [message_data]
+
+            if message_data is None:
+                return []
+
+            return [
+                {
+                    "role": "unknown",
+                    "content": str(message_data),
+                }
+            ]
+
+        except Exception:
+            return [
+                {
+                    "role": "unknown",
+                    "content": str(raw_message),
+                }
+            ]
+
+    def get_dialog_prologue(prompt_config):
+        prompt_config = parse_json_if_str(prompt_config)
+
+        if not isinstance(prompt_config, dict):
+            return ""
+
+        prologue = prompt_config.get("prologue") or ""
+
+        if isinstance(prologue, (dict, list)):
+            return json.dumps(prologue, ensure_ascii=False)
+
+        return str(prologue).strip()
+
+    def get_content(message_item):
+        if not isinstance(message_item, dict):
+            return str(message_item)
+
+        content = message_item.get("content")
+
+        if content is None:
+            content = message_item.get("text")
+
+        if content is None:
+            content = message_item.get("message")
+
+        if isinstance(content, (dict, list)):
+            return json.dumps(content, ensure_ascii=False)
+
+        if content is None:
+            return ""
+
+        return str(content)
+
+    def get_role(message_item):
+        role_map = {
+            "assistant": "助手",
+            "user": "用户",
+            "system": "系统",
+            "unknown": "未知",
+        }
+
+        if not isinstance(message_item, dict):
+            return "未知"
+
+        raw_role = str(
+            message_item.get("role", "unknown")
+        ).strip().lower()
+
+        return role_map.get(raw_role, raw_role)
+
+    def format_datetime(value):
+        if not value:
+            return ""
+
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+
+        return str(value)
+
+    def normalize_sort_datetime(value):
+        if not value:
+            return datetime.max
+
+        if isinstance(value, datetime):
+            return value
+
+        if isinstance(value, str):
+            value = value[:19]
+
+            for date_format in [
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d",
+                "%Y/%m/%d %H:%M:%S",
+                "%Y/%m/%d",
+            ]:
+                try:
+                    return datetime.strptime(value, date_format)
+                except Exception:
+                    continue
+
+        return datetime.max
+
+    def get_sync_person_value(person, field_name, default=""):
+        value = getattr(person, field_name, None)
+
+        if value is None:
+            return default
+
+        value = str(value).strip()
+
+        return value or default
+
+    def merge_range(ws, start_row, end_row, column_index, alignment, border):
+        if start_row > end_row:
+            return
+
+        if start_row < end_row:
+            ws.merge_cells(
+                start_row=start_row,
+                start_column=column_index,
+                end_row=end_row,
+                end_column=column_index,
+            )
+
+        cell = ws.cell(
+            row=start_row,
+            column=column_index,
+        )
+        cell.alignment = alignment
+        cell.border = border
+
+    def make_safe_filename(value):
+        value = str(value or "all")
+        return "".join(
+            "_" if char in '\\/:*?"<>|' else char
+            for char in value
+        )
 
     try:
-        import io
-        import json
-        from peewee import fn
-        from openpyxl import Workbook
-        from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
-        from openpyxl.utils import get_column_letter
+        # ==========================================================
+        # 1. 获取前端参数
+        # ==========================================================
+        req = await get_request_json()
 
-        # 1. 查询 Token 和对话次数统计
-        token_stat = (
-            APIToken.select(
-                fn.SUM(APIToken.token).alias("total_tokens"),
-                fn.COUNT(APIToken.dialog_id).alias("dialog_count")
+        if not isinstance(req, dict):
+            req = {}
+
+        organization_code = (
+            req.get("organizationCode")
+            or req.get("organization_code")
+            or req.get("department")
+            or "全部"
+        )
+
+        organization_code = str(organization_code).strip()
+
+        export_all = organization_code in [
+            "",
+            "全部",
+            "all",
+            "ALL",
+        ]
+
+        allowed_user_ids = None
+
+        # 手机号 -> 部门名称
+        phone_department_map = {}
+
+        # 手机号 -> 部门编码
+        phone_department_code_map = {}
+
+        # ==========================================================
+        # 2. 按部门筛选用户
+        # ==========================================================
+        if not export_all:
+            sync_persons = list(
+                SyncPerson
+                .select(
+                    SyncPerson.phone,
+                    SyncPerson.organize,
+                    SyncPerson.organizationCode,
+                )
+                .where(
+                    SyncPerson.organizationCode == organization_code
+                )
             )
-            .where(APIToken.dialog_id == dialog_id)
-            .dicts()
-            .first()
-        )
 
-        total_tokens = (
-            int(token_stat["total_tokens"])
-            if token_stat and token_stat["total_tokens"]
-            else 0
-        )
-        dialog_count = (
-            int(token_stat["dialog_count"])
-            if token_stat and token_stat["dialog_count"]
-            else 0
-        )
+            if not sync_persons:
+                return get_data_error_result(
+                    message=f"部门 {organization_code} 未找到人员"
+                )
 
-        # 2. 查询用户昵称
-        user = (
-            User
-            .select(User.id, User.nickname)
-            .where(User.id == tenant_id)
-            .first()
-        )
-        user_name = user.nickname if user else tenant_id
+            phones = set()
 
-        # 3. 查询智能体
-        dialog = (
-            Dialog
-            .select(Dialog.id, Dialog.name, Dialog.tenant_id)
-            .where(
-                (Dialog.id == dialog_id) &
-                (Dialog.tenant_id == tenant_id)
+            for person in sync_persons:
+                phone = get_sync_person_value(
+                    person,
+                    "phone",
+                )
+
+                if not phone:
+                    continue
+
+                phones.add(phone)
+
+                department_name = get_sync_person_value(
+                    person,
+                    "organize",
+                    default=organization_code,
+                )
+
+                department_code = get_sync_person_value(
+                    person,
+                    "organizationCode",
+                    default=organization_code,
+                )
+
+                phone_department_map[phone] = department_name
+                phone_department_code_map[phone] = department_code
+
+            phones = list(phones)
+
+            if not phones:
+                return get_data_error_result(
+                    message=f"部门 {organization_code} 未找到人员手机号"
+                )
+
+            # SyncPerson.phone 对应 User.email
+            dept_users = list(
+                User
+                .select(
+                    User.id,
+                    User.nickname,
+                    User.email,
+                )
+                .where(
+                    fn.TRIM(User.email).in_(phones)
+                )
             )
-            .first()
+
+            if not dept_users:
+                return get_data_error_result(
+                    message=f"部门 {organization_code} 的手机号未匹配到系统用户"
+                )
+
+            allowed_user_ids = list(
+                {
+                    user.id
+                    for user in dept_users
+                    if user.id
+                }
+            )
+
+            if not allowed_user_ids:
+                return get_data_error_result(
+                    message=f"部门 {organization_code} 未匹配到有效用户"
+                )
+
+        # ==========================================================
+        # 3. 查询用户信息
+        # ==========================================================
+        user_query = User.select(
+            User.id,
+            User.nickname,
+            User.email,
         )
 
-        if not dialog:
-            return get_data_error_result(message="Dialog not found!")
+        if allowed_user_ids is not None:
+            user_query = user_query.where(
+                User.id.in_(allowed_user_ids)
+            )
 
-        # 4. 查询 conversation，只查需要字段
-        conversations = list(
+        user_list = list(user_query)
+
+        users = {
+            user.id: {
+                "nickname": str(user.nickname or "").strip(),
+                "phone": str(user.email or "").strip(),
+            }
+            for user in user_list
+        }
+
+        # ==========================================================
+        # 4. 全部导出时，根据手机号反查部门
+        # ==========================================================
+        if export_all:
+            all_user_phones = list(
+                {
+                    user_info["phone"]
+                    for user_info in users.values()
+                    if user_info.get("phone")
+                }
+            )
+
+            if all_user_phones:
+                sync_person_query = (
+                    SyncPerson
+                    .select(
+                        SyncPerson.phone,
+                        SyncPerson.organize,
+                        SyncPerson.organizationCode,
+                    )
+                    .where(
+                        fn.TRIM(SyncPerson.phone).in_(
+                            all_user_phones
+                        )
+                    )
+                )
+
+                for person in sync_person_query:
+                    phone = get_sync_person_value(
+                        person,
+                        "phone",
+                    )
+
+                    if not phone:
+                        continue
+
+                    department_name = get_sync_person_value(
+                        person,
+                        "organize",
+                        default="未分配部门",
+                    )
+
+                    department_code = get_sync_person_value(
+                        person,
+                        "organizationCode",
+                    )
+
+                    phone_department_map[phone] = department_name
+                    phone_department_code_map[phone] = department_code
+
+        # 给用户补充部门信息
+        for user_info in users.values():
+            phone = user_info.get("phone") or ""
+
+            user_info["department"] = (
+                phone_department_map.get(phone)
+                or "未分配部门"
+            )
+
+            user_info["department_code"] = (
+                phone_department_code_map.get(phone)
+                or ""
+            )
+
+        # ==========================================================
+        # 5. 查询 Conversation 和 Dialog
+        # ==========================================================
+        conversations_query = (
             Conversation
-            .select(Conversation.id, Conversation.name, Conversation.message)  # 👈 增加了 name
-            .where(
-                (Conversation.dialog_id == dialog_id) &
-                (Conversation.user_id == tenant_id)
+            .select(
+                Conversation.id,
+                Conversation.name,
+                Conversation.message,
+                Conversation.user_id,
+                Conversation.dialog_id,
+                Conversation.create_date,
+                Dialog.id.alias("joined_dialog_id"),
+                Dialog.name.alias("dialog_name"),
+                Dialog.create_date.alias("dialog_create_date"),
+                Dialog.prompt_config.alias("dialog_prompt_config"),
             )
-            .order_by(Conversation.id)
+            .join(
+                Dialog,
+                JOIN.LEFT_OUTER,
+                on=(Conversation.dialog_id == Dialog.id),
+            )
+            .where(
+                Conversation.create_date >= start_date
+            )
         )
 
-        # 5. 创建 Excel
+        if allowed_user_ids is not None:
+            conversations_query = conversations_query.where(
+                Conversation.user_id.in_(allowed_user_ids)
+            )
+
+        conversations = list(
+            conversations_query
+            .dicts()
+        )
+
+        # ==========================================================
+        # 6. 增加排序字段
+        # ==========================================================
+        enriched_conversations = []
+
+        for conversation in conversations:
+            user_id = conversation.get("user_id") or ""
+            user_info = users.get(user_id, {})
+
+            conversation["_user_name"] = (
+                user_info.get("nickname")
+                or user_id
+            )
+
+            conversation["_phone"] = (
+                user_info.get("phone")
+                or ""
+            )
+
+            conversation["_department"] = (
+                user_info.get("department")
+                or "未分配部门"
+            )
+
+            conversation["_department_code"] = (
+                user_info.get("department_code")
+                or ""
+            )
+
+            conversation["_dialog_create_date_sort"] = (
+                normalize_sort_datetime(
+                    conversation.get("dialog_create_date")
+                )
+            )
+
+            conversation["_conversation_create_date_sort"] = (
+                normalize_sort_datetime(
+                    conversation.get("create_date")
+                )
+            )
+
+            enriched_conversations.append(conversation)
+
+        # 排序：
+        # 部门 -> 用户 -> 主题 -> Conversation
+        enriched_conversations.sort(
+            key=lambda item: (
+                item.get("_department") or "",
+                item.get("_department_code") or "",
+                item.get("_user_name") or "",
+                item.get("user_id") or "",
+                item.get("_dialog_create_date_sort"),
+                item.get("dialog_name") or "",
+                item.get("dialog_id") or "",
+                item.get("_conversation_create_date_sort"),
+                item.get("name") or "",
+                item.get("id") or "",
+            )
+        )
+
+        # ==========================================================
+        # 7. 创建工作簿
+        # ==========================================================
         wb = Workbook()
         ws = wb.active
         ws.title = "对话记录"
 
-        # 👈 表头增加 "对话名称"
         headers = [
-            "智能体名称",
+            "部门",
             "用户名称",
-            "Conversation ID",
-            "对话名称",       # 👈 新增列
+            "手机号码",
+            "主题名称",
+            "主题创建时间",
+            "对话名称",
+            "对话创建时间",
             "消息序号",
             "发送者",
             "消息详情",
-            "总 Token 消耗",
-            "对话次数"
         ]
 
         ws.append(headers)
 
-        # 样式
-        header_fill = PatternFill("solid", fgColor="D9EAF7")
-        header_font = Font(bold=True)
-        center_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        left_alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+        header_fill = PatternFill(
+            "solid",
+            fgColor="D9EAF7",
+        )
 
-        thin_side = Side(style="thin", color="CCCCCC")
+        header_font = Font(
+            bold=True,
+        )
+
+        center_alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True,
+        )
+
+        left_alignment = Alignment(
+            horizontal="left",
+            vertical="top",
+            wrap_text=True,
+        )
+
+        thin_side = Side(
+            style="thin",
+            color="CCCCCC",
+        )
+
         border = Border(
             left=thin_side,
             right=thin_side,
             top=thin_side,
-            bottom=thin_side
+            bottom=thin_side,
         )
 
-        # 表头样式
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
@@ -150,160 +573,923 @@ async def export_user_dialogs_excel():
         current_row = 2
         data_start_row = current_row
 
-        for c in conversations:
+        conversation_count = 0
+        message_count = 0
+
+        # 保存每个层级的行范围
+        department_ranges = {}
+        user_ranges = {}
+        dialog_ranges = {}
+
+        # ==========================================================
+        # 8. 写入消息
+        # ==========================================================
+        for conversation in enriched_conversations:
+            conversation_count += 1
             conversation_start_row = current_row
 
-            # 解析消息
-            try:
-                msg_data = c.message
+            user_id = conversation.get("user_id") or ""
 
-                if isinstance(msg_data, str):
-                    msg_list = json.loads(msg_data)
-                else:
-                    msg_list = msg_data
+            user_name = (
+                conversation.get("_user_name")
+                or user_id
+                or "未知用户"
+            )
 
-                if isinstance(msg_list, list):
-                    messages = msg_list
-                else:
-                    messages = [{"role": "unknown", "content": str(msg_list)}]
+            user_phone = conversation.get("_phone") or ""
 
-            except Exception:
-                messages = [{"role": "unknown", "content": str(c.message)}]
+            department = (
+                conversation.get("_department")
+                or "未分配部门"
+            )
+
+            dialog_id = (
+                conversation.get("dialog_id")
+                or conversation.get("joined_dialog_id")
+                or ""
+            )
+
+            dialog_name = (
+                conversation.get("dialog_name")
+                or "未命名主题"
+            )
+
+            dialog_create_date = format_datetime(
+                conversation.get("dialog_create_date")
+            )
+
+            conversation_name = (
+                conversation.get("name")
+                or "新对话"
+            )
+
+            conversation_create_date = format_datetime(
+                conversation.get("create_date")
+            )
+
+            messages = parse_messages(
+                conversation.get("message")
+            )
+
+            # 补第一句助手消息
+            prologue = get_dialog_prologue(
+                conversation.get("dialog_prompt_config")
+            )
+
+            if prologue:
+                has_same_first_assistant = False
+
+                if messages:
+                    first_message = messages[0]
+
+                    if isinstance(first_message, dict):
+                        first_role = str(
+                            first_message.get("role", "")
+                        ).strip().lower()
+
+                        first_content = get_content(
+                            first_message
+                        ).strip()
+
+                        has_same_first_assistant = (
+                            first_role == "assistant"
+                            and first_content == prologue
+                        )
+
+                if not has_same_first_assistant:
+                    messages.insert(
+                        0,
+                        {
+                            "role": "assistant",
+                            "content": prologue,
+                        },
+                    )
 
             if not messages:
-                messages = [{"role": "", "content": ""}]
+                messages = [
+                    {
+                        "role": "",
+                        "content": "",
+                    }
+                ]
 
-            for index, msg in enumerate(messages, start=1):
-                # 1. 定义角色映射字典，并设置默认值为 "未知"
-                role_map = {
-                    "assistant": "助手",
-                    "user": "用户",
-                    "system": "系统"  # 可选：如果存在系统提示词也可以加上
-                }
-                
-                # 2. 获取原始角色并转换为小写，防止大小写不一致导致匹配失败
-                raw_role = str(msg.get("role", "unknown")).lower()
-                
-                # 3. 从字典中获取中文角色，如果没匹配到则保留原值或显示"未知"
-                role = role_map.get(raw_role, raw_role) 
-                
-                content = msg.get("content", "")
+            for index, message_item in enumerate(
+                messages,
+                start=1,
+            ):
+                role = get_role(message_item)
 
-                if isinstance(content, (dict, list)):
-                    content = json.dumps(content, ensure_ascii=False)
+                content = get_content(
+                    message_item
+                ).replace("\r", "")
 
-                safe_content = str(content).replace("\r", "")
+                ws.append(
+                    [
+                        department,
+                        user_name,
+                        user_phone,
+                        dialog_name,
+                        dialog_create_date,
+                        conversation_name,
+                        conversation_create_date,
+                        index,
+                        role,
+                        content,
+                    ]
+                )
 
-                ws.append([
-                    dialog.name,
-                    user_name,
-                    c.id,
-                    c.name or "",
-                    index,
-                    role,
-                    safe_content,
-                    total_tokens,
-                    dialog_count
-                ])
+                for column_index in range(1, 11):
+                    cell = ws.cell(
+                        row=current_row,
+                        column=column_index,
+                    )
 
-                # 直接给当前行设置样式，避免后面再全表遍历
-                for col_idx in range(1, 10):
-                    cell = ws.cell(row=current_row, column=col_idx)
                     cell.border = border
-                    # 消息详情是第 7 列，左对齐；其余居中
-                    cell.alignment = left_alignment if col_idx == 7 else center_alignment
 
+                    # 第 10 列是消息详情
+                    cell.alignment = (
+                        left_alignment
+                        if column_index == 10
+                        else center_alignment
+                    )
 
                 current_row += 1
+                message_count += 1
 
             conversation_end_row = current_row - 1
 
-            # 合并同一个 conversation_id
-            if conversation_start_row < conversation_end_row:
-                ws.merge_cells(
-                    start_row=conversation_start_row,
-                    start_column=3,
-                    end_row=conversation_end_row,
-                    end_column=3
-                )
-                ws.merge_cells(
-                    start_row=conversation_start_row,
-                    start_column=4,
-                    end_row=conversation_end_row,
-                    end_column=4
+            # ======================================================
+            # Conversation 维度合并
+            # 对话名称：第 6 列
+            # 对话创建时间：第 7 列
+            # ======================================================
+            for column_index in [6, 7]:
+                merge_range(
+                    ws,
+                    conversation_start_row,
+                    conversation_end_row,
+                    column_index,
+                    center_alignment,
+                    border,
                 )
 
-            ws.cell(row=conversation_start_row, column=3).alignment = center_alignment
-            ws.cell(row=conversation_start_row, column=3).border = border
+            # ======================================================
+            # 部门维度记录
+            # 相同部门的所有记录连续合并
+            # ======================================================
+            department_key = department or "未分配部门"
+
+            if department_key not in department_ranges:
+                department_ranges[department_key] = [
+                    conversation_start_row,
+                    conversation_end_row,
+                ]
+            else:
+                department_ranges[department_key][1] = conversation_end_row
+
+            # ======================================================
+            # 用户维度记录
+            # 同一个部门下的同一个用户合并
+            # ======================================================
+            user_key = (
+                f"{department_key}::{user_id or user_name}"
+            )
+
+            if user_key not in user_ranges:
+                user_ranges[user_key] = [
+                    conversation_start_row,
+                    conversation_end_row,
+                ]
+            else:
+                user_ranges[user_key][1] = conversation_end_row
+
+            # ======================================================
+            # 主题维度记录
+            # 同一个用户下的同一个主题合并
+            # ======================================================
+            dialog_key = (
+                f"{user_key}::{dialog_id or dialog_name}"
+            )
+
+            if dialog_key not in dialog_ranges:
+                dialog_ranges[dialog_key] = [
+                    conversation_start_row,
+                    conversation_end_row,
+                ]
+            else:
+                dialog_ranges[dialog_key][1] = conversation_end_row
 
         data_end_row = current_row - 1
 
-        # 6. 合并智能体名称、用户名称、Token、对话次数
-        if data_start_row <= data_end_row:
-            if data_start_row < data_end_row:
-                ws.merge_cells(
-                    start_row=data_start_row,
-                    start_column=1,
-                    end_row=data_end_row,
-                    end_column=1
-                )
-                ws.merge_cells(
-                    start_row=data_start_row,
-                    start_column=2,
-                    end_row=data_end_row,
-                    end_column=2
-                )
-                ws.merge_cells(
-                    start_row=data_start_row,
-                    start_column=8,
-                    end_row=data_end_row,
-                    end_column=8
-                )
-                ws.merge_cells(
-                    start_row=data_start_row,
-                    start_column=9,
-                    end_row=data_end_row,
-                    end_column=9
+        # ==========================================================
+        # 9. 合并部门
+        # 部门是第 1 列
+        # ==========================================================
+        for start_row, end_row in department_ranges.values():
+            merge_range(
+                ws,
+                start_row,
+                end_row,
+                1,
+                center_alignment,
+                border,
+            )
+
+        # ==========================================================
+        # 10. 合并用户
+        # 用户名称是第 2 列
+        # 手机号码是第 3 列
+        # ==========================================================
+        for start_row, end_row in user_ranges.values():
+            for column_index in [2, 3]:
+                merge_range(
+                    ws,
+                    start_row,
+                    end_row,
+                    column_index,
+                    center_alignment,
+                    border,
                 )
 
-            for col_idx in [1, 2, 8, 9]:
-                cell = ws.cell(row=data_start_row, column=col_idx)
-                cell.alignment = center_alignment
-                cell.border = border
+        # ==========================================================
+        # 11. 合并主题
+        # 主题名称是第 4 列
+        # 主题创建时间是第 5 列
+        # ==========================================================
+        for start_row, end_row in dialog_ranges.values():
+            for column_index in [4, 5]:
+                merge_range(
+                    ws,
+                    start_row,
+                    end_row,
+                    column_index,
+                    center_alignment,
+                    border,
+                )
 
-        # 7. 设置列宽
+        # ==========================================================
+        # 12. 设置列宽
+        # ==========================================================
         column_widths = {
-            1: 20,
-            2: 20,
-            3: 36,
-            4: 25,  # 👈 新增：对话名称
-            5: 10,
-            6: 15,
-            7: 80,
-            8: 18,
-            9: 12
+            1: 28,   # 部门
+            2: 20,   # 用户名称
+            3: 18,   # 手机号码
+            4: 28,   # 主题名称
+            5: 20,   # 主题创建时间
+            6: 40,   # 对话名称
+            7: 20,   # 对话创建时间
+            8: 10,   # 消息序号
+            9: 15,   # 发送者
+            10: 90,  # 消息详情
         }
 
-        for col_idx, width in column_widths.items():
-            ws.column_dimensions[get_column_letter(col_idx)].width = width
+        for column_index, width in column_widths.items():
+            ws.column_dimensions[
+                get_column_letter(column_index)
+            ].width = width
 
         ws.freeze_panes = "A2"
 
-        # 8. 导出 Excel
+        # ==========================================================
+        # 13. 导出 Excel
+        # ==========================================================
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
 
-        response = Response(
-            output.getvalue(),
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f"attachment; filename=dialog_logs_{dialog_id}.xlsx"
-            }
+        export_scope = (
+            "all"
+            if export_all
+            else organization_code
         )
 
-        print(response)
-        print("后端:", time.time() - t)
+        filename = (
+            f"dialog_logs_{export_scope}_from_20260723_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+
+        response = Response(
+            output.getvalue(),
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            headers={
+                "Content-Disposition": (
+                    f"attachment; filename={filename}"
+                )
+            },
+        )
+
+        print(f"导出完成: {filename}")
+        print(
+            f"导出范围: "
+            f"{'全部' if export_all else organization_code}"
+        )
+        print(f"Conversation 数量: {conversation_count}")
+        print(f"消息数量: {message_count}")
+        print(f"后端耗时: {time.time() - start_time:.2f} 秒")
+
+        output.close()
+
+        return response
+
+    except Exception as e:
+        print(f"Export Excel Error: {e}")
+        return server_error_response(e)
+    
+@manager.route('/user_dialogs_export_excel', methods=['POST'])
+async def export_user_dialogs_excel():
+    import io
+    import json
+    import time
+    from datetime import datetime
+
+    from peewee import fn
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    start_time = time.time()
+
+    def parse_json_if_str(value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+
+        return value
+
+    def parse_messages(raw_message):
+        """
+        兼容以下格式：
+
+        [
+            {"role": "user", "content": "..."},
+            {"role": "assistant", "content": "..."}
+        ]
+
+        或：
+
+        {
+            "messages": [...]
+        }
+        """
+        try:
+            msg_data = parse_json_if_str(raw_message)
+
+            if isinstance(msg_data, list):
+                return msg_data
+
+            if isinstance(msg_data, dict):
+                for key in ["messages", "conversation", "history"]:
+                    if isinstance(msg_data.get(key), list):
+                        return msg_data[key]
+
+                # 如果本身就是一条消息
+                return [msg_data]
+
+            if msg_data is None:
+                return []
+
+            return [
+                {
+                    "role": "unknown",
+                    "content": str(msg_data),
+                }
+            ]
+
+        except Exception:
+            return [
+                {
+                    "role": "unknown",
+                    "content": str(raw_message),
+                }
+            ]
+
+    def get_dialog_prologue(prompt_config):
+        """
+        获取主题配置中的开场白。
+        通常第一句助手消息存储在：
+        Dialog.prompt_config["prologue"]
+        """
+        prompt_config = parse_json_if_str(prompt_config)
+
+        if not isinstance(prompt_config, dict):
+            return ""
+
+        prologue = prompt_config.get("prologue") or ""
+
+        if isinstance(prologue, (dict, list)):
+            return json.dumps(prologue, ensure_ascii=False)
+
+        return str(prologue).strip()
+
+    def get_content(msg):
+        if not isinstance(msg, dict):
+            return str(msg)
+
+        content = msg.get("content")
+
+        if content is None:
+            content = msg.get("text")
+
+        if content is None:
+            content = msg.get("message")
+
+        if isinstance(content, (dict, list)):
+            return json.dumps(content, ensure_ascii=False)
+
+        if content is None:
+            return ""
+
+        return str(content)
+
+    def get_role(msg):
+        role_map = {
+            "assistant": "助手",
+            "user": "用户",
+            "system": "系统",
+            "unknown": "未知",
+        }
+
+        if not isinstance(msg, dict):
+            return "未知"
+
+        raw_role = str(
+            msg.get("role", "unknown")
+        ).strip().lower()
+
+        return role_map.get(raw_role, raw_role)
+
+    def format_datetime(value):
+        if not value:
+            return ""
+
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+
+        return str(value)
+
+    def merge_range(ws, start_row, end_row, column_index, alignment, border):
+        if start_row > end_row:
+            return
+
+        if start_row < end_row:
+            ws.merge_cells(
+                start_row=start_row,
+                start_column=column_index,
+                end_row=end_row,
+                end_column=column_index,
+            )
+
+        cell = ws.cell(
+            row=start_row,
+            column=column_index,
+        )
+        cell.alignment = alignment
+        cell.border = border
+
+    try:
+        # ==========================================================
+        # 1. 获取请求参数
+        # ==========================================================
+        req = await get_request_json()
+
+        if not isinstance(req, dict):
+            req = {}
+
+        tenant_id = req.get("tenant_id")
+        dialog_id = req.get("dialog_id")
+
+        if not tenant_id:
+            return get_data_error_result(
+                message="Tenant_id not found!"
+            )
+
+        if not dialog_id:
+            return get_data_error_result(
+                message="Dialog_id not found!"
+            )
+
+        # ==========================================================
+        # 2. 查询用户
+        # ==========================================================
+        user = (
+            User
+            .select(
+                User.id,
+                User.nickname,
+                User.email,
+            )
+            .where(User.id == tenant_id)
+            .first()
+        )
+
+        if not user:
+            return get_data_error_result(
+                message="User not found!"
+            )
+
+        user_name = str(
+            user.nickname or user.id
+        ).strip()
+
+        # 当前业务中 User.email 保存的是手机号
+        user_phone = str(
+            user.email or ""
+        ).strip()
+
+        # ==========================================================
+        # 3. 根据手机号查询部门
+        #
+        # User.email
+        #     -> SyncPerson.phone
+        #
+        # SyncPerson.organize
+        #     -> 部门名称
+        #
+        # SyncPerson.organizationCode
+        #     -> 部门编码
+        # ==========================================================
+        department = ""
+        department_code = ""
+
+        if user_phone:
+            sync_person = (
+                SyncPerson
+                .select(
+                    SyncPerson.phone,
+                    SyncPerson.organize,
+                    SyncPerson.organizationCode,
+                )
+                .where(
+                    fn.TRIM(SyncPerson.phone) == user_phone
+                )
+                .first()
+            )
+
+            if sync_person:
+                department = str(
+                    sync_person.organize or ""
+                ).strip()
+
+                department_code = str(
+                    sync_person.organizationCode or ""
+                ).strip()
+
+        # 如果没有查到部门，显示未分配部门
+        department_display = department or "未分配部门"
+
+        # 临时调试日志，可以确认手机号和部门是否匹配
+        print("User ID:", repr(user.id))
+        print("User email/phone:", repr(user_phone))
+        print("Department:", repr(department))
+        print("Department code:", repr(department_code))
+
+        # ==========================================================
+        # 4. 查询主题
+        # ==========================================================
+        dialog = (
+            Dialog
+            .select(
+                Dialog.id,
+                Dialog.name,
+                Dialog.tenant_id,
+                Dialog.create_date,
+                Dialog.prompt_config,
+            )
+            .where(
+                (Dialog.id == dialog_id)
+                & (Dialog.tenant_id == tenant_id)
+            )
+            .first()
+        )
+
+        if not dialog:
+            return get_data_error_result(
+                message="Dialog not found!"
+            )
+
+        dialog_name = str(
+            dialog.name or ""
+        ).strip()
+
+        dialog_create_date = format_datetime(
+            dialog.create_date
+        )
+
+        dialog_prologue = get_dialog_prologue(
+            dialog.prompt_config
+        )
+
+        # ==========================================================
+        # 5. 查询 Conversation
+        # ==========================================================
+        conversations = list(
+            Conversation
+            .select(
+                Conversation.id,
+                Conversation.name,
+                Conversation.message,
+                Conversation.create_date,
+            )
+            .where(
+                (Conversation.dialog_id == dialog_id)
+                & (Conversation.user_id == tenant_id)
+            )
+            .order_by(
+                Conversation.create_date.asc(),
+                Conversation.id.asc(),
+            )
+        )
+
+        # ==========================================================
+        # 6. 创建 Excel
+        # ==========================================================
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "对话记录"
+
+        # 不导出用户 ID、主题 ID、Conversation ID
+        headers = [
+            "部门",
+            "用户名称",
+            
+            "手机号码",
+            "主题名称",
+            "主题创建时间",
+            "对话名称",
+            "对话创建时间",
+            "消息序号",
+            "发送者",
+            "消息详情",
+        ]
+
+        ws.append(headers)
+
+        # ==========================================================
+        # 7. 设置 Excel 样式
+        # ==========================================================
+        header_fill = PatternFill(
+            "solid",
+            fgColor="D9EAF7",
+        )
+
+        header_font = Font(
+            bold=True,
+        )
+
+        center_alignment = Alignment(
+            horizontal="center",
+            vertical="center",
+            wrap_text=True,
+        )
+
+        left_alignment = Alignment(
+            horizontal="left",
+            vertical="top",
+            wrap_text=True,
+        )
+
+        thin_side = Side(
+            style="thin",
+            color="CCCCCC",
+        )
+
+        border = Border(
+            left=thin_side,
+            right=thin_side,
+            top=thin_side,
+            bottom=thin_side,
+        )
+
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_alignment
+            cell.border = border
+
+        current_row = 2
+        data_start_row = current_row
+        conversation_count = 0
+        message_count = 0
+
+        # ==========================================================
+        # 8. 写入对话数据
+        # ==========================================================
+        for conversation in conversations:
+            conversation_count += 1
+
+            conversation_start_row = current_row
+
+            conversation_name = str(
+                conversation.name or ""
+            ).strip()
+
+            conversation_create_date = format_datetime(
+                conversation.create_date
+            )
+
+            messages = parse_messages(
+                conversation.message
+            )
+
+            # 补第一句助手消息
+            # 如果 Conversation.message 中已经有相同的第一句，
+            # 则不重复添加。
+            if dialog_prologue:
+                has_same_first_assistant = False
+
+                if messages:
+                    first_message = messages[0]
+
+                    if isinstance(first_message, dict):
+                        first_role = str(
+                            first_message.get("role", "")
+                        ).strip().lower()
+
+                        first_content = get_content(
+                            first_message
+                        ).strip()
+
+                        has_same_first_assistant = (
+                            first_role == "assistant"
+                            and first_content == dialog_prologue
+                        )
+
+                if not has_same_first_assistant:
+                    messages.insert(
+                        0,
+                        {
+                            "role": "assistant",
+                            "content": dialog_prologue,
+                        },
+                    )
+
+            if not messages:
+                messages = [
+                    {
+                        "role": "",
+                        "content": "",
+                    }
+                ]
+
+            for index, message_item in enumerate(
+                messages,
+                start=1,
+            ):
+                role = get_role(message_item)
+
+                content = get_content(
+                    message_item
+                ).replace("\r", "")
+
+                ws.append(
+                    [   
+                        department_display,
+                        user_name,
+                        
+                        user_phone,
+                        dialog_name,
+                        dialog_create_date,
+                        conversation_name,
+                        conversation_create_date,
+                        index,
+                        role,
+                        content,
+                    ]
+                )
+
+                # 当前 Excel 一共 10 列
+                for column_index in range(1, 11):
+                    cell = ws.cell(
+                        row=current_row,
+                        column=column_index,
+                    )
+
+                    cell.border = border
+
+                    # 第 10 列是消息详情
+                    cell.alignment = (
+                        left_alignment
+                        if column_index == 10
+                        else center_alignment
+                    )
+
+                current_row += 1
+                message_count += 1
+
+            conversation_end_row = current_row - 1
+
+            # 同一个 Conversation 合并：
+            # 第 6 列：对话名称
+            # 第 7 列：对话创建时间
+            for column_index in [6, 7]:
+                merge_range(
+                    ws,
+                    conversation_start_row,
+                    conversation_end_row,
+                    column_index,
+                    center_alignment,
+                    border,
+                )
+
+        data_end_row = current_row - 1
+
+        # ==========================================================
+        # 9. 合并用户和主题信息
+        # ==========================================================
+        if data_start_row <= data_end_row:
+            # 当前是单个用户、单个主题导出
+            #
+            # 第 1 列：部门
+            # 第 2 列：用户名称
+            # 第 3 列：手机号码
+            for column_index in [1, 2, 3]:
+                merge_range(
+                    ws,
+                    data_start_row,
+                    data_end_row,
+                    column_index,
+                    center_alignment,
+                    border,
+                )
+
+            # 第 4 列：主题名称
+            # 第 5 列：主题创建时间
+            for column_index in [4, 5]:
+                merge_range(
+                    ws,
+                    data_start_row,
+                    data_end_row,
+                    column_index,
+                    center_alignment,
+                    border,
+                )
+
+        # ==========================================================
+        # 10. 设置列宽
+        # ==========================================================
+        column_widths = {
+            1: 28,   # 部门
+            2: 20,   # 用户名称
+            3: 18,   # 手机号码
+            4: 28,   # 主题名称
+            5: 20,   # 主题创建时间
+            6: 40,   # 对话名称
+            7: 20,   # 对话创建时间
+            8: 10,   # 消息序号
+            9: 15,   # 发送者
+            10: 90,  # 消息详情
+        }
+
+        for column_index, width in column_widths.items():
+            ws.column_dimensions[
+                get_column_letter(column_index)
+            ].width = width
+
+        ws.freeze_panes = "A2"
+
+        # ==========================================================
+        # 11. 输出 Excel
+        # ==========================================================
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = (
+            f"dialog_logs_{dialog_id}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+
+        response = Response(
+            output.getvalue(),
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            headers={
+                "Content-Disposition": (
+                    f"attachment; filename={filename}"
+                )
+            },
+        )
+
+        print(f"导出完成: {filename}")
+        print(f"用户: {user_name}")
+        print(f"部门: {department_display}")
+        print(f"部门编码: {department_code}")
+        print(f"手机号: {user_phone}")
+        print(f"主题: {dialog_name}")
+        print(f"Conversation 数量: {conversation_count}")
+        print(f"消息数量: {message_count}")
+        print(
+            f"后端耗时: "
+            f"{time.time() - start_time:.2f} 秒"
+        )
+
         output.close()
 
         return response
@@ -315,40 +1501,85 @@ async def export_user_dialogs_excel():
 @manager.route('/user_dialogs_and_conversations', methods=['POST'])
 # @login_required
 async def get_user_dialogs_and_conversations():
+    from datetime import datetime
+
     req = await get_request_json()
     tenant_id = req.get("tenant_id")
 
     if not tenant_id:
         return get_data_error_result(message="Tenant_id not found!")
 
+    def format_datetime(value):
+        if not value:
+            return ""
+
+        if isinstance(value, datetime):
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+
+        return str(value)
+
     try:
-        # 1. 查询该租户下的所有 Dialog
-        dialogs = Dialog.select().where(Dialog.tenant_id == tenant_id)
+        # 1. 查询该租户下的所有 Dialog，按照主题创建时间排序
+        dialogs = (
+            Dialog
+            .select(
+                Dialog.id,
+                Dialog.name,
+                Dialog.create_date
+            )
+            .where(Dialog.tenant_id == tenant_id)
+            .order_by(
+                Dialog.create_date.asc(),
+                Dialog.id.asc()
+            )
+        )
 
-        # 2. 查询该租户下的所有 Conversation
-        conversations = Conversation.select().where(Conversation.user_id == tenant_id)
+        # 2. 查询该租户下的所有 Conversation，按照对话创建时间排序
+        conversations = (
+            Conversation
+            .select(
+                Conversation.id,
+                Conversation.name,
+                Conversation.message,
+                Conversation.dialog_id,
+                Conversation.create_date
+            )
+            .where(Conversation.user_id == tenant_id)
+            .order_by(
+                Conversation.create_date.asc(),
+                Conversation.id.asc()
+            )
+        )
 
-        # 3. 【核心优化】将 Conversation 转换为以 dialog_id 为键的字典，实现 O(1) 查找
-        # 这样避免了在遍历 Dialog 时再去遍历 Conversation（避免 O(N*M) 的嵌套循环）
+        # 3. 将 Conversation 转换为以 dialog_id 为键的字典
+        # 因为上面已经按照 create_date 排序，所以 append 后每个主题里的对话也是有序的
         conv_map = {}
+
         for c in conversations:
             if c.dialog_id not in conv_map:
                 conv_map[c.dialog_id] = []
+
             conv_map[c.dialog_id].append({
                 "id": c.id,
                 "name": c.name,
-                "message": c.message
+                "message": c.message,
+                "create_date": format_datetime(c.create_date),
+                "conversation_create_date": format_datetime(c.create_date),
             })
 
         # 4. 组装最终的树状结构
+        # dialogs 本身已经按主题创建时间排序
         dialog_list = []
+
         for d in dialogs:
             dialog_list.append({
                 "id": d.id,
                 "name": d.name,
-                "conversations": conv_map.get(d.id, [])  # 直接取出该 Dialog 下的所有对话，如果没有则为空列表
+                "create_date": format_datetime(d.create_date),
+                "dialog_create_date": format_datetime(d.create_date),
+                "conversations": conv_map.get(d.id, [])
             })
-        print(dialog_list)
+
         return get_json_result(data=dialog_list)
 
     except Exception as e:
