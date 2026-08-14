@@ -19,7 +19,7 @@ const RolePersonManagePage: React.FC = () => {
   const { token } = theme.useToken();
 
   const [activeKey, setActiveKey] = useState<ActiveKey>('role');
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   const siderWidth = collapsed ? 64 : 220;
 

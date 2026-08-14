@@ -1535,6 +1535,8 @@ class StagedFile(DataBaseModel):
     kb_id = CharField(index=True)
     tenant_id = CharField(index=True)
     user_id = CharField(index=True)
+    doc_id = CharField(null=True, index=True)  # 用于回写doc_id
+
 
     filename = CharField()
     path = CharField()
@@ -1543,7 +1545,7 @@ class StagedFile(DataBaseModel):
     status = CharField(default="pending")
     # pending / oa_submitted / approved / committing / committed / rejected / failed / deleted
 
-    doc_id = CharField(null=True, index=True)
+    # doc_id = CharField(null=True, index=True)
 
     # 上传时生成的审批人快照
     approval_level_1 = JSONField(null=True)
@@ -1619,9 +1621,8 @@ class StagedFileApprovalTask(DataBaseModel):
 
     approval_id = CharField(max_length=32, index=True)   # 对应 oa_request_id
     batch_id = CharField(max_length=32, index=True)
-    stage_id = CharField(max_length=32, index=True, null=True)
 
-    level = IntegerField(index=True)                      # 1 / 2
+    level = IntegerField(index=True)                     # 1 / 2
     approver_user_id = CharField(max_length=32, index=True)
     approver_name = CharField(max_length=128, null=True)
 

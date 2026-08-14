@@ -1,7 +1,6 @@
 import { getAuthorization } from '@/utils/authorization-util';
-import { DownOutlined, ReloadOutlined, UpOutlined } from '@ant-design/icons';
+import { DownOutlined } from '@ant-design/icons';
 import {
-  Button,
   Card,
   Select,
   Space,
@@ -18,6 +17,11 @@ import { useParams } from 'react-router-dom';
 const { Text } = Typography;
 
 const PEACOCK_GREEN = '#1FA67A';
+
+type CollapsibleApproverListProps = {
+  approvers?: ApproverItem[];
+  defaultCount?: number;
+};
 
 type TagOption = {
   option_code: string;
@@ -44,8 +48,25 @@ type ApproverItem = {
   department_name?: string | null;
   role_id?: number | null;
   role_name?: string | null;
+  approver_user_id?: string;
+  approver_name?: string;
+  id?: string;
+  name?: string;
+
+  /**
+   * 兼容老字段。
+   * 新逻辑不再使用 approval_order。
+   */
   approval_order?: number | null;
 };
+
+type DepartmentInfo = {
+  department_id?: string | null;
+  department_name?: string | null;
+  is_reference_kb?: boolean;
+  is_global_reference_kb?: boolean;
+  tenant_id?: string;
+} | null;
 
 type StagedFileItem = {
   id: string;
@@ -73,60 +94,184 @@ type StagedFileItem = {
 
   tags?: FileTagItem[];
 
+  /**
+   * 新字段：统一审批人。
+   */
+  approvers?: ApproverItem[] | null;
+
+  /**
+   * 如果后端字段叫 approval_users，也兼容。
+   */
+  approval_users?: ApproverItem[] | null;
+
+  /**
+   * 老字段兼容。
+   */
   approval_level_1?: ApproverItem[] | null;
   approval_level_2?: ApproverItem[] | null;
 };
 
 type ApproverConfig = {
-  department?: {
-    department_id?: string;
-    department_name?: string;
-    is_reference_kb?: boolean;
-    is_global_reference_kb?: boolean;
-    tenant_id?: string;
-  } | null;
+  department?: DepartmentInfo;
 
+  /**
+   * 新字段：统一审批人。
+   */
+  approvers?: ApproverItem[];
+
+  /**
+   * 老字段兼容。
+   */
   level_1?: ApproverItem[];
   level_2?: ApproverItem[];
 };
 
 type ListResponseData = {
   is_admin: boolean;
+  is_approver?: boolean;
   total: number;
   page: number;
   page_size: number;
-  approvers?: ApproverConfig | null;
+
+  /**
+   * 推荐新结构：
+   * {
+   *   department: {},
+   *   approvers: []
+   * }
+   */
+  department?: DepartmentInfo;
+
+  /**
+   * 兼容两种：
+   * 1. approvers: []
+   * 2. approvers: { department: {}, approvers: [] }
+   */
+  approvers?: ApproverItem[] | ApproverConfig | null;
+
   items: StagedFileItem[];
 };
 
 const statusOptions = [
   { label: '全部', value: '' },
   { label: '待审批', value: 'pending' },
-  { label: '已通过', value: 'approved' },
-  { label: '入库中', value: 'committing' },
-  { label: '已入库', value: 'committed' },
+  { label: '已提交 OA', value: 'oa_submitted' },
+  { label: '一级审批中', value: 'pending_level_1' },
+  { label: '二级审批中', value: 'pending_level_2' },
+  { label: '审批通过', value: 'approved' },
+  { label: '入库中', value: 'importing' },
+  { label: '已入库', value: 'imported' },
+  { label: '部分入库', value: 'partial_imported' },
   { label: '已拒绝', value: 'rejected' },
-  { label: '失败', value: 'failed' },
+  { label: '入库失败', value: 'import_failed' },
 ];
 
 const statusTextMap: Record<string, string> = {
   pending: '待审批',
-  approved: '已通过',
+  oa_submitted: '已提交 OA',
+  pending_approval: '审批中',
+  pending_level_1: '一级审批中',
+  pending_level_2: '二级审批中',
+  approved: '审批通过，准备入库',
+
   committing: '入库中',
-  committed: '已入库',
+  importing: '入库中',
+
+  imported: '已入库',
+  partial_imported: '部分入库',
+
   rejected: '已拒绝',
+
   failed: '失败',
+  import_failed: '入库失败',
+
+  callback_success: '回调成功',
+  callback_failed: '回调失败',
+
   deleted: '已删除',
 };
 
-const statusColorMap: Record<string, string> = {
-  pending: 'orange',
-  approved: 'blue',
-  committing: 'processing',
-  committed: 'green',
-  rejected: 'red',
-  failed: 'red',
-  deleted: 'default',
+const statusColorMap: Record<string, React.CSSProperties> = {
+  pending: {
+    color: '#0f766e',
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  oa_submitted: {
+    color: '#0f766e',
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  pending_approval: {
+    color: '#0f766e',
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  pending_level_1: {
+    color: '#0f766e',
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  pending_level_2: {
+    color: '#0f766e',
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  approved: {
+    color: '#047857',
+    backgroundColor: '#ecfdf5',
+    borderColor: '#86efac',
+  },
+  committing: {
+    color: '#0f766e',
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  importing: {
+    color: '#0f766e',
+    backgroundColor: '#f0fdfa',
+    borderColor: '#99f6e4',
+  },
+  imported: {
+    color: '#ffffff',
+    backgroundColor: '#16a36f',
+    borderColor: '#16a36f',
+  },
+  partial_imported: {
+    color: '#a16207',
+    backgroundColor: '#fefce8',
+    borderColor: '#fde68a',
+  },
+  rejected: {
+    color: '#b91c1c',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  failed: {
+    color: '#b91c1c',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  import_failed: {
+    color: '#b91c1c',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  callback_failed: {
+    color: '#b91c1c',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  callback_success: {
+    color: '#047857',
+    backgroundColor: '#ecfdf5',
+    borderColor: '#86efac',
+  },
+  deleted: {
+    color: '#6b7280',
+    backgroundColor: '#f9fafb',
+    borderColor: '#d1d5db',
+  },
 };
 
 const formatFileSize = (size?: number) => {
@@ -145,6 +290,105 @@ const formatFileSize = (size?: number) => {
   }
 
   return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
+};
+
+const isApproverArray = (value: unknown): value is ApproverItem[] => {
+  return Array.isArray(value);
+};
+
+const uniqueApprovers = (list: ApproverItem[]) => {
+  const result: ApproverItem[] = [];
+  const added = new Set<string>();
+
+  list.forEach((item) => {
+    if (!item) return;
+
+    const key = String(item.user_id || '');
+
+    if (!key) return;
+
+    if (added.has(key)) return;
+
+    result.push(item);
+    added.add(key);
+  });
+
+  return result;
+};
+
+/**
+ * 兼容后端不同返回结构，统一整理成：
+ * {
+ *   department,
+ *   approvers
+ * }
+ */
+const normalizeApproverConfig = (
+  data?: ListResponseData | null,
+): ApproverConfig | null => {
+  if (!data) {
+    return null;
+  }
+
+  const rawApprovers = data.approvers;
+
+  /**
+   * 新推荐结构：
+   * {
+   *   department: {},
+   *   approvers: []
+   * }
+   */
+  if (Array.isArray(rawApprovers)) {
+    return {
+      department: data.department || null,
+      approvers: uniqueApprovers(rawApprovers),
+    };
+  }
+
+  /**
+   * 老结构或嵌套结构：
+   * {
+   *   approvers: {
+   *     department: {},
+   *     approvers: []
+   *   }
+   * }
+   */
+  if (rawApprovers && typeof rawApprovers === 'object') {
+    const config = rawApprovers as ApproverConfig;
+
+    const list = config.approvers || [
+      ...(config.level_1 || []),
+      ...(config.level_2 || []),
+    ];
+
+    return {
+      department: config.department || data.department || null,
+      approvers: uniqueApprovers(list),
+      level_1: config.level_1,
+      level_2: config.level_2,
+    };
+  }
+
+  return {
+    department: data.department || null,
+    approvers: [],
+  };
+};
+
+/**
+ * 获取每一行文件的审批人。
+ * 优先使用新字段，兼容老字段。
+ */
+const getRowApprovers = (record: StagedFileItem): ApproverItem[] => {
+  const list = record.approvers ||
+    record.approval_users || [
+      ...(record.approval_level_1 || []),
+      ...(record.approval_level_2 || []),
+    ];
+
+  return uniqueApprovers(list || []);
 };
 
 type CollapsibleTagListProps = {
@@ -206,23 +450,39 @@ const CollapsibleTagList: React.FC<CollapsibleTagListProps> = ({
 
       {tags.length > defaultCount ? (
         <span
-          onClick={() => setExpanded(!expanded)}
+          role="button"
+          tabIndex={0}
+          aria-label={expanded ? '收起标签' : '展开标签'}
+          onClick={() => setExpanded((value) => !value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setExpanded((value) => !value);
+            }
+          }}
           style={{
             position: 'absolute',
             right: 0,
             top: 0,
             cursor: 'pointer',
-            color: '#999',
-            fontSize: 12,
-            lineHeight: '18px',
+            color: '#9ca3af',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 16,
-            height: 18,
+            width: 18,
+            height: 20,
+            borderRadius: 4,
+            transition: 'background-color 180ms ease',
           }}
         >
-          {expanded ? <UpOutlined /> : <DownOutlined />}
+          <DownOutlined
+            style={{
+              fontSize: 10,
+              color: expanded ? PEACOCK_GREEN : '#9ca3af',
+              transition: 'transform 180ms ease, color 180ms ease',
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}
+          />
         </span>
       ) : null}
     </div>
@@ -253,57 +513,140 @@ const renderTagValue = (tags?: FileTagItem[] | null, typeCode?: string) => {
   return <CollapsibleTagList tags={optionNames} defaultCount={1} />;
 };
 
-const renderApproverList = (approvers?: ApproverItem[] | null) => {
-  if (!approvers || approvers.length === 0) {
-    return <Text type="secondary">暂无</Text>;
-  }
-
+const getApproverName = (item: ApproverItem) => {
   return (
-    <Space direction="vertical" size={2}>
-      {approvers.map((item, index) => {
-        const displayName =
-          item.user_name || item.mdm_name || item.user_id || '未知人员';
-
-        const tooltipText = [
-          item.email,
-          item.mdm_code ? `MDM：${item.mdm_code}` : '',
-          item.department_name,
-          item.role_name,
-        ]
-          .filter(Boolean)
-          .join(' / ');
-
-        return (
-          <Tooltip
-            key={`${item.user_id}_${item.role_id || 'none'}_${index}`}
-            title={tooltipText || item.user_id}
-          >
-            <Tag
-              style={{
-                marginRight: 0,
-                marginBottom: 2,
-                backgroundColor: PEACOCK_GREEN,
-                borderColor: PEACOCK_GREEN,
-                color: '#fff',
-              }}
-            >
-              {displayName}
-            </Tag>
-          </Tooltip>
-        );
-      })}
-    </Space>
+    item.user_name ||
+    item.approver_name ||
+    item.name ||
+    item.user_id ||
+    item.approver_user_id ||
+    item.id ||
+    '-'
   );
 };
 
-const renderApproverConfig = (approvers?: ApproverConfig | null) => {
-  if (!approvers) {
+const CollapsibleApproverList: React.FC<CollapsibleApproverListProps> = ({
+  approvers = [],
+  defaultCount = 1,
+}) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!approvers || approvers.length === 0) {
+    return <Text type="secondary">-</Text>;
+  }
+
+  const visibleApprovers = expanded
+    ? approvers
+    : approvers.slice(0, defaultCount);
+
+  const hasMore = approvers.length > defaultCount;
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        minWidth: 0,
+        boxSizing: 'border-box',
+        paddingRight: hasMore ? 18 : 0,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 4,
+          width: '100%',
+          minWidth: 0,
+          alignItems: 'flex-start',
+        }}
+      >
+        {visibleApprovers.map((item, index) => {
+          const name = getApproverName(item);
+          const key =
+            item.user_id ||
+            item.approver_user_id ||
+            item.id ||
+            `${name}_${index}`;
+
+          return (
+            <Tag
+              key={key}
+              title={name}
+              style={{
+                marginRight: 0,
+                marginBottom: 2,
+                backgroundColor: '#f3f4f6',
+                borderColor: '#d1d5db',
+                color: '#4b5563',
+                fontSize: 12,
+                lineHeight: '20px',
+                borderRadius: 4,
+                padding: '0 8px',
+                whiteSpace: 'normal',
+                wordBreak: 'break-all',
+                maxWidth: '100%',
+              }}
+            >
+              {name}
+            </Tag>
+          );
+        })}
+      </div>
+
+      {hasMore ? (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={() => setExpanded((value) => !value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setExpanded((value) => !value);
+            }
+          }}
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 1,
+            cursor: 'pointer',
+            color: '#0f766e',
+            fontSize: 12,
+            lineHeight: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 16,
+            height: 18,
+          }}
+        >
+          <DownOutlined
+            style={{
+              fontSize: 10,
+              color: expanded ? PEACOCK_GREEN : '#9ca3af',
+              transition: 'transform 180ms ease, color 180ms ease',
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}
+          />
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+const renderApproverList = (approvers?: ApproverItem[] | null) => {
+  return (
+    <CollapsibleApproverList approvers={approvers || []} defaultCount={1} />
+  );
+};
+
+const renderApproverConfig = (config?: ApproverConfig | null) => {
+  if (!config) {
     return null;
   }
 
-  const department = approvers.department;
-  const level1 = approvers.level_1 || [];
-  const level2 = approvers.level_2 || [];
+  const department = config.department;
+  const approverList = config.approvers || [];
 
   return (
     <Card
@@ -335,60 +678,42 @@ const renderApproverConfig = (approvers?: ApproverConfig | null) => {
       <Space direction="vertical" size={6} style={{ width: '100%' }}>
         <div>
           <Text strong style={{ fontSize: 12 }}>
-            一级审批人：
+            审批人：
           </Text>{' '}
-          {level1.length > 0 ? (
+          {approverList.length > 0 ? (
             <Space wrap size={4}>
-              {level1.map((item, index) => (
-                <Tooltip
-                  key={`config-level1-${item.user_id}-${index}`}
-                  title={item.email || item.user_id}
-                >
-                  <Tag
-                    style={{
-                      marginRight: 0,
-                      marginBottom: 2,
-                      backgroundColor: PEACOCK_GREEN,
-                      borderColor: PEACOCK_GREEN,
-                      color: '#fff',
-                    }}
-                  >
-                    {item.user_name || item.mdm_name || item.user_id}
-                  </Tag>
-                </Tooltip>
-              ))}
-            </Space>
-          ) : (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              暂无
-            </Text>
-          )}
-        </div>
+              {approverList.map((item, index) => {
+                const displayName =
+                  item.user_name || item.mdm_name || item.user_id || '未知人员';
 
-        <div>
-          <Text strong style={{ fontSize: 12 }}>
-            二级审批人：
-          </Text>{' '}
-          {level2.length > 0 ? (
-            <Space wrap size={4}>
-              {level2.map((item, index) => (
-                <Tooltip
-                  key={`config-level2-${item.user_id}-${index}`}
-                  title={item.email || item.user_id}
-                >
-                  <Tag
-                    style={{
-                      marginRight: 0,
-                      marginBottom: 2,
-                      backgroundColor: PEACOCK_GREEN,
-                      borderColor: PEACOCK_GREEN,
-                      color: '#fff',
-                    }}
+                const tooltipText = [
+                  item.email,
+                  item.mdm_code ? `MDM：${item.mdm_code}` : '',
+                  item.department_name,
+                  item.role_name,
+                ]
+                  .filter(Boolean)
+                  .join(' / ');
+
+                return (
+                  <Tooltip
+                    key={`config-approver-${item.user_id}-${index}`}
+                    title={tooltipText || item.user_id}
                   >
-                    {item.user_name || item.mdm_name || item.user_id}
-                  </Tag>
-                </Tooltip>
-              ))}
+                    <Tag
+                      style={{
+                        marginRight: 0,
+                        marginBottom: 2,
+                        backgroundColor: PEACOCK_GREEN,
+                        borderColor: PEACOCK_GREEN,
+                        color: '#fff',
+                      }}
+                    >
+                      {displayName}
+                    </Tag>
+                  </Tooltip>
+                );
+              })}
             </Space>
           ) : (
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -408,13 +733,17 @@ type StagedFileListPageProps = {
 const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
   kbId: propKbId,
 }) => {
+  const [statusSelectOpen, setStatusSelectOpen] = useState(false);
   const params = useParams<{ id: string }>();
   const kbId = propKbId || params.id || '';
 
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState<StagedFileItem[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [approvers, setApprovers] = useState<ApproverConfig | null>(null);
+  const [isApprover, setIsApprover] = useState(false);
+  const [approverConfig, setApproverConfig] = useState<ApproverConfig | null>(
+    null,
+  );
 
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -458,10 +787,13 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
 
       const data: ListResponseData = result.data || {};
 
+      const normalizedApproverConfig = normalizeApproverConfig(data);
+
       setDataSource(data.items || []);
       setTotal(data.total || 0);
       setIsAdmin(!!data.is_admin);
-      setApprovers(data.approvers || null);
+      setIsApprover(!!data.is_approver);
+      setApproverConfig(normalizedApproverConfig);
       setPage(data.page || nextPage);
       setPageSize(data.page_size || nextPageSize);
     } catch (error) {
@@ -503,7 +835,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: tagType.type_name,
       dataIndex: 'tags',
       key: `tag_${tagType.type_code}`,
-      width: 180,
+      // width: 180,
       render: (tags: FileTagItem[] | null | undefined) =>
         renderTagValue(tags, tagType.type_code),
       onCell: () => ({
@@ -521,7 +853,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '文件名',
       dataIndex: 'filename',
       key: 'filename',
-      width: 180,
+      // width: 180,
       render: (text: string) => (
         <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>
           <Text style={{ fontSize: 12 }}>{text}</Text>
@@ -539,7 +871,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '上传人',
       dataIndex: 'user_name',
       key: 'user_name',
-      width: 110,
+      // width: 110,
       render: (_value, record) => (
         <Text style={{ fontSize: 12 }}>
           {record.user_name || record.user_id || '-'}
@@ -555,15 +887,29 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 90,
-      render: (value: string) => (
-        <Tag
-          color={statusColorMap[value] || 'default'}
-          style={{ marginRight: 0 }}
-        >
-          {statusTextMap[value] || value || '-'}
-        </Tag>
-      ),
+      render: (value: string | undefined) => {
+        const normalizedStatus = String(value || '').trim();
+
+        return (
+          <Tag
+            style={{
+              ...(statusColorMap[normalizedStatus] || {
+                color: '#6b7280',
+                backgroundColor: '#f9fafb',
+                borderColor: '#d1d5db',
+              }),
+              marginInlineEnd: 0,
+              borderRadius: 4,
+              fontSize: 12,
+              lineHeight: '20px',
+              padding: '0 7px',
+              fontWeight: 500,
+            }}
+          >
+            {statusTextMap[normalizedStatus] || normalizedStatus || '-'}
+          </Tag>
+        );
+      },
       onCell: () => ({
         style: {
           verticalAlign: 'top',
@@ -574,25 +920,11 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
     ...tagColumns,
 
     {
-      title: '一级审批人',
-      dataIndex: 'approval_level_1',
-      key: 'approval_level_1',
-      width: 140,
-      render: (value: ApproverItem[] | null | undefined) =>
-        renderApproverList(value),
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
-        },
-      }),
-    },
-    {
-      title: '二级审批人',
-      dataIndex: 'approval_level_2',
-      key: 'approval_level_2',
-      width: 140,
-      render: (value: ApproverItem[] | null | undefined) =>
-        renderApproverList(value),
+      title: '审批人',
+      dataIndex: 'approvers',
+      key: 'approvers',
+      // width: 160,
+      render: (_value, record) => renderApproverList(getRowApprovers(record)),
       onCell: () => ({
         style: {
           verticalAlign: 'top',
@@ -603,8 +935,9 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '大小',
       dataIndex: 'size',
       key: 'size',
-      width: 80,
-      render: (value: number | undefined) => formatFileSize(value),
+      render: (value: number | undefined) => (
+        <span className="text-xs text-gray-400">{formatFileSize(value)}</span>
+      ),
       onCell: () => ({
         style: {
           verticalAlign: 'top',
@@ -615,8 +948,9 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '上传时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 120,
-      render: (value: string | undefined) => value || '-',
+      render: (value: string | undefined) => (
+        <span className="text-xs text-gray-400">{value || '-'}</span>
+      ),
       onCell: () => ({
         style: {
           verticalAlign: 'top',
@@ -627,8 +961,9 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '审批时间',
       dataIndex: 'approved_at',
       key: 'approved_at',
-      width: 120,
-      render: (value: string | null | undefined) => value || '-',
+      render: (value: string | null | undefined) => (
+        <span className="text-xs text-text-secondary">{value || '-'}</span>
+      ),
       onCell: () => ({
         style: {
           verticalAlign: 'top',
@@ -639,8 +974,9 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '入库时间',
       dataIndex: 'committed_at',
       key: 'committed_at',
-      width: 120,
-      render: (value: string | null | undefined) => value || '-',
+      render: (value: string | null | undefined) => (
+        <span className="text-xs text-text-secondary">{value || '-'}</span>
+      ),
       onCell: () => ({
         style: {
           verticalAlign: 'top',
@@ -655,17 +991,27 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
     fetchStagedFiles(1, pageSize, value);
   };
 
+  const viewTag = isAdmin ? (
+    <Tag color="gold">管理员视图</Tag>
+  ) : isApprover ? (
+    <Tag color="green">审批人视图</Tag>
+  ) : (
+    <Tag>个人视图</Tag>
+  );
+
   return (
     <div style={{ fontSize: 12, lineHeight: 1.3 }}>
-      {renderApproverConfig(approvers)}
+      {/* {renderApproverConfig(approverConfig)} */}
 
       <Card
         size="small"
+        // bordered={false}
+
         bodyStyle={{ padding: 12 }}
         title={
           <Space size={8}>
-            <span>暂存文件列表</span>
-            {isAdmin ? <Tag color="gold">管理员视图</Tag> : <Tag>个人视图</Tag>}
+            <span>上传日志</span>
+            {/* {viewTag} */}
           </Space>
         }
         extra={
@@ -677,13 +1023,13 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
               options={statusOptions}
               onChange={handleStatusChange}
             />
-            <Button
+            {/* <Button
               size="small"
               icon={<ReloadOutlined />}
               onClick={() => fetchStagedFiles(page, pageSize, status)}
             >
               刷新
-            </Button>
+            </Button> */}
           </Space>
         }
       >

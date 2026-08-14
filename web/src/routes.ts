@@ -182,6 +182,17 @@ const routes = [
       },
     ],
   },
+  {
+    path: '/oa',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/oa',
+        component: '@/pages/oa',
+      },
+    ],
+  },
 
   {
     path: '/role',

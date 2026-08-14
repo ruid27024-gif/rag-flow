@@ -214,8 +214,9 @@ class RoleService(CommonService):
         return list(rows)
 
     # 获取所有审批人
-    @classmethod
-    def get_approval_users_by_department(cls, department_id):
+    # @classmethod
+    # def get_approval_users_by_department(cls, department_id):
+
         """
         根据部门 ID 获取审批人员，并按审批顺序分组。
 
@@ -404,5 +405,183 @@ class RoleService(CommonService):
 
             result[level_key].append(item)
             added_user_ids[level_key].add(row.user_id)
+
+        return result
+
+    # 获取所有审批人
+    @classmethod
+    def get_approval_users_by_department(cls, department_id):
+        """
+        根据部门 ID 获取审批人员。
+
+        新规则：
+        - 不再区分一级、二级审批。
+        - 只要角色具备审批权限，就是审批人。
+
+        审批角色筛选条件由 get_approval_roles_by_department 处理：
+        - Role.department_id 包含当前 department_id
+        - Role.need_approval = True
+        - Role.enabled = True
+
+        人员关联关系：
+        RoleUser.user_id -> User.id
+        User.email -> SyncPerson.phone
+
+        返回：
+        {
+            "approvers": [
+                {
+                    "user_id": "...",
+                    "user_name": "...",
+                    "email": "...",
+                    "avatar": null,
+                    "mdm_code": "...",
+                    "mdm_name": "...",
+                    "department_id": "...",
+                    "department_name": "...",
+                    "role_id": 1,
+                    "role_name": "..."
+                }
+            ]
+        }
+        """
+
+        if not department_id:
+            return {
+                "approvers": [],
+            }
+
+        # 1. 查询当前部门可用的审批角色。
+        roles = cls.get_approval_roles_by_department(department_id)
+
+        if not roles:
+            return {
+                "approvers": [],
+            }
+
+        role_ids = [role.id for role in roles]
+
+        # 2. 查询角色绑定的用户。
+        role_user_rows = list(
+            RoleUser
+            .select(
+                RoleUser.role_id,
+                RoleUser.user_id,
+            )
+            .where(RoleUser.role_id.in_(role_ids))
+        )
+
+        if not role_user_rows:
+            return {
+                "approvers": [],
+            }
+
+        role_map = {
+            role.id: role
+            for role in roles
+        }
+
+        user_ids = list({
+            row.user_id
+            for row in role_user_rows
+            if row.user_id
+        })
+
+        if not user_ids:
+            return {
+                "approvers": [],
+            }
+
+        # 3. 批量查询系统用户。
+        users = (
+            User
+            .select(
+                User.id,
+                User.nickname,
+                User.email,
+                User.avatar,
+            )
+            .where(User.id.in_(user_ids))
+        )
+
+        user_map = {}
+
+        for user in users:
+            user_map[user.id] = {
+                "id": user.id,
+                "nickname": user.nickname,
+                "email": user.email,
+                "avatar": user.avatar,
+            }
+
+        # 4. 用 User.email 对应 SyncPerson.phone，批量查询人员主数据。
+        emails = list({
+            user["email"]
+            for user in user_map.values()
+            if user.get("email")
+        })
+
+        sync_person_map = {}
+
+        if emails:
+            sync_person_rows = (
+                SyncPerson
+                .select(
+                    SyncPerson.phone,
+                    SyncPerson.mdmCode,
+                    SyncPerson.mdmName,
+                    SyncPerson.organizationCode,
+                    SyncPerson.organize,
+                )
+                .where(SyncPerson.phone.in_(emails))
+            )
+
+            for person in sync_person_rows:
+                sync_person_map[person.phone] = {
+                    "mdm_code": person.mdmCode,
+                    "mdm_name": person.mdmName,
+                    "department_id": person.organizationCode,
+                    "department_name": person.organize,
+                }
+
+        result = {
+            "approvers": [],
+        }
+
+        added_user_ids = set()
+
+        # 5. 组织审批人列表，不再按 approval_order 分组。
+        for row in role_user_rows:
+            role = role_map.get(row.role_id)
+
+            if not role:
+                continue
+
+            user = user_map.get(row.user_id)
+            user_email = user["email"] if user else None
+            sync_person = sync_person_map.get(user_email, {})
+
+            # 同一个用户可能绑定多个审批角色，这里只保留一次。
+            if row.user_id in added_user_ids:
+                continue
+
+            item = {
+                "user_id": row.user_id,
+                "user_name": user["nickname"] if user else row.user_id,
+                "email": user_email,
+                "avatar": user["avatar"] if user else None,
+
+                # SyncPerson 数据，关联条件为 User.email == SyncPerson.phone。
+                "mdm_code": sync_person.get("mdm_code"),
+                "mdm_name": sync_person.get("mdm_name"),
+                "department_id": sync_person.get("department_id"),
+                "department_name": sync_person.get("department_name"),
+
+                "role_id": role.id,
+                "role_name": role.role_name,
+            }
+
+            result["approvers"].append(item)
+            added_user_ids.add(row.user_id)
 
         return result

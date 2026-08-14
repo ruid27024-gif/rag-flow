@@ -1013,14 +1013,14 @@ const RoleListPage: React.FC = () => {
   const columns = [
     {
       title: '序号',
-      width: 60,
+      // width: 60,
       align: 'center' as const,
       render: (_: any, __: RoleItem, index: number) => index + 1,
     },
     {
       title: '角色名称',
       dataIndex: 'role_name',
-      width: 120,
+      // width: 120,
       ellipsis: true,
       align: 'center' as const,
       render: (value: string) => (
@@ -1044,7 +1044,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '文件权限',
       dataIndex: 'file_permission_level',
-      width: 100,
+      // width: 100,
       align: 'center' as const,
       render: (value: number) => {
         const isPublic = value === FILE_PERMISSION_LEVEL.PUBLIC;
@@ -1064,7 +1064,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '操作权限',
       dataIndex: 'operation_permission_mask',
-      width: 260,
+      // width: 260,
       align: 'center' as const,
       render: (mask: number) => {
         const permissions = parseOperationPermissions(mask || 0);
@@ -1106,7 +1106,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '审批序号',
       dataIndex: 'approval_order',
-      width: 120,
+      // width: 120,
       align: 'center' as const,
       render: (value: number) =>
         value ? (
@@ -1131,7 +1131,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '所属部门',
       dataIndex: 'department_id',
-      width: 210,
+      // width: 210,
       render: (_: any, record: RoleItem) => {
         const ids = normalizeDepartmentIds(
           record.department_ids || record.department_id,
@@ -1219,7 +1219,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '管理员权限',
       dataIndex: 'is_admin',
-      width: 120,
+      // width: 120,
       align: 'center' as const,
       render: (value: boolean) =>
         value ? (
@@ -1231,7 +1231,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '覆盖下级部门',
       dataIndex: 'cover_child_dept',
-      width: 120,
+      // width: 120,
       align: 'center' as const,
       render: (value: boolean) =>
         value ? (
@@ -1243,7 +1243,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '状态',
       dataIndex: 'enabled',
-      width: 110,
+      // width: 110,
       align: 'center' as const,
       render: (enabled: boolean, record: RoleItem) => (
         <Switch
@@ -1265,7 +1265,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '创建人',
       dataIndex: 'created_by_name',
-      width: 130,
+      // width: 130,
       align: 'center' as const,
       render: (_: string, record: RoleItem) => {
         const name = record.created_by_name || record.created_by || '-';
@@ -1318,7 +1318,7 @@ const RoleListPage: React.FC = () => {
     {
       title: '创建时间',
       dataIndex: 'created_time',
-      width: 100,
+      // width: 100,
       render: (value: string | number) => (
         <span style={timeCellStyle}>{formatDateTime(value)}</span>
       ),
@@ -1327,14 +1327,14 @@ const RoleListPage: React.FC = () => {
     {
       title: '更新时间',
       dataIndex: 'updated_time',
-      width: 100,
+      // width: 100,
       render: (value: string | number) => (
         <span style={timeCellStyle}>{formatDateTime(value)}</span>
       ),
     },
     {
       title: '操作',
-      width: 160,
+      // width: 160,
       fixed: 'right' as const,
       align: 'center' as const,
       render: (_: any, record: RoleItem) => (
@@ -1471,7 +1471,7 @@ const RoleListPage: React.FC = () => {
                 display: 'inline-block',
               }}
             />
-            角色列表
+            角色管理
           </div>
 
           <div

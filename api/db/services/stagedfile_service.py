@@ -348,6 +348,130 @@ class StagedFileService(CommonService):
             "department_name": person.organize,
         }
     
+    # @classmethod
+    # def get_kb_approvers(cls, kb_id):
+    #     """
+    #     根据知识库获取审批人员。
+
+    #     规则：
+    #     1. 全局参考库、部门参考库：
+    #     只根据部门配置查询审批角色，不额外添加知识库所属人。
+
+    #     2. 普通知识库：
+    #     tenant_id 是知识库所属用户的 user_id。
+    #     如果该用户不在一级或二级审批人员中，则自动加入一级审批人员。
+    #     """
+
+    #     dept_info = cls.get_department_by_kb_id(kb_id)
+
+    #     if not dept_info:
+    #         return {
+    #             "department": None,
+    #             "level_1": [],
+    #             "level_2": [],
+    #         }
+
+    #     # 获取部门id
+    #     department_id = dept_info.get("department_id")
+        
+    #     if not department_id:
+    #         return {
+    #             "department": {
+    #                 "department_id": None,
+    #                 "department_name": dept_info.get("department_name"),
+    #                 "is_reference_kb": dept_info.get("is_reference_kb", False),
+    #                 "is_global_reference_kb": dept_info.get(
+    #                     "is_global_reference_kb",
+    #                     False,
+    #                 ),
+    #                 "tenant_id": dept_info.get("tenant_id"),
+    #             },
+    #             "level_1": [],
+    #             "level_2": [],
+    #         }
+
+    #     # 根据部门获取配置的一级、二级审批人员。
+    #     approval_users = RoleService.get_approval_users_by_department(
+    #         department_id
+    #     )
+
+    #     level_1 = list(approval_users.get("level_1", []))
+    #     level_2 = list(approval_users.get("level_2", []))
+
+    #     is_reference_kb = dept_info.get("is_reference_kb", False)
+
+    #     # 参考库不追加 tenant_id 对应的人员。
+    #     # 普通知识库才需要判断所属用户是否已经在审批人中。
+    #     if not is_reference_kb:
+    #         owner_user_id = dept_info.get("owner_user_id")
+
+    #         # 兼容 get_department_by_kb_id 没有返回 owner_user_id 的情况。
+    #         if not owner_user_id:
+    #             owner_user_id = dept_info.get("tenant_id")
+
+    #         if owner_user_id:
+    #             approver_user_ids = {
+    #                 item.get("user_id")
+    #                 for item in level_1 + level_2
+    #                 if item.get("user_id")
+    #             }
+
+    #             # 所属用户不在一级、二级审批人员中时，
+    #             # 自动加入一级审批人员。
+    #             if owner_user_id not in approver_user_ids:
+    #                 owner = User.get_or_none(User.id == owner_user_id)
+
+    #                 if owner:
+    #                     owner_email = owner.email
+
+    #                     sync_person = (
+    #                         SyncPerson
+    #                         .select(
+    #                             SyncPerson.phone,
+    #                             SyncPerson.mdmCode,
+    #                             SyncPerson.mdmName,
+    #                             SyncPerson.organizationCode,
+    #                             SyncPerson.organize,
+    #                         )
+    #                         .where(SyncPerson.phone == owner_email)
+    #                         .first()
+    #                     )
+
+    #                     level_1.insert(0, {
+    #                         "user_id": owner.id,
+    #                         "user_name": owner.nickname or owner.id,
+    #                         "email": owner.email,
+    #                         "avatar": owner.avatar,
+
+    #                         "mdm_code": sync_person.mdmCode
+    #                         if sync_person else None,
+    #                         "mdm_name": sync_person.mdmName
+    #                         if sync_person else None,
+    #                         "department_id": sync_person.organizationCode
+    #                         if sync_person else None,
+    #                         "department_name": sync_person.organize
+    #                         if sync_person else None,
+
+    #                         "role_id": None,
+    #                         "role_name": "知识库所属人",
+    #                         "approval_order": 1,
+    #                     })
+
+    #     return {
+    #         "department": {
+    #             "department_id": department_id,
+    #             "department_name": dept_info.get("department_name"),
+    #             "is_reference_kb": is_reference_kb,
+    #             "is_global_reference_kb": dept_info.get(
+    #                 "is_global_reference_kb",
+    #                 False,
+    #             ),
+    #             "tenant_id": dept_info.get("tenant_id"),
+    #         },
+    #         "level_1": level_1,
+    #         "level_2": level_2,
+    #     }
+
     @classmethod
     def get_kb_approvers(cls, kb_id):
         """
@@ -359,7 +483,10 @@ class StagedFileService(CommonService):
 
         2. 普通知识库：
         tenant_id 是知识库所属用户的 user_id。
-        如果该用户不在一级或二级审批人员中，则自动加入一级审批人员。
+        如果该用户不在审批人员中，则自动加入审批人员。
+
+        3. 不再区分一级、二级审批。
+        只要具备审批权限，就是审批人。
         """
 
         dept_info = cls.get_department_by_kb_id(kb_id)
@@ -367,10 +494,10 @@ class StagedFileService(CommonService):
         if not dept_info:
             return {
                 "department": None,
-                "level_1": [],
-                "level_2": [],
+                "approvers": [],
             }
 
+        # 获取部门 id
         department_id = dept_info.get("department_id")
 
         if not department_id:
@@ -385,17 +512,15 @@ class StagedFileService(CommonService):
                     ),
                     "tenant_id": dept_info.get("tenant_id"),
                 },
-                "level_1": [],
-                "level_2": [],
+                "approvers": [],
             }
 
-        # 根据部门获取配置的一级、二级审批人员。
+        # 根据部门获取配置的审批人员。
         approval_users = RoleService.get_approval_users_by_department(
             department_id
         )
 
-        level_1 = list(approval_users.get("level_1", []))
-        level_2 = list(approval_users.get("level_2", []))
+        approvers = list(approval_users.get("approvers", []))
 
         is_reference_kb = dept_info.get("is_reference_kb", False)
 
@@ -410,14 +535,13 @@ class StagedFileService(CommonService):
 
             if owner_user_id:
                 approver_user_ids = {
-                    item.get("user_id")
-                    for item in level_1 + level_2
+                    str(item.get("user_id"))
+                    for item in approvers
                     if item.get("user_id")
                 }
 
-                # 所属用户不在一级、二级审批人员中时，
-                # 自动加入一级审批人员。
-                if owner_user_id not in approver_user_ids:
+                # 所属用户不在审批人员中时，自动加入审批人员。
+                if str(owner_user_id) not in approver_user_ids:
                     owner = User.get_or_none(User.id == owner_user_id)
 
                     if owner:
@@ -436,7 +560,7 @@ class StagedFileService(CommonService):
                             .first()
                         )
 
-                        level_1.insert(0, {
+                        approvers.insert(0, {
                             "user_id": owner.id,
                             "user_name": owner.nickname or owner.id,
                             "email": owner.email,
@@ -453,7 +577,6 @@ class StagedFileService(CommonService):
 
                             "role_id": None,
                             "role_name": "知识库所属人",
-                            "approval_order": 1,
                         })
 
         return {
@@ -467,10 +590,8 @@ class StagedFileService(CommonService):
                 ),
                 "tenant_id": dept_info.get("tenant_id"),
             },
-            "level_1": level_1,
-            "level_2": level_2,
+            "approvers": approvers,
         }
-
 
 
     @classmethod
@@ -575,49 +696,69 @@ class StagedFileService(CommonService):
         3. 上传人不属于审批人：
         - 保持知识库原有审批链。
         """
+        # # 获取到所有审批人员
+        # approver_config = cls.get_kb_approvers(kb_id)
+
+        # level_1 = list(approver_config.get("level_1", []))
+        # level_2 = list(approver_config.get("level_2", []))
+
+        # uploader_user_id = str(uploader_user_id)
+
+        # level_1_user_ids = {
+        #     str(item.get("user_id"))
+        #     for item in level_1
+        #     if item.get("user_id")
+        # }
+
+        # level_2_user_ids = {
+        #     str(item.get("user_id"))
+        #     for item in level_2
+        #     if item.get("user_id")
+        # }
+
+        # # 上传人是二级审批人：
+        # # 跳过全部一级审批，二级也不需要自己审批自己。
+        # if uploader_user_id in level_2_user_ids:
+        #     level_1 = []
+        #     level_2 = [
+        #         item
+        #         for item in level_2
+        #         if str(item.get("user_id")) != uploader_user_id
+        #     ]
+
+        # # 上传人只是一级审批人：
+        # # 一级不需要自己审批，保留二级审批。
+        # elif uploader_user_id in level_1_user_ids:
+        #     level_1 = [
+        #         item
+        #         for item in level_1
+        #         if str(item.get("user_id")) != uploader_user_id
+        #     ]
+
+        # return {
+        #     "department": approver_config.get("department"),
+        #     "level_1": level_1,
+        #     "level_2": level_2,
+        # }
 
         approver_config = cls.get_kb_approvers(kb_id)
 
-        level_1 = list(approver_config.get("level_1", []))
-        level_2 = list(approver_config.get("level_2", []))
-
+        approvers = list(approver_config.get("approvers", []))
         uploader_user_id = str(uploader_user_id)
 
-        level_1_user_ids = {
-            str(item.get("user_id"))
-            for item in level_1
-            if item.get("user_id")
-        }
+        uploader_is_approver = any(
+            str(item.get("user_id")) == uploader_user_id
+            for item in approvers
+        )
 
-        level_2_user_ids = {
-            str(item.get("user_id"))
-            for item in level_2
-            if item.get("user_id")
-        }
-
-        # 上传人是二级审批人：
-        # 跳过全部一级审批，二级也不需要自己审批自己。
-        if uploader_user_id in level_2_user_ids:
-            level_1 = []
-            level_2 = [
-                item
-                for item in level_2
-                if str(item.get("user_id")) != uploader_user_id
-            ]
-
-        # 上传人只是一级审批人：
-        # 一级不需要自己审批，保留二级审批。
-        elif uploader_user_id in level_1_user_ids:
-            level_1 = [
-                item
-                for item in level_1
-                if str(item.get("user_id")) != uploader_user_id
-            ]
+        if uploader_is_approver:
+            approvers = []
 
         return {
             "department": approver_config.get("department"),
-            "level_1": level_1,
-            "level_2": level_2,
+            "level_1": approvers,
+            "level_2": [],
+            "uploader_is_approver": uploader_is_approver,
         }
 
     

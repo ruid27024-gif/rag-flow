@@ -25,7 +25,7 @@ from api.apps import current_user, login_required
 from api.common.check_team_permission import check_kb_team_permission, check_kb_team_write_permission
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.db import VALID_FILE_TYPES, FileType
-from api.db.db_models import Task, SyncDept, SyncPerson,StagedFileTag,StagedFile,KnowledgeTagOption,KnowledgeTagType
+from api.db.db_models import Task, SyncDept, SyncPerson,StagedFileTag,StagedFile,KnowledgeTagOption,KnowledgeTagType,OAApprovalRequest,StagedFileApprovalRequest,StagedFileApprovalTask,OAApprovalTask
 from api.db.services import duplicate_name
 from api.db.services.document_service import DocumentService, doc_upload_and_parse
 from common.metadata_utils import meta_filter, convert_conditions
@@ -320,7 +320,6 @@ async def upload_report():
         return await asyncio.to_thread(_run_sync)
     except Exception as e:
         return server_error_response(e)
-
 
 # # 知识库的上传
 # @manager.route("/upload", methods=["POST"])  # noqa: F821
@@ -810,8 +809,10 @@ async def send_oa_approval_request(
     import httpx
     import time
 
-    oa_url = os.environ.get("OA_APPROVAL_URL")
-    callback_url = os.environ.get("OA_CALLBACK_URL")
+    # oa_url = os.environ.get("OA_APPROVAL_URL")
+    # callback_url = os.environ.get("OA_CALLBACK_URL")
+    oa_url='http://127.0.0.1:9380/v1/document/oa/mock/create'
+    callback_url='http://127.0.0.1:9380/v1/document/oa/approval/callback'
     oa_app_id = os.environ.get("OA_APP_ID", "ragflow")
     oa_secret = os.environ.get("OA_SECRET", "")
 
@@ -896,6 +897,7 @@ async def upload():
 
     form = await request.form
 
+    # 1. 登录校验
     if not current_user or not getattr(current_user, "id", None):
         return get_json_result(
             data=False,
@@ -914,6 +916,7 @@ async def upload():
             code=RetCode.ARGUMENT_ERROR,
         )
 
+    # 2. 标签解析
     try:
         tags = json.loads(tags_text or "{}")
     except Exception:
@@ -932,6 +935,7 @@ async def upload():
             code=RetCode.ARGUMENT_ERROR,
         )
 
+    # 3. 文件校验
     files = await request.files
     if "file" not in files:
         return get_json_result(
@@ -971,6 +975,7 @@ async def upload():
                 code=RetCode.ARGUMENT_ERROR,
             )
 
+    # 4. 知识库校验
     e, kb = KnowledgebaseService.get_by_id(kb_id)
     if not e:
         raise LookupError("Can't find this dataset!")
@@ -982,12 +987,24 @@ async def upload():
             code=RetCode.AUTHENTICATION_ERROR,
         )
 
+    # 5. 获取审批人
     approval_chain = StagedFileService.get_upload_approvers(
         kb_id=kb.id,
         uploader_user_id=uploader_id,
     )
     level_1_approvers = approval_chain.get("level_1", [])
     level_2_approvers = approval_chain.get("level_2", [])
+
+    # 6. RAGFlow 本地计算初始审批状态
+    if level_1_approvers:
+        init_status = "pending_level_1"
+        init_current_level = 1
+    elif level_2_approvers:
+        init_status = "pending_level_2"
+        init_current_level = 2
+    else:
+        init_status = "approved"
+        init_current_level = 0
 
     batch_id = get_uuid()
 
@@ -1020,9 +1037,11 @@ async def upload():
         return candidate
 
     try:
+        # 7. 创建 MinIO 临时桶
         if not client.bucket_exists(temp_bucket):
             client.make_bucket(temp_bucket)
 
+        # 8. 逐文件暂存
         for file_obj in file_objs:
             filename = file_obj.filename
             safe_filename = Path(filename).name
@@ -1032,11 +1051,13 @@ async def upload():
 
             blob = file_obj.read()
 
+            # 保存本地
             stage_path = get_available_stage_path(stage_dir, safe_filename)
             with open(stage_path, "wb") as f:
                 f.write(blob)
             saved_paths.append(stage_path)
 
+            # 上传 MinIO 临时桶
             client.put_object(
                 temp_bucket,
                 object_name,
@@ -1045,6 +1066,7 @@ async def upload():
             )
             saved_objects.append((temp_bucket, object_name))
 
+            # 生成预签名 URL
             file_url = client.presigned_get_object(
                 temp_bucket,
                 object_name,
@@ -1053,6 +1075,7 @@ async def upload():
 
             now = datetime.now()
 
+            # 写暂存文件表和标签表
             with DB.atomic():
                 StagedFile.insert({
                     "id": stage_id,
@@ -1101,9 +1124,13 @@ async def upload():
                 "tags": normalized_tags,
             })
 
-        # 提交给 OA
-        oa_url = os.environ.get("OA_APPROVAL_URL")
-        callback_url = os.environ.get("OA_CALLBACK_URL")
+        # 9. 提交给 OA
+        # 建议正式环境使用环境变量
+        # oa_url = os.environ.get("OA_APPROVAL_URL")
+        # callback_url = os.environ.get("OA_CALLBACK_URL")
+
+        oa_url = "http://localhost:9222/v1/document/oa/approval/create"
+        callback_url = "http://localhost:9222/v1/document/oa/approval/callback"
         oa_app_id = os.environ.get("OA_APP_ID", "ragflow")
         oa_secret = os.environ.get("OA_SECRET", "")
 
@@ -1139,12 +1166,23 @@ async def upload():
             )
 
         if resp.status_code >= 400:
-            raise RuntimeError(f"Submit OA approval failed: {resp.status_code}, {resp.text}")
+            raise RuntimeError(
+                f"Submit OA approval failed: {resp.status_code}, {resp.text}"
+            )
 
-        oa_result = resp.json()
-        oa_request_id = oa_result.get("request_id") or oa_result.get("process_instance_id")
+        # 10. 极简协议：OA 只返回 request_id
+        oa_resp_json = resp.json()
+        print(oa_resp_json)
 
-        # 写主表和任务表
+        oa_data = oa_resp_json.get("data", {})
+        oa_request_id = oa_data.get("request_id")
+
+        if not oa_request_id:
+            raise RuntimeError(f"OA response missing request_id: {resp.text}")
+
+        now = datetime.now()
+
+        # 11. 写 RAGFlow 审批主表和审批任务表
         with DB.atomic():
             StagedFileApprovalRequest.insert({
                 "id": oa_request_id,
@@ -1152,44 +1190,46 @@ async def upload():
                 "kb_id": kb.id,
                 "tenant_id": kb.tenant_id,
                 "uploader_user_id": uploader_id,
-                "status": oa_result.get("status", "pending_level_1"),
-                "current_level": oa_result.get("current_level", 1),
+                "status": init_status,
+                "current_level": init_current_level,
                 "callback_url": callback_url,
-                "created_at": datetime.now(),
-                "updated_at": datetime.now(),
+                "created_at": now,
+                "updated_at": now,
             }).execute()
 
-            for f in staged_files:
-                for approver in level_1_approvers:
-                    approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
-                    approver_name = approver.get("name") if isinstance(approver, dict) else None
-                    StagedFileApprovalTask.insert({
-                        "approval_id": oa_request_id,
-                        "batch_id": batch_id,
-                        "stage_id": f["id"],
-                        "level": 1,
-                        "approver_user_id": approver_user_id,
-                        "approver_name": approver_name,
-                        "status": "pending",
-                        "created_at": datetime.now(),
-                        "updated_at": datetime.now(),
-                    }).execute()
+            # 一级审批任务：每个审批人一条，不按文件拆
+            for approver in level_1_approvers:
+                approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+                approver_name = approver.get("name") if isinstance(approver, dict) else None
 
-                for approver in level_2_approvers:
-                    approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
-                    approver_name = approver.get("name") if isinstance(approver, dict) else None
-                    StagedFileApprovalTask.insert({
-                        "approval_id": oa_request_id,
-                        "batch_id": batch_id,
-                        "stage_id": f["id"],
-                        "level": 2,
-                        "approver_user_id": approver_user_id,
-                        "approver_name": approver_name,
-                        "status": "waiting",
-                        "created_at": datetime.now(),
-                        "updated_at": datetime.now(),
-                    }).execute()
+                StagedFileApprovalTask.insert({
+                    "approval_id": oa_request_id,
+                    "batch_id": batch_id,
+                    "level": 1,
+                    "approver_user_id": approver_user_id,
+                    "approver_name": approver_name,
+                    "status": "pending",
+                    "created_at": now,
+                    "updated_at": now,
+                }).execute()
 
+            # 二级审批任务：每个审批人一条，不按文件拆
+            for approver in level_2_approvers:
+                approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+                approver_name = approver.get("name") if isinstance(approver, dict) else None
+
+                StagedFileApprovalTask.insert({
+                    "approval_id": oa_request_id,
+                    "batch_id": batch_id,
+                    "level": 2,
+                    "approver_user_id": approver_user_id,
+                    "approver_name": approver_name,
+                    "status": "waiting",
+                    "created_at": now,
+                    "updated_at": now,
+                }).execute()
+
+            # 整批文件状态更新为已提交 OA
             StagedFile.update({
                 "status": "oa_submitted",
             }).where(
@@ -1203,12 +1243,14 @@ async def upload():
                 "oa_status": "submitted",
                 "files": staged_files,
                 "approvers": approval_chain,
-                "oa_response": oa_result,
+                "oa_response": oa_resp_json,
             }
         )
 
     except Exception as e:
         logging.exception("Stage upload failed.")
+
+        # 清理本地暂存文件
         for path in saved_paths:
             try:
                 if os.path.exists(path):
@@ -1216,11 +1258,16 @@ async def upload():
             except Exception:
                 logging.exception("Remove staged file failed: %s", path)
 
+        # 清理 MinIO 临时对象
         for bucket, obj_name in saved_objects:
             try:
                 client.remove_object(bucket, obj_name)
             except Exception:
-                logging.exception("Remove staged minio object failed: %s/%s", bucket, obj_name)
+                logging.exception(
+                    "Remove staged minio object failed: %s/%s",
+                    bucket,
+                    obj_name,
+                )
 
         return get_json_result(
             data=staged_files,
@@ -1232,7 +1279,6 @@ async def upload():
 @manager.route("/oa/approval/create", methods=["POST"])  # OA 侧接口
 async def create_approval_request():
     import os
-    import json
     from datetime import datetime
 
     oa_secret = os.environ.get("OA_SECRET", "")
@@ -1311,43 +1357,364 @@ async def create_approval_request():
             "updated_at": now,
         }).execute()
 
-        for f in files:
-            for approver in level_1:
-                approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
-                approver_name = approver.get("name") if isinstance(approver, dict) else None
-                OAApprovalTask.insert({
-                    "approval_id": approval_id,
-                    "batch_id": batch_id,
-                    "level": 1,
-                    "approver_user_id": approver_user_id,
-                    "approver_name": approver_name,
-                    "status": "pending",
-                    "created_at": now,
-                    "updated_at": now,
-                }).execute()
+        for approver in level_1:
+            approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+            approver_name = approver.get("name") if isinstance(approver, dict) else None
 
-            for approver in level_2:
-                approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
-                approver_name = approver.get("name") if isinstance(approver, dict) else None
-                OAApprovalTask.insert({
-                    "approval_id": approval_id,
-                    "batch_id": batch_id,
-                    "level": 2,
-                    "approver_user_id": approver_user_id,
-                    "approver_name": approver_name,
-                    "status": "waiting",
-                    "created_at": now,
-                    "updated_at": now,
-                }).execute()
+            OAApprovalTask.insert({
+                "approval_id": approval_id,
+                "batch_id": batch_id,
+                "level": 1,
+                "approver_user_id": approver_user_id,
+                "approver_name": approver_name,
+                "status": "pending",
+                "created_at": now,
+                "updated_at": now,
+            }).execute()
 
+        for approver in level_2:
+            approver_user_id = approver["user_id"] if isinstance(approver, dict) else approver
+            approver_name = approver.get("name") if isinstance(approver, dict) else None
+
+            OAApprovalTask.insert({
+                "approval_id": approval_id,
+                "batch_id": batch_id,
+                "level": 2,
+                "approver_user_id": approver_user_id,
+                "approver_name": approver_name,
+                "status": "waiting",
+                "created_at": now,
+                "updated_at": now,
+            }).execute()
+
+    # 极简协议：只返回 request_id
     return get_json_result(
         data={
             "request_id": approval_id,
-            "process_instance_id": approval_id,
-            "status": status,
-            "current_level": current_level,
         }
     )
+
+@manager.route("/oa/approval/level1/tasks", methods=["GET"])  # noqa: F821
+async def list_level1_approval_tasks():
+    approver_user_id = str(
+        request.args.get("approver_user_id") or ""
+    ).strip()
+
+    if not approver_user_id:
+        return get_json_result(
+            data=False,
+            message="Missing approver_user_id.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    tasks = list(
+        OAApprovalTask.select()
+        .where(
+            (OAApprovalTask.approver_user_id == approver_user_id) &
+            (OAApprovalTask.level == 1) &
+            (OAApprovalTask.status == "pending")
+        )
+        .order_by(OAApprovalTask.created_at.desc())
+    )
+
+    rows = []
+
+    for task in tasks:
+        approval = OAApprovalRequest.select().where(
+            OAApprovalRequest.id == task.approval_id
+        ).first()
+
+        if not approval:
+            continue
+
+        files = approval.files_json or []
+        approvers = approval.approvers_json or {}
+
+        rows.append({
+            "approval_id": approval.id,
+            "batch_id": approval.batch_id,
+            "kb_id": approval.kb_id,
+            "tenant_id": approval.tenant_id,
+            "uploader_user_id": approval.uploader_user_id,
+            "approval_status": approval.status,
+            "current_level": approval.current_level,
+            "task_id": getattr(task, "id", None),
+            "task_level": task.level,
+            "task_status": task.status,
+            "approver_user_id": task.approver_user_id,
+            "approver_name": task.approver_name,
+            "file_count": len(files),
+            "files": files,
+            "level_1_approvers": approvers.get("level_1", []),
+            "created_at": (
+                approval.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                if approval.created_at else None
+            ),
+            "updated_at": (
+                approval.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+                if approval.updated_at else None
+            ),
+        })
+
+    return get_json_result(data=rows)
+
+@manager.route("/oa/approval/detail", methods=["GET"])  # noqa: F821
+async def approval_detail():
+    approval_id = request.args.get("approval_id")
+
+    if not approval_id:
+        return get_json_result(
+            data=False,
+            message="Missing approval_id.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    approval = OAApprovalRequest.select().where(
+        OAApprovalRequest.id == approval_id
+    ).first()
+
+    if not approval:
+        return get_json_result(
+            data=False,
+            message="Approval request not found.",
+            code=RetCode.DATA_ERROR,
+        )
+
+    files = approval.files_json or []
+    approvers = approval.approvers_json or {}
+
+    level1_tasks = list(
+        OAApprovalTask.select().where(
+            (OAApprovalTask.approval_id == approval_id) &
+            (OAApprovalTask.level == 1)
+        ).order_by(OAApprovalTask.created_at.asc())
+    )
+
+    tasks = []
+
+    for task in level1_tasks:
+        tasks.append({
+            "task_id": task.id if hasattr(task, "id") else None,
+            "approval_id": task.approval_id,
+            "batch_id": task.batch_id,
+            "level": task.level,
+            "approver_user_id": task.approver_user_id,
+            "approver_name": task.approver_name,
+            "status": task.status,
+            "comment": getattr(task, "comment", ""),
+            "created_at": task.created_at.strftime("%Y-%m-%d %H:%M:%S") if task.created_at else None,
+            "updated_at": task.updated_at.strftime("%Y-%m-%d %H:%M:%S") if task.updated_at else None,
+        })
+
+    return get_json_result(
+        data={
+            "approval_id": approval.id,
+            "batch_id": approval.batch_id,
+            "kb_id": approval.kb_id,
+            "tenant_id": approval.tenant_id,
+            "uploader_user_id": approval.uploader_user_id,
+            "callback_url": approval.callback_url,
+            "status": approval.status,
+            "current_level": approval.current_level,
+
+            "files": files,
+            "approvers": approvers,
+            "level_1_approvers": approvers.get("level_1", []),
+            "tasks": tasks,
+
+            "created_at": approval.created_at.strftime("%Y-%m-%d %H:%M:%S") if approval.created_at else None,
+            "updated_at": approval.updated_at.strftime("%Y-%m-%d %H:%M:%S") if approval.updated_at else None,
+        }
+    )
+
+
+@manager.route("/oa/approval/decision", methods=["POST"])  # noqa: F821
+async def approval_decision():
+    import os
+    import httpx
+    from datetime import datetime
+
+    req = await get_request_json()
+
+    approval_id = req.get("approval_id")
+    approver_user_id = req.get("approver_user_id")
+    approver_user_name = req.get("approver_user_name")
+    result = req.get("result")
+    comment = req.get("comment", "")
+
+    if not approval_id:
+        return get_json_result(
+            data=False,
+            message="Missing approval_id.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if not approver_user_id:
+        return get_json_result(
+            data=False,
+            message="Missing approver_user_id.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if result not in ["approved", "rejected"]:
+        return get_json_result(
+            data=False,
+            message="Invalid result, must be approved or rejected.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    approval = OAApprovalRequest.select().where(
+        OAApprovalRequest.id == approval_id
+    ).first()
+
+    if not approval:
+        return get_json_result(
+            data=False,
+            message="Approval request not found.",
+            code=RetCode.DATA_ERROR,
+        )
+
+    if approval.status in ["approved", "rejected", "callback_success", "imported"]:
+        return get_json_result(
+            data={
+                "approval_id": approval_id,
+                "status": approval.status,
+                "message": "Already processed.",
+            }
+        )
+
+    task = OAApprovalTask.select().where(
+        (OAApprovalTask.approval_id == approval_id) &
+        (OAApprovalTask.level == 1) &
+        (OAApprovalTask.approver_user_id == approver_user_id) &
+        (OAApprovalTask.status == "pending")
+    ).first()
+
+    if not task:
+        return get_json_result(
+            data=False,
+            message="No pending level 1 approval task found.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    now = datetime.now()
+
+    # 1. 更新 OA 侧审批状态
+    with DB.atomic():
+        task_update_data = {
+            "status": result,
+            "updated_at": now,
+        }
+
+        if hasattr(OAApprovalTask, "comment"):
+            task_update_data["comment"] = comment
+
+        OAApprovalTask.update(task_update_data).where(
+            OAApprovalTask.id == task.id
+        ).execute()
+
+        OAApprovalRequest.update({
+            "status": result,
+            "current_level": 0,
+            "updated_at": now,
+        }).where(
+            OAApprovalRequest.id == approval_id
+        ).execute()
+
+    # 2. 固定回调 RAGFlow 地址
+    callback_url = "http://127.0.0.1:9380/v1/document/oa/approval/callback"
+
+    callback_payload = {
+        "oa_request_id": approval.id,
+        "result": result,
+        "comment": comment,
+        "approver": {
+            "user_id": approver_user_id,
+            "user_name": approver_user_name,
+        },
+        "timestamp": int(now.timestamp()),
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+
+    oa_secret = os.environ.get("OA_SECRET", "")
+    if oa_secret:
+        headers["X-OA-Signature"] = make_oa_signature(
+            callback_payload,
+            oa_secret,
+        )
+
+    # 3. 回调 RAGFlow
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                callback_url,
+                json=callback_payload,
+                headers=headers,
+            )
+
+        try:
+            callback_response = resp.json()
+        except Exception:
+            callback_response = {"raw": resp.text}
+
+        callback_code = callback_response.get("code")
+
+        if resp.status_code >= 400 or callback_code not in [0, "0", None]:
+            with DB.atomic():
+                OAApprovalRequest.update({
+                    "status": "callback_failed",
+                }).where(
+                    OAApprovalRequest.id == approval_id
+                ).execute()
+
+            return get_json_result(
+                data={
+                    "approval_id": approval_id,
+                    "result": result,
+                    "callback_url": callback_url,
+                    "callback_status_code": resp.status_code,
+                    "callback_response": callback_response,
+                },
+                message=callback_response.get("message") or f"Callback failed: {resp.status_code}",
+                code=RetCode.SERVER_ERROR,
+            )
+
+        # 4. 回调成功
+        with DB.atomic():
+            OAApprovalRequest.update({
+                "status": "callback_success",
+                "updated_at": datetime.now(),
+            }).where(
+                OAApprovalRequest.id == approval_id
+            ).execute()
+
+        return get_json_result(
+            data={
+                "approval_id": approval_id,
+                "result": result,
+                "callback_url": callback_url,
+                "callback_status": "success",
+                "callback_response": callback_response,
+            }
+        )
+
+    except Exception as e:
+        with DB.atomic():
+            OAApprovalRequest.update({
+                "status": "callback_failed",
+                "updated_at": datetime.now(),
+            }).where(
+                OAApprovalRequest.id == approval_id
+            ).execute()
+
+        return get_json_result(
+            data=False,
+            message=f"Callback exception: {str(e)}",
+            code=RetCode.SERVER_ERROR,
+        )
 
 # OA 审批动作处理
 # {
@@ -1591,214 +1958,1131 @@ async def callback_ragflow(approval, payload, oa_secret):
 #   "timestamp": 1730000001
 # }
 
+class LocalStagedUploadFile:
+    """
+    适配 FileService.upload_document 需要的 file 对象。
+    FileService.upload_document 只需要 filename 和 read()。
+    """
 
+    def __init__(self, filename, path):
+        self.filename = filename
+        self.path = path
 
-@manager.route("/oa/approval/callback", methods=["POST"])
-async def oa_approval_callback():
+    def read(self):
+        with open(self.path, "rb") as f:
+            return f.read()
+
+def create_parse_author_info_task(doc_id):
+    """
+    无条件创建 parse_author_info 任务，并投递队列。
+    对齐原上传流程：上传成功后先直接创建任务。
+    """
+    from datetime import datetime
+    from api.db.db_utils import bulk_insert_into_db
+    from rag.utils.redis_conn import REDIS_CONN
+
+    now = datetime.now()
+
+    task = {
+        "id": get_uuid(),
+        "doc_id": doc_id,
+        "task_type": "parse_author_info",
+        "progress": 0.0,
+        "from_page": 0,
+        "to_page": 100000000,
+        "begin_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    bulk_insert_into_db(Task, [task], True)
+
+    REDIS_CONN.queue_product(
+        settings.get_svr_queue_name(0),
+        message=task,
+    )
+
+    return task
+
+def create_parse_author_info_task_if_not_exists(doc_id):
+    """
+    兜底创建 parse_author_info 任务。
+    对齐 /run 里的逻辑：如果任务不存在才补一个。
+    """
+    from api.db.services.task_service import TaskService
+
+    existing_task = TaskService.get_task_by_doc_id_and_type(
+        doc_id,
+        "parse_author_info",
+    )
+
+    if existing_task:
+        return None
+
+    return create_parse_author_info_task(doc_id)
+
+def get_staged_file_tags_map(stage_id):
+    """
+    查询暂存文件标签。
+    返回结构：
+    {
+        type_code: [option_code_1, option_code_2]
+    }
+    """
+    tag_rows = list(
+        StagedFileTag.select().where(
+            StagedFileTag.stage_id == stage_id
+        )
+    )
+
+    tags_map = {}
+
+    for row in tag_rows:
+        type_code = row.type_code
+        option_code = row.option_code
+
+        if not type_code or not option_code:
+            continue
+
+        tags_map.setdefault(type_code, [])
+
+        if option_code not in tags_map[type_code]:
+            tags_map[type_code].append(option_code)
+
+    return tags_map
+
+def import_staged_files_and_run_by_callback(kb, staged_files, uploader_user_id):
+    """
+    OA 审批通过后，把暂存文件真正入知识库，并启动解析。
+
+    流程：
+    1. 单文件逐个入库
+    2. 回写 staged_file.doc_id / committed_at
+    3. 将暂存标签写入 Document.meta_fields
+    4. 无条件创建 parse_author_info 任务
+    5. 启动正文解析 DocumentService.run
+    6. 兜底检查 parse_author_info 任务，不存在则补
+    """
+
     import os
     import logging
     from datetime import datetime
 
-    oa_secret = os.environ.get("OA_SECRET", "")
-    expected_app_id = os.environ.get("OA_APP_ID", "ragflow")
+    imported_docs = []
+    import_errors = []
+    kb_table_num_map = {}
 
-    data = await request.get_json()
-    if not data:
-        return get_json_result(
-            data=False,
-            message="Empty callback body.",
-            code=RetCode.ARGUMENT_ERROR,
-        )
+    for staged in staged_files:
+        try:
+            # 幂等：已经回写过 doc_id，说明已经入库过
+            if getattr(staged, "doc_id", None):
+                imported_docs.append({
+                    "stage_id": staged.id,
+                    "doc_id": staged.doc_id,
+                    "filename": staged.filename,
+                    "status": "already_imported",
+                })
+                continue
 
-    if data.get("app_id") != expected_app_id:
-        return get_json_result(
-            data=False,
-            message="Invalid app_id.",
-            code=RetCode.AUTHENTICATION_ERROR,
-        )
+            now = datetime.now()
 
-    recv_signature = request.headers.get("X-OA-Signature", "")
-    if oa_secret:
-        expected_signature = make_oa_signature(data, oa_secret)
-        if recv_signature != expected_signature:
-            return get_json_result(
-                data=False,
-                message="Invalid signature.",
-                code=RetCode.AUTHENTICATION_ERROR,
+            StagedFile.update({
+                "status": "importing",
+                "error_msg": None,
+            }).where(
+                StagedFile.id == staged.id
+            ).execute()
+
+            # 1. 构造 FileService.upload_document 需要的文件对象
+            if staged.path and os.path.exists(staged.path):
+                file_obj = LocalStagedUploadFile(
+                    filename=staged.filename,
+                    path=staged.path,
+                )
+            else:
+                if not staged.minio_bucket or not staged.minio_object_name:
+                    raise RuntimeError(
+                        f"暂存文件不存在: {staged.filename}"
+                    )
+
+                client = settings.STORAGE_IMPL.conn
+                resp = client.get_object(
+                    staged.minio_bucket,
+                    staged.minio_object_name,
+                )
+
+                try:
+                    blob = resp.read()
+                finally:
+                    resp.close()
+                    resp.release_conn()
+
+                class MemoryUploadFile:
+                    def __init__(self, filename, blob):
+                        self.filename = filename
+                        self._blob = blob
+
+                    def read(self):
+                        return self._blob
+
+                file_obj = MemoryUploadFile(
+                    staged.filename,
+                    blob,
+                )
+
+            # 2. 真正入知识库
+            err, uploaded_files = FileService.upload_document(
+                kb,
+                [file_obj],
+                uploader_user_id,
             )
 
-    approval_id = data.get("request_id")
-    batch_id = data.get("batch_id")
-    level = data.get("level")
-    approver_user_id = data.get("approver_user_id")
-    action = data.get("action")   # approved / rejected
-    comment = data.get("comment", "")
-    approver_name = data.get("approver_name", "")
-    event = data.get("event", "task_updated")
+            if err:
+                raise RuntimeError("\n".join(err))
 
-    if not approval_id or not batch_id:
-        return get_json_result(
-            data=False,
-            message="Missing approval_id or batch_id.",
-            code=RetCode.ARGUMENT_ERROR,
-        )
+            if not uploaded_files:
+                raise RuntimeError(
+                    f"文件入库失败: {staged.filename}"
+                )
 
-    if action not in ["approved", "rejected"]:
-        return get_json_result(
-            data=False,
-            message="Invalid action.",
-            code=RetCode.ARGUMENT_ERROR,
-        )
+            # FileService.upload_document 返回 [(doc, blob)]
+            doc = uploaded_files[0][0]
+            doc_id = doc["id"]
+            now = datetime.now()
 
-    approval = StagedFileApprovalRequest.get_or_none(
-        StagedFileApprovalRequest.id == approval_id
-    )
-    if not approval:
-        return get_json_result(
-            data=False,
-            message="Approval request not found.",
-            code=RetCode.NOT_FOUND,
-        )
-
-    now = datetime.now()
-
-    task = StagedFileApprovalTask.get_or_none(
-        (StagedFileApprovalTask.approval_id == approval_id) &
-        (StagedFileApprovalTask.batch_id == batch_id) &
-        (StagedFileApprovalTask.level == level) &
-        (StagedFileApprovalTask.approver_user_id == approver_user_id)
-    )
-
-    if not task:
-        return get_json_result(
-            data=False,
-            message="Approval task not found.",
-            code=RetCode.NOT_FOUND,
-        )
-
-    if task.status in ["approved", "rejected"]:
-        return get_json_result(
-            data={
-                "batch_id": batch_id,
-                "status": "task_already_processed",
-            },
-            message="Task already processed.",
-        )
-
-    with DB.atomic():
-        task.status = action
-        task.comment = comment
-        task.action_time = now
-        task.updated_at = now
-        task.save()
-
-    # 任意一个拒绝，整批拒绝
-    if action == "rejected":
-        with DB.atomic():
-            approval.status = "rejected"
-            approval.result = "rejected"
-            approval.comment = comment
-            approval.finished_at = now
-            approval.updated_at = now
-            approval.save()
-
+            # 3. 回写暂存文件状态、正式 doc_id、入库时间
             StagedFile.update({
-                StagedFile.status: "rejected",
+                "status": "imported",
+                "doc_id": doc_id,
+                "committed_at": now,
+                "error_msg": None,
             }).where(
-                StagedFile.batch_id == batch_id
+                StagedFile.id == staged.id
             ).execute()
 
-        return get_json_result(
-            data={
-                "batch_id": batch_id,
-                "result": "rejected",
-            },
-            message="Approval rejected.",
-        )
+            # 4. 查询暂存标签，写入正式文档 meta_fields
+            tags_map = get_staged_file_tags_map(staged.id)
 
-    # 检查同级是否全部通过
-    all_tasks = list(
-        StagedFileApprovalTask.select().where(
-            StagedFileApprovalTask.approval_id == approval_id
-        )
-    )
+            success, doc_obj = DocumentService.get_by_id(doc_id)
+            meta_fields = (
+                dict(doc_obj.meta_fields)
+                if success and doc_obj and doc_obj.meta_fields
+                else {}
+            )
 
-    if any(t.status == "rejected" for t in all_tasks):
-        with DB.atomic():
-            approval.status = "rejected"
-            approval.result = "rejected"
-            approval.comment = comment
-            approval.finished_at = now
-            approval.updated_at = now
-            approval.save()
+            # 如果你确认 type_code 不会和作者解析字段冲突，可以顶层合并
+            meta_fields.update(tags_map)
+
+            # 如果你还想保留来源信息，可以打开这几个字段
+            meta_fields.update({
+                "stage_id": staged.id,
+                "batch_id": staged.batch_id,
+                "source": "oa_upload",
+            })
+
+            DocumentService.update_by_id(
+                doc_id,
+                {
+                    "meta_fields": meta_fields,
+                    "run": TaskStatus.RUNNING.value,
+                    "progress": 0,
+                    "progress_msg": "",
+                    "process_begin_at": now,
+                },
+            )
+
+            # 5. 对齐原上传流程：先无条件创建作者信息解析任务
+            create_parse_author_info_task(doc_id)
+
+            # 6. 启动正文解析任务
+            tenant_id = DocumentService.get_tenant_id(doc_id)
+            if not tenant_id:
+                raise RuntimeError(f"Tenant not found: {doc_id}")
+
+            e, doc_obj = DocumentService.get_by_id(doc_id)
+            if not e:
+                raise RuntimeError(f"Document not found: {doc_id}")
+
+            DocumentService.run(
+                tenant_id,
+                doc_obj.to_dict(),
+                kb_table_num_map,
+            )
+
+            # 7. 对齐 /run 流程：兜底检查 parse_author_info 是否存在
+            create_parse_author_info_task_if_not_exists(doc_id)
+
+            imported_docs.append({
+                "stage_id": staged.id,
+                "doc_id": doc_id,
+                "filename": staged.filename,
+                "status": "imported",
+                "doc": doc,
+            })
+
+        except Exception as e:
+            logging.exception(
+                "Import staged file failed: %s",
+                getattr(staged, "filename", ""),
+            )
+
+            error_msg = str(e)
+
+            import_errors.append({
+                "stage_id": staged.id,
+                "filename": staged.filename,
+                "error": error_msg,
+            })
 
             StagedFile.update({
-                StagedFile.status: "rejected",
+                "status": "import_failed",
+                "error_msg": error_msg,
             }).where(
-                StagedFile.batch_id == batch_id
+                StagedFile.id == staged.id
             ).execute()
 
-        return get_json_result(
-            data={
-                "batch_id": batch_id,
-                "result": "rejected",
-            },
-            message="Approval rejected.",
-        )
+    return imported_docs, import_errors
 
-    all_done = all(t.status == "approved" for t in all_tasks)
-    if not all_done:
-        return get_json_result(
-            data={
-                "batch_id": batch_id,
-                "status": "waiting_more_approvals",
-            },
-            message="Task updated, waiting other approvers.",
-        )
 
-    # 全部通过 -> 正式入库
+from datetime import datetime
+@manager.route("/oa/approval/callback", methods=["POST"])  # noqa: F821
+async def oa_approval_callback():
+    """
+    OA 审批回调：
+    {
+      "oa_request_id": "oa_req_99887766",
+      "result": "approved",
+      "comment": "同意",
+      "approver": {
+        "user_id": "系统用户ID",
+        "user_name": "审批人姓名"
+      },
+      "timestamp": 1730000000
+    }
+    """
+    import logging
+    from datetime import datetime
+
     try:
+        req = await get_request_json()
+
+        oa_request_id = req.get("oa_request_id")
+        result = req.get("result")
+        comment = req.get("comment", "")
+        approver = req.get("approver") or {}
+        timestamp = req.get("timestamp")
+
+        if not oa_request_id:
+            return get_json_result(
+                data=False,
+                message="Missing oa_request_id",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        if result not in ["approved", "rejected"]:
+            return get_json_result(
+                data=False,
+                message="Invalid result, must be approved or rejected",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        approver_user_id = approver.get("user_id")
+        approver_user_name = approver.get("user_name")
+
+        approval = StagedFileApprovalRequest.select().where(
+            StagedFileApprovalRequest.id == oa_request_id
+        ).first()
+
+        if not approval:
+            return get_json_result(
+                data=False,
+                message=f"Approval request not found: {oa_request_id}",
+                code=RetCode.DATA_ERROR,
+            )
+
+        batch_id = approval.batch_id
+        kb_id = approval.kb_id
+        uploader_user_id = approval.uploader_user_id
+
+        # 幂等处理
+        if approval.status in ["imported", "rejected"]:
+            return get_json_result(
+                data={
+                    "oa_request_id": oa_request_id,
+                    "batch_id": batch_id,
+                    "status": approval.status,
+                    "message": "Already processed",
+                }
+            )
+
+        if approval.status == "importing":
+            return get_json_result(
+                data={
+                    "oa_request_id": oa_request_id,
+                    "batch_id": batch_id,
+                    "status": "importing",
+                    "message": "Import is already running",
+                }
+            )
+
+        e, kb = KnowledgebaseService.get_by_id(kb_id)
+        if not e:
+            return get_data_error_result(message="Can't find this dataset!")
+
+        staged_files = list(
+            StagedFile.select()
+            .where(StagedFile.batch_id == batch_id)
+            .order_by(StagedFile.created_at.asc(), StagedFile.id.asc())
+        )
+
+        if not staged_files:
+            return get_json_result(
+                data=False,
+                message=f"No staged files found for batch_id: {batch_id}",
+                code=RetCode.DATA_ERROR,
+            )
+
+        now = datetime.now()
+
+        # 拒绝：只更新状态，不入库
+        if result == "rejected":
+            with DB.atomic():
+                StagedFileApprovalRequest.update({
+                    "status": "rejected",
+                }).where(
+                    StagedFileApprovalRequest.id == oa_request_id
+                ).execute()
+
+                StagedFile.update({
+                    "status": "rejected",
+                    "approved_at": now,
+                    "approved_by": approver_user_id,
+                    "error_msg": comment,
+                }).where(
+                    StagedFile.batch_id == batch_id
+                ).execute()
+
+                task_update_data = {
+                    "status": "rejected",
+                }
+
+                if hasattr(StagedFileApprovalTask, "comment"):
+                    task_update_data["comment"] = comment
+
+                if approver_user_id:
+                    StagedFileApprovalTask.update(task_update_data).where(
+                        (StagedFileApprovalTask.approval_id == oa_request_id) &
+                        (StagedFileApprovalTask.approver_user_id == approver_user_id)
+                    ).execute()
+                else:
+                    StagedFileApprovalTask.update(task_update_data).where(
+                        StagedFileApprovalTask.approval_id == oa_request_id
+                    ).execute()
+
+            return get_json_result(
+                data={
+                    "oa_request_id": oa_request_id,
+                    "batch_id": batch_id,
+                    "status": "rejected",
+                    "comment": comment,
+                    "approver": approver,
+                    "timestamp": timestamp,
+                }
+            )
+
+        # 通过：先记录审批时间和审批人
         with DB.atomic():
-            approval.status = "approved"
-            approval.result = "approved"
-            approval.comment = comment
-            approval.finished_at = now
-            approval.updated_at = now
-            approval.save()
+            StagedFileApprovalRequest.update({
+                "status": "importing",
+            }).where(
+                StagedFileApprovalRequest.id == oa_request_id
+            ).execute()
 
             StagedFile.update({
-                StagedFile.status: "approved",
+                "status": "approved",
+                "approved_at": now,
+                "approved_by": approver_user_id,
+                "error_msg": None,
             }).where(
                 StagedFile.batch_id == batch_id
             ).execute()
 
-        # 正式入库 + 解析
-        import_staged_files_after_approval(batch_id)
+            task_update_data = {
+                "status": "approved",
+            }
+
+            if hasattr(StagedFileApprovalTask, "comment"):
+                task_update_data["comment"] = comment
+
+            if approver_user_id:
+                StagedFileApprovalTask.update(task_update_data).where(
+                    (StagedFileApprovalTask.approval_id == oa_request_id) &
+                    (StagedFileApprovalTask.approver_user_id == approver_user_id)
+                ).execute()
+            else:
+                StagedFileApprovalTask.update(task_update_data).where(
+                    StagedFileApprovalTask.approval_id == oa_request_id
+                ).execute()
+
+        # 真正入库并启动解析
+        imported_docs, import_errors = await asyncio.to_thread(
+            import_staged_files_and_run_by_callback,
+            kb,
+            staged_files,
+            uploader_user_id,
+        )
+
+        final_status = "imported"
+        if import_errors and imported_docs:
+            final_status = "partial_imported"
+        elif import_errors and not imported_docs:
+            final_status = "import_failed"
 
         with DB.atomic():
-            StagedFile.update({
-                StagedFile.status: "committed",
-                StagedFile.committed_at: now,
+            StagedFileApprovalRequest.update({
+                "status": final_status,
             }).where(
-                StagedFile.batch_id == batch_id
+                StagedFileApprovalRequest.id == oa_request_id
             ).execute()
+
+        return get_json_result(
+            data={
+                "oa_request_id": oa_request_id,
+                "batch_id": batch_id,
+                "status": final_status,
+                "imported_docs": imported_docs,
+                "import_errors": import_errors,
+                "approver": {
+                    "user_id": approver_user_id,
+                    "user_name": approver_user_name,
+                },
+                "comment": comment,
+                "timestamp": timestamp,
+            }
+        )
 
     except Exception as e:
-        logging.exception("Handle approved callback failed.")
+        logging.exception("OA approval callback failed.")
+        return server_error_response(e)
+
+
+# @manager.route("/oa/approval/callback", methods=["POST"])
+# async def oa_approval_callback():
+#     import os
+#     import logging
+#     from datetime import datetime
+
+#     oa_secret = os.environ.get("OA_SECRET", "")
+#     expected_app_id = os.environ.get("OA_APP_ID", "ragflow")
+
+#     data = await request.get_json()
+#     if not data:
+#         return get_json_result(
+#             data=False,
+#             message="Empty callback body.",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     # 1. 校验 app_id
+#     if data.get("app_id") != expected_app_id:
+#         return get_json_result(
+#             data=False,
+#             message="Invalid app_id.",
+#             code=RetCode.AUTHENTICATION_ERROR,
+#         )
+
+#     # 2. 校验签名
+#     recv_signature = request.headers.get("X-OA-Signature", "")
+#     if oa_secret:
+#         expected_signature = make_oa_signature(data, oa_secret)
+#         if recv_signature != expected_signature:
+#             return get_json_result(
+#                 data=False,
+#                 message="Invalid signature.",
+#                 code=RetCode.AUTHENTICATION_ERROR,
+#             )
+
+#     # 3. 公共字段
+#     approval_id = data.get("request_id")
+#     batch_id = data.get("batch_id")
+#     event = data.get("event", "task_updated")
+#     comment = data.get("comment", "")
+
+#     if not approval_id or not batch_id:
+#         return get_json_result(
+#             data=False,
+#             message="Missing request_id or batch_id.",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     approval = StagedFileApprovalRequest.get_or_none(
+#         (StagedFileApprovalRequest.id == approval_id) &
+#         (StagedFileApprovalRequest.batch_id == batch_id)
+#     )
+#     if not approval:
+#         return get_json_result(
+#             data=False,
+#             message="Approval request not found.",
+#             code=RetCode.NOT_FOUND,
+#         )
+
+#     now = datetime.now()
+
+#     # =========================================================
+#     # 事件一：OA 审批单最终完成
+#     # event = approval_finished
+#     # =========================================================
+#     if event == "approval_finished":
+#         result = data.get("result")
+
+#         if result not in ["approved", "rejected"]:
+#             return get_json_result(
+#                 data=False,
+#                 message="Invalid result.",
+#                 code=RetCode.ARGUMENT_ERROR,
+#             )
+
+#         # 幂等处理：如果已经处理完成，直接返回成功
+#         if approval.status in ["approved", "rejected"] and approval.result == result:
+#             return get_json_result(
+#                 data={
+#                     "batch_id": batch_id,
+#                     "request_id": approval_id,
+#                     "result": result,
+#                     "status": "already_processed",
+#                 },
+#                 message="Approval already processed.",
+#             )
+
+#         # 最终拒绝：整批文件拒绝
+#         if result == "rejected":
+#             with DB.atomic():
+#                 approval.status = "rejected"
+#                 approval.result = "rejected"
+#                 approval.comment = comment
+#                 approval.finished_at = now
+#                 approval.updated_at = now
+#                 approval.save()
+
+#                 StagedFile.update({
+#                     StagedFile.status: "rejected",
+#                 }).where(
+#                     StagedFile.batch_id == batch_id
+#                 ).execute()
+
+#             return get_json_result(
+#                 data={
+#                     "batch_id": batch_id,
+#                     "request_id": approval_id,
+#                     "result": "rejected",
+#                 },
+#                 message="Approval rejected.",
+#             )
+
+#         # 最终通过：整批文件正式入库
+#         if result == "approved":
+#             try:
+#                 with DB.atomic():
+#                     approval.status = "approved"
+#                     approval.result = "approved"
+#                     approval.comment = comment
+#                     approval.finished_at = now
+#                     approval.updated_at = now
+#                     approval.save()
+
+#                     StagedFile.update({
+#                         StagedFile.status: "approved",
+#                     }).where(
+#                         StagedFile.batch_id == batch_id
+#                     ).execute()
+
+#                 # =================================================
+#                 # 正式入库 + 解析
+#                 # 这里放你的正式导入逻辑
+#                 # =================================================
+#                 # import_staged_files_after_approval(batch_id)
+
+#                 with DB.atomic():
+#                     StagedFile.update({
+#                         StagedFile.status: "committed",
+#                         StagedFile.committed_at: now,
+#                     }).where(
+#                         StagedFile.batch_id == batch_id
+#                     ).execute()
+
+#             except Exception as e:
+#                 logging.exception("Handle approved final callback failed.")
+#                 return get_json_result(
+#                     data=False,
+#                     message=str(e),
+#                     code=RetCode.SERVER_ERROR,
+#                 )
+
+#             return get_json_result(
+#                 data={
+#                     "batch_id": batch_id,
+#                     "request_id": approval_id,
+#                     "result": "approved",
+#                     "next": "parsed",
+#                 },
+#                 message="Approval approved and imported.",
+#             )
+
+#     # =========================================================
+#     # 事件二：单个审批人任务更新
+#     # event = task_updated
+#     # =========================================================
+#     if event != "task_updated":
+#         return get_json_result(
+#             data=False,
+#             message=f"Unsupported event: {event}",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     level = data.get("level")
+#     approver_user_id = data.get("approver_user_id")
+#     approver_name = data.get("approver_name", "")
+#     action = data.get("action")   # approved / rejected
+
+#     if level is None:
+#         return get_json_result(
+#             data=False,
+#             message="Missing level.",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     if not approver_user_id:
+#         return get_json_result(
+#             data=False,
+#             message="Missing approver_user_id.",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     if action not in ["approved", "rejected"]:
+#         return get_json_result(
+#             data=False,
+#             message="Invalid action.",
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     task = StagedFileApprovalTask.get_or_none(
+#         (StagedFileApprovalTask.approval_id == approval_id) &
+#         (StagedFileApprovalTask.batch_id == batch_id) &
+#         (StagedFileApprovalTask.level == level) &
+#         (StagedFileApprovalTask.approver_user_id == approver_user_id)
+#     )
+
+#     if not task:
+#         return get_json_result(
+#             data=False,
+#             message="Approval task not found.",
+#             code=RetCode.NOT_FOUND,
+#         )
+
+#     # 幂等处理：同一个任务重复回调
+#     if task.status in ["approved", "rejected"]:
+#         return get_json_result(
+#             data={
+#                 "batch_id": batch_id,
+#                 "request_id": approval_id,
+#                 "status": "task_already_processed",
+#                 "task_status": task.status,
+#             },
+#             message="Task already processed.",
+#         )
+
+#     # 更新审批任务
+#     with DB.atomic():
+#         task.status = action
+#         task.comment = comment
+#         task.action_time = now
+#         task.updated_at = now
+
+#         if approver_name and not task.approver_name:
+#             task.approver_name = approver_name
+
+#         task.save()
+
+#     # 任意一个审批人拒绝，整批拒绝
+#     if action == "rejected":
+#         with DB.atomic():
+#             approval.status = "rejected"
+#             approval.result = "rejected"
+#             approval.comment = comment
+#             approval.finished_at = now
+#             approval.updated_at = now
+#             approval.save()
+
+#             StagedFile.update({
+#                 StagedFile.status: "rejected",
+#             }).where(
+#                 StagedFile.batch_id == batch_id
+#             ).execute()
+
+#         return get_json_result(
+#             data={
+#                 "batch_id": batch_id,
+#                 "request_id": approval_id,
+#                 "result": "rejected",
+#             },
+#             message="Approval rejected.",
+#         )
+
+#     # 查询当前审批单的所有本地任务
+#     all_tasks = list(
+#         StagedFileApprovalTask.select().where(
+#             StagedFileApprovalTask.approval_id == approval_id
+#         )
+#     )
+
+#     # 如果有任何拒绝，整批拒绝
+#     if any(t.status == "rejected" for t in all_tasks):
+#         with DB.atomic():
+#             approval.status = "rejected"
+#             approval.result = "rejected"
+#             approval.comment = comment
+#             approval.finished_at = now
+#             approval.updated_at = now
+#             approval.save()
+
+#             StagedFile.update({
+#                 StagedFile.status: "rejected",
+#             }).where(
+#                 StagedFile.batch_id == batch_id
+#             ).execute()
+
+#         return get_json_result(
+#             data={
+#                 "batch_id": batch_id,
+#                 "request_id": approval_id,
+#                 "result": "rejected",
+#             },
+#             message="Approval rejected.",
+#         )
+
+#     # 当前级别任务是否全部通过
+#     same_level_tasks = [
+#         t for t in all_tasks if t.level == level
+#     ]
+
+#     same_level_done = all(
+#         t.status == "approved" for t in same_level_tasks
+#     )
+
+#     # 当前级别还没全部通过
+#     if not same_level_done:
+#         return get_json_result(
+#             data={
+#                 "batch_id": batch_id,
+#                 "request_id": approval_id,
+#                 "status": f"waiting_level_{level}_others",
+#             },
+#             message="Task updated, waiting other approvers in same level.",
+#         )
+
+#     # 当前级别全部通过，但不在 RAGFlow callback 里推进最终入库
+#     # 是否进入下一级、是否最终完成，由 OA 侧决定
+#     # RAGFlow 只等待 OA 发 approval_finished 事件
+#     return get_json_result(
+#         data={
+#             "batch_id": batch_id,
+#             "request_id": approval_id,
+#             "status": f"level_{level}_approved_waiting_oa_next_event",
+#         },
+#         message="Level approved, waiting OA final callback or next level approval.",
+#     )
+
+def merge_status(status_list):
+    """
+    聚合状态：
+    rejected > pending > approved > waiting
+    """
+    if not status_list:
+        return "waiting"
+
+    if any(s == "rejected" for s in status_list):
+        return "rejected"
+
+    if any(s == "pending" for s in status_list):
+        return "pending"
+
+    if all(s in ("approved", "skipped") for s in status_list):
+        return "approved"
+
+    if all(s == "waiting" for s in status_list):
+        return "waiting"
+
+    return "waiting"
+
+from collections import defaultdict
+
+def build_approval_graph(approval):
+    """
+    构建整个审批单的审批图，不再按 stage_id
+    """
+    tasks = list(
+        StagedFileApprovalTask
+        .select()
+        .where(
+            StagedFileApprovalTask.approval_id == approval.id
+        )
+        .order_by(
+            StagedFileApprovalTask.level.asc(),
+            StagedFileApprovalTask.approver_user_id.asc(),
+            StagedFileApprovalTask.id.asc(),
+        )
+    )
+
+    # level -> approver_user_id -> tasks
+    level_approver_map = defaultdict(lambda: defaultdict(list))
+
+    for t in tasks:
+        level_approver_map[t.level][t.approver_user_id].append(t)
+
+    levels = []
+    display_levels = sorted(set([1, 2] + list(level_approver_map.keys())))
+
+    for level in display_levels:
+        approver_map = level_approver_map.get(level, {})
+        approvers = []
+
+        for approver_user_id, approver_tasks in sorted(approver_map.items(), key=lambda x: x[0]):
+            status_list = [x.status for x in approver_tasks]
+            approver_status = merge_status(status_list)
+
+            approver_name = None
+            for x in approver_tasks:
+                if x.approver_name:
+                    approver_name = x.approver_name
+                    break
+
+            approvers.append({
+                "approver_user_id": approver_user_id,
+                "approver_name": approver_name,
+                "status": approver_status,
+                "task_count": len(approver_tasks),
+                "pending_count": sum(1 for x in approver_tasks if x.status == "pending"),
+                "approved_count": sum(1 for x in approver_tasks if x.status == "approved"),
+                "rejected_count": sum(1 for x in approver_tasks if x.status == "rejected"),
+                "waiting_count": sum(1 for x in approver_tasks if x.status == "waiting"),
+                "skipped_count": sum(1 for x in approver_tasks if x.status == "skipped"),
+                "tasks": [
+                    {
+                        "task_id": x.id,
+                        "level": x.level,
+                        "status": x.status,
+                        "comment": x.comment,
+                        "action_time": x.action_time.isoformat() if x.action_time else None,
+                        "created_at": x.created_at.isoformat() if x.created_at else None,
+                        "updated_at": x.updated_at.isoformat() if x.updated_at else None,
+                    }
+                    for x in approver_tasks
+                ],
+            })
+
+        level_status = merge_status([x["status"] for x in approvers])
+
+        if not approvers:
+            if approval.current_level == level and approval.status not in ("approved", "committed", "rejected"):
+                level_status = "pending"
+            else:
+                level_status = "waiting"
+
+        levels.append({
+            "level": level,
+            "title": "一级审批" if level == 1 else "二级审批" if level == 2 else f"{level}级审批",
+            "status": level_status,
+            "approver_count": len(approvers),
+            "approvers": approvers,
+        })
+
+    request_status = approval.status or "pending"
+
+    if request_status in ("approved", "committed"):
+        commit_status = "done"
+    elif request_status == "rejected":
+        commit_status = "blocked"
+    else:
+        commit_status = "waiting"
+
+    nodes = [
+        {
+            "id": "submit",
+            "type": "submit",
+            "title": "提交审批",
+            "status": "done",
+            "current": False,
+            "user_id": approval.uploader_user_id,
+        }
+    ]
+
+    for level_item in levels:
+        nodes.append({
+            "id": f"level_{level_item['level']}",
+            "type": "approval",
+            "title": level_item["title"],
+            "level": level_item["level"],
+            "status": level_item["status"],
+            "current": (
+                approval.current_level == level_item["level"]
+                and request_status not in ("approved", "committed", "rejected")
+            ),
+            "approver_count": level_item["approver_count"],
+            "approvers": level_item["approvers"],
+        })
+
+    nodes.append({
+        "id": "commit",
+        "type": "commit",
+        "title": "提交知识库",
+        "status": commit_status,
+        "current": False,
+    })
+
+    edges = []
+    for i in range(len(nodes) - 1):
+        edges.append({
+            "source": nodes[i]["id"],
+            "target": nodes[i + 1]["id"],
+        })
+
+    return {
+        "approval_id": approval.id,
+        "batch_id": approval.batch_id,
+        "status": approval.status,
+        "current_level": approval.current_level,
+        "nodes": nodes,
+        "edges": edges,
+        "levels": levels,
+    }
+
+@manager.route("/oa/approval/graph", methods=["GET"])
+async def approval_graph():
+    """
+    获取审批流程图
+    GET /v1/document/oa/approval/graph?approval_id=xxx
+    或 ?batch_id=xxx
+    """
+    approval_id = request.args.get("approval_id")
+    batch_id = request.args.get("batch_id")
+
+    if not approval_id and not batch_id:
         return get_json_result(
-            data=False,
-            message=str(e),
-            code=RetCode.SERVER_ERROR,
+            code=RetCode.ARGUMENT_ERROR,
+            message="approval_id or batch_id is required",
+            data=None,
         )
 
-    return get_json_result(
-        data={
-            "batch_id": batch_id,
-            "result": "approved",
-            "next": "parsed",
-        },
-        message="Approval approved and imported.",
-    )
+    try:
+        query = StagedFileApprovalRequest.select()
+
+        if approval_id:
+            query = query.where(StagedFileApprovalRequest.id == approval_id)
+        else:
+            query = query.where(StagedFileApprovalRequest.batch_id == batch_id)
+
+        approval = query.first()
+
+        if not approval:
+            return get_json_result(
+                code=RetCode.DATA_ERROR,
+                message="approval request not found",
+                data=None,
+            )
+
+        graph_data = build_approval_graph(approval)
+        return get_json_result(data=graph_data)
+
+    except Exception as e:
+        # logging.exception("Build approval graph failed.")
+        return get_json_result(
+            code=RetCode.SERVER_ERROR,
+            message=str(e),
+            data=None,
+        )
+
+
+# {
+#   "types": {
+#     "knowledge_category": {
+#       "type_code": "knowledge_category",
+#       "type_name": "知识分类",
+#       "multi_select": true,
+#       "required": true,
+#       "options": [
+#         {
+#           "option_code": "pulping",
+#           "option_name": "制浆"
+#         }
+#       ]
+#     }
+#   }
+# }
+
+@manager.route("/knowledge/tags/options", methods=["GET"])  # noqa: F821
+@login_required
+async def knowledge_tag_options():
+    try:
+        type_rows = list(
+            KnowledgeTagType.select(
+                KnowledgeTagType.type_code,
+                KnowledgeTagType.type_name,
+                KnowledgeTagType.multi_select,
+                KnowledgeTagType.required,
+                KnowledgeTagType.sort_order,
+            )
+            .where(KnowledgeTagType.enabled == True)
+            .order_by(
+                KnowledgeTagType.sort_order.asc(),
+                KnowledgeTagType.id.asc(),
+            )
+        )
+
+        option_rows = list(
+            KnowledgeTagOption.select(
+                KnowledgeTagOption.type_code,
+                KnowledgeTagOption.option_code,
+                KnowledgeTagOption.option_name,
+                KnowledgeTagOption.sort_order,
+            )
+            .where(KnowledgeTagOption.enabled == True)
+            .order_by(
+                KnowledgeTagOption.type_code.asc(),
+                KnowledgeTagOption.sort_order.asc(),
+                KnowledgeTagOption.id.asc(),
+            )
+        )
+
+        type_map = {}
+
+        for row in type_rows:
+            type_map[row.type_code] = {
+                "type_code": row.type_code,
+                "type_name": row.type_name,
+                "multi_select": bool(row.multi_select),
+                "required": bool(row.required),
+                "sort_order": row.sort_order,
+                "options": [],
+            }
+
+        for row in option_rows:
+            if row.type_code not in type_map:
+                continue
+
+            type_map[row.type_code]["options"].append(
+                {
+                    "option_code": row.option_code,
+                    "option_name": row.option_name,
+                    "sort_order": row.sort_order,
+                }
+            )
+
+        return get_json_result(
+            data={
+                "types": type_map,
+            }
+        )
+
+    except Exception as e:
+        return server_error_response(e)
 
 @manager.route("/web_crawl", methods=["POST"])  # noqa: F821
 @login_required
@@ -1939,99 +3223,1475 @@ async def create():
     except Exception as e:
         return server_error_response(e)
 
+from collections import defaultdict
+import json
+
+
+def build_document_tag_metadata(doc_ids):
+    """
+    根据正式 doc_id 批量查询暂存标签，并转换为中文展示结构。
+
+    返回：
+    {
+        "doc_id": {
+            "tag_metadata": {
+                "knowledge_category": {
+                    "type_name": "知识分类",
+                    "options": [
+                        {
+                            "code": "pulping",
+                            "name": "制浆"
+                        }
+                    ]
+                }
+            },
+            "meta_fields_display": {
+                "knowledge_category": ["制浆"]
+            }
+        }
+    }
+    """
+    if not doc_ids:
+        return {}
+
+    # doc_id -> stage_id 列表
+    doc_stage_map = defaultdict(list)
+
+    staged_rows = (
+        StagedFile
+        .select(
+            StagedFile.doc_id,
+            StagedFile.id,
+        )
+        .where(
+            StagedFile.doc_id.in_(doc_ids)
+        )
+    )
+
+    for row in staged_rows:
+        if row.doc_id:
+            doc_stage_map[str(row.doc_id)].append(str(row.id))
+
+    all_stage_ids = [
+        stage_id
+        for stage_ids in doc_stage_map.values()
+        for stage_id in stage_ids
+    ]
+
+    if not all_stage_ids:
+        return {}
+
+    # stage_id -> type_code -> option_code 列表
+    stage_tag_map = defaultdict(lambda: defaultdict(list))
+
+    tag_rows = (
+        StagedFileTag
+        .select(
+            StagedFileTag.stage_id,
+            StagedFileTag.type_code,
+            StagedFileTag.option_code,
+        )
+        .where(
+            StagedFileTag.stage_id.in_(all_stage_ids)
+        )
+    )
+
+    type_codes = set()
+    option_codes_by_type = defaultdict(set)
+
+    for row in tag_rows:
+        stage_id = str(row.stage_id)
+        type_code = str(row.type_code)
+        option_code = str(row.option_code)
+
+        stage_tag_map[stage_id][type_code].append(option_code)
+        type_codes.add(type_code)
+        option_codes_by_type[type_code].add(option_code)
+
+    if not type_codes:
+        return {}
+
+    # 查询标签类型名称
+    type_name_map = {}
+
+    type_rows = (
+        KnowledgeTagType
+        .select(
+            KnowledgeTagType.type_code,
+            KnowledgeTagType.type_name,
+        )
+        .where(
+            KnowledgeTagType.type_code.in_(list(type_codes))
+        )
+    )
+
+    for row in type_rows:
+        type_name_map[str(row.type_code)] = row.type_name
+
+    # 查询标签选项名称
+    option_name_map = defaultdict(dict)
+
+    option_rows = (
+        KnowledgeTagOption
+        .select(
+            KnowledgeTagOption.type_code,
+            KnowledgeTagOption.option_code,
+            KnowledgeTagOption.option_name,
+        )
+        .where(
+            KnowledgeTagOption.type_code.in_(list(type_codes))
+        )
+    )
+
+    for row in option_rows:
+        type_code = str(row.type_code)
+        option_code = str(row.option_code)
+
+        # 只保存本次实际使用的 option
+        if option_code in option_codes_by_type[type_code]:
+            option_name_map[type_code][option_code] = row.option_name
+
+    result = {}
+
+    for doc_id, stage_ids in doc_stage_map.items():
+        tag_metadata = {}
+        meta_fields_display = {}
+
+        for stage_id in stage_ids:
+            type_map = stage_tag_map.get(stage_id, {})
+
+            for type_code, option_codes in type_map.items():
+                type_name = type_name_map.get(type_code, type_code)
+
+                option_rows_for_type = tag_metadata.setdefault(
+                    type_code,
+                    {
+                        "type_name": type_name,
+                        "options": [],
+                    },
+                )
+
+                display_values = meta_fields_display.setdefault(
+                    type_code,
+                    [],
+                )
+
+                for option_code in option_codes:
+                    option_name = option_name_map[type_code].get(
+                        option_code,
+                        option_code,
+                    )
+
+                    option_item = {
+                        "code": option_code,
+                        "name": option_name,
+                    }
+
+                    # 避免多个 stage 或重复标签造成重复返回
+                    if option_item not in option_rows_for_type["options"]:
+                        option_rows_for_type["options"].append(
+                            option_item
+                        )
+
+                    if option_name not in display_values:
+                        display_values.append(option_name)
+
+        result[doc_id] = {
+            "tag_metadata": tag_metadata,
+            "meta_fields_display": meta_fields_display,
+        }
+
+    return result
+
+# @manager.route("/list", methods=["POST"])  # noqa: F821
+# @login_required
+# async def list_docs():
+#     kb_id = request.args.get("kb_id")
+#     if not kb_id:
+#         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+#     ok, kb = KnowledgebaseService.get_by_id(kb_id)
+#     if not ok:
+#         return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
+    
+#     # if not check_kb_team_permission(kb, current_user.id):
+#     #     return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
+#     keywords = request.args.get("keywords", "")
+
+#     page_number = int(request.args.get("page", 0))
+#     items_per_page = int(request.args.get("page_size", 0))
+#     orderby = request.args.get("orderby", "create_time")
+#     if request.args.get("desc", "true").lower() == "false":
+#         desc = False
+#     else:
+#         desc = True
+#     create_time_from = int(request.args.get("create_time_from", 0))
+#     create_time_to = int(request.args.get("create_time_to", 0))
+
+#     req = await get_request_json()
+
+#     run_status = req.get("run_status", [])
+#     if run_status:
+#         invalid_status = {s for s in run_status if s not in VALID_TASK_STATUS}
+#         if invalid_status:
+#             return get_data_error_result(message=f"Invalid filter run status conditions: {', '.join(invalid_status)}")
+
+#     types = req.get("types", [])
+#     if types:
+#         invalid_types = {t for t in types if t not in VALID_FILE_TYPES}
+#         if invalid_types:
+#             return get_data_error_result(message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}")
+
+#     suffix = req.get("suffix", [])
+#     metadata_condition = req.get("metadata_condition", {}) or {}
+#     if metadata_condition and not isinstance(metadata_condition, dict):
+#         return get_data_error_result(message="metadata_condition must be an object.")
+
+#     doc_ids_filter = None
+#     if metadata_condition:
+#         metas = DocumentService.get_flatted_meta_by_kbs([kb_id])
+#         doc_ids_filter = meta_filter(metas, convert_conditions(metadata_condition), metadata_condition.get("logic", "and"))
+#         if metadata_condition.get("conditions") and not doc_ids_filter:
+#             return get_json_result(data={"total": 0, "docs": []})
+
+#     try:
+#         docs, tol = DocumentService.get_by_kb_id(kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix, doc_ids_filter)
+
+#         from collections import defaultdict
+#         from api.db.db_models import Task
+
+#         doc_ids = [doc["id"] for doc in docs]
+#         doc_tasks = defaultdict(list)
+
+#         if doc_ids:
+#             task_rows = (
+#                 Task.select(Task.doc_id, Task.task_type, Task.progress, Task.progress_msg, Task.begin_at)
+#                 .where(Task.doc_id.in_(doc_ids))
+#                 .order_by(Task.begin_at)
+#             )
+
+#             for task in task_rows:
+#                 task_type = (task.task_type or "").lower().strip()
+#                 doc_tasks[task.doc_id].append({
+#                     "task_type": task_type,
+#                     "progress": task.progress,
+#                     "progress_msg": task.progress_msg,
+#                     "begin_at": task.begin_at,
+#                 })
+#         if create_time_from or create_time_to:
+#             filtered_docs = []
+#             for doc in docs:
+#                 doc_create_time = doc.get("create_time", 0)
+#                 if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
+#                     filtered_docs.append(doc)
+#             docs = filtered_docs
+#         for doc_item in docs:
+#             tasks = doc_tasks.get(doc_item["id"], [])
+
+#             has_author_task = any(t["task_type"] == "parse_author_info" for t in tasks)
+#             has_parse_task = any(t["task_type"] == "" for t in tasks)
+
+#             doc_item["has_author_task"] = has_author_task
+#             doc_item["has_parse_task"] = has_parse_task
+
+#             if has_author_task and has_parse_task:
+#                 doc_item["process_scene"] = "author_with_parse"
+#             elif has_author_task:
+#                 doc_item["process_scene"] = "author_only"
+#             elif has_parse_task:
+#                 doc_item["process_scene"] = "parse_only"
+#             else:
+#                 doc_item["process_scene"] = "unknown"
+
+#             latest_task = tasks[-1] if tasks else None
+#             doc_item["latest_task_type"] = latest_task["task_type"] if latest_task else ""
+
+#             if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
+#                 doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
+#             if doc_item.get("source_type"):
+#                 doc_item["source_type"] = doc_item["source_type"].split("/")[0]
+#             # 将字段的meta_fields字段解析出新的字段，并且整理为我们需要的作者、学校、论文发布时间
+#             if doc_item.get("meta_fields"):
+#                 meta_fields = doc_item["meta_fields"]
+#                 # 确保 meta_fields 是一个字典
+#                 if isinstance(meta_fields, str):
+#                     try:
+#                         meta_fields = json.loads(meta_fields)
+#                     except json.JSONDecodeError:
+#                         meta_fields = {}
+#                 # 确保 meta_fields 是一个字典
+#                 if isinstance(meta_fields, dict):
+#                     doc_item["author"] = meta_fields.get("author", "")
+#                     doc_item["school"] = meta_fields.get("school", "")
+#                     doc_item["publish_time"] = meta_fields.get("publish_time", "")
+#                 else:
+#                     doc_item["author"] = ""
+#                     doc_item["school"] = ""
+#                     doc_item["publish_time"] = ""
+
+#         # 新增显示本周文件占比
+#         from datetime import datetime, timedelta, time
+#         from api.db.db_models import Document
+
+#         now = datetime.now()
+#         this_week_start = datetime.combine(
+#             now.date() - timedelta(days=now.weekday()),
+#             time.min,
+#         )
+
+#         this_week_start_ts = int(this_week_start.timestamp() * 1000)
+
+#         this_week_count = Document.select().where(
+#             Document.kb_id == kb_id,
+#             Document.create_time >= this_week_start_ts,
+#             Document.status != "2",
+#         ).count()
+
+#         week_file_ratio = 0 if tol == 0 else round(this_week_count / tol * 100, 2)
+
+#         return get_json_result(data={"total": tol, "docs": docs,
+#                                      "week_growth_rate": week_file_ratio,
+#                                         "this_week_count": this_week_count,})
+#     except Exception as e:
+#         return server_error_response(e) 
+
+# @manager.route("/list", methods=["POST"])  # noqa: F821
+# @login_required
+# async def list_docs():
+#     import json
+#     from collections import defaultdict
+#     from datetime import datetime, timedelta, time
+
+#     from api.db.db_models import (
+#         Document,
+#         KnowledgeTagOption,
+#         KnowledgeTagType,
+#         StagedFile,
+#         StagedFileTag,
+#         Task,
+#     )
+
+#     kb_id = request.args.get("kb_id")
+
+#     if not kb_id:
+#         return get_json_result(
+#             data=False,
+#             message='Lack of "KB ID"',
+#             code=RetCode.ARGUMENT_ERROR,
+#         )
+
+#     ok, kb = KnowledgebaseService.get_by_id(kb_id)
+#     if not ok:
+#         return get_json_result(
+#             data=False,
+#             message="Dataset not found.",
+#             code=RetCode.DATA_ERROR,
+#         )
+
+#     keywords = request.args.get("keywords", "")
+
+#     page_number = int(request.args.get("page", 0))
+#     items_per_page = int(request.args.get("page_size", 0))
+
+#     orderby = request.args.get("orderby", "create_time")
+#     desc = request.args.get("desc", "true").lower() != "false"
+
+#     create_time_from = int(
+#         request.args.get("create_time_from", 0)
+#     )
+#     create_time_to = int(
+#         request.args.get("create_time_to", 0)
+#     )
+
+#     req = await get_request_json()
+
+#     run_status = req.get("run_status", [])
+#     if run_status:
+#         invalid_status = {
+#             status for status in run_status
+#             if status not in VALID_TASK_STATUS
+#         }
+
+#         if invalid_status:
+#             return get_data_error_result(
+#                 message=(
+#                     "Invalid filter run status conditions: "
+#                     f"{', '.join(invalid_status)}"
+#                 )
+#             )
+
+#     types = req.get("types", [])
+#     if types:
+#         invalid_types = {
+#             file_type for file_type in types
+#             if file_type not in VALID_FILE_TYPES
+#         }
+
+#         if invalid_types:
+#             return get_data_error_result(
+#                 message=(
+#                     "Invalid filter conditions: "
+#                     f"{', '.join(invalid_types)} type"
+#                     f"{'s' if len(invalid_types) > 1 else ''}"
+#                 )
+#             )
+
+#     suffix = req.get("suffix", [])
+
+#     metadata_condition = (
+#         req.get("metadata_condition", {}) or {}
+#     )
+
+#     if metadata_condition and not isinstance(
+#         metadata_condition,
+#         dict,
+#     ):
+#         return get_data_error_result(
+#             message="metadata_condition must be an object."
+#         )
+
+#     doc_ids_filter = None
+
+#     if metadata_condition:
+#         metas = DocumentService.get_flatted_meta_by_kbs([kb_id])
+
+#         doc_ids_filter = meta_filter(
+#             metas,
+#             convert_conditions(metadata_condition),
+#             metadata_condition.get("logic", "and"),
+#         )
+
+#         if (
+#             metadata_condition.get("conditions")
+#             and not doc_ids_filter
+#         ):
+#             return get_json_result(
+#                 data={
+#                     "total": 0,
+#                     "docs": [],
+#                 }
+#             )
+
+#     try:
+#         docs, total = DocumentService.get_by_kb_id(
+#             kb_id,
+#             page_number,
+#             items_per_page,
+#             orderby,
+#             desc,
+#             keywords,
+#             run_status,
+#             types,
+#             suffix,
+#             doc_ids_filter,
+#         )
+
+#         # 查询当前页文档对应的解析任务
+#         doc_ids = [
+#             doc["id"]
+#             for doc in docs
+#             if doc.get("id")
+#         ]
+
+#         doc_tasks = defaultdict(list)
+
+#         if doc_ids:
+#             task_rows = (
+#                 Task.select(
+#                     Task.doc_id,
+#                     Task.task_type,
+#                     Task.progress,
+#                     Task.progress_msg,
+#                     Task.begin_at,
+#                 )
+#                 .where(Task.doc_id.in_(doc_ids))
+#                 .order_by(Task.begin_at.asc())
+#             )
+
+#             for task in task_rows:
+#                 task_type = (
+#                     task.task_type or ""
+#                 ).lower().strip()
+
+#                 doc_tasks[str(task.doc_id)].append({
+#                     "task_type": task_type,
+#                     "progress": task.progress,
+#                     "progress_msg": task.progress_msg,
+#                     "begin_at": task.begin_at,
+#                 })
+
+#         # 按创建时间再次过滤。
+#         # 保留你原来的行为。
+#         if create_time_from or create_time_to:
+#             filtered_docs = []
+
+#             for doc in docs:
+#                 doc_create_time = doc.get(
+#                     "create_time",
+#                     0,
+#                 )
+
+#                 if (
+#                     (
+#                         create_time_from == 0
+#                         or doc_create_time >= create_time_from
+#                     )
+#                     and
+#                     (
+#                         create_time_to == 0
+#                         or doc_create_time <= create_time_to
+#                     )
+#                 ):
+#                     filtered_docs.append(doc)
+
+#             docs = filtered_docs
+
+#         # ---------------------------------------------------------
+#         # 批量查询文档标签
+#         #
+#         # Document.id
+#         #     -> StagedFile.doc_id
+#         #     -> StagedFile.id
+#         #     -> StagedFileTag.stage_id
+#         # ---------------------------------------------------------
+#         document_tag_data = defaultdict(
+#             lambda: {
+#                 "tag_metadata": {},
+#                 "meta_fields_display": {},
+#             }
+#         )
+
+#         if doc_ids:
+#             # doc_id -> stage_id
+#             doc_stage_map = defaultdict(list)
+
+#             staged_rows = (
+#                 StagedFile.select(
+#                     StagedFile.id,
+#                     StagedFile.doc_id,
+#                 )
+#                 .where(
+#                     StagedFile.doc_id.in_(doc_ids)
+#                 )
+#             )
+
+#             stage_ids = []
+
+#             for staged in staged_rows:
+#                 if not staged.doc_id:
+#                     continue
+
+#                 doc_id = str(staged.doc_id)
+#                 stage_id = str(staged.id)
+
+#                 doc_stage_map[doc_id].append(stage_id)
+#                 stage_ids.append(stage_id)
+
+#             if stage_ids:
+#                 # stage_id -> type_code -> option_code 列表
+#                 stage_tag_map = defaultdict(
+#                     lambda: defaultdict(list)
+#                 )
+
+#                 type_codes = set()
+
+#                 tag_rows = (
+#                     StagedFileTag.select(
+#                         StagedFileTag.stage_id,
+#                         StagedFileTag.type_code,
+#                         StagedFileTag.option_code,
+#                     )
+#                     .where(
+#                         StagedFileTag.stage_id.in_(stage_ids)
+#                     )
+#                 )
+
+#                 for tag in tag_rows:
+#                     stage_id = str(tag.stage_id)
+#                     type_code = str(tag.type_code)
+#                     option_code = str(tag.option_code)
+
+#                     if not type_code or not option_code:
+#                         continue
+
+#                     if (
+#                         option_code
+#                         not in stage_tag_map[stage_id][type_code]
+#                     ):
+#                         stage_tag_map[stage_id][type_code].append(
+#                             option_code
+#                         )
+
+#                     type_codes.add(type_code)
+
+#                 # 查询类型名称
+#                 type_name_map = {}
+
+#                 if type_codes:
+#                     type_rows = (
+#                         KnowledgeTagType.select(
+#                             KnowledgeTagType.type_code,
+#                             KnowledgeTagType.type_name,
+#                         )
+#                         .where(
+#                             KnowledgeTagType.type_code.in_(
+#                                 list(type_codes)
+#                             )
+#                         )
+#                     )   
+
+#                     for tag_type in type_rows:
+#                         type_name_map[
+#                             str(tag_type.type_code)
+#                         ] = tag_type.type_name
+
+#                 # 查询选项名称
+#                 option_name_map = defaultdict(dict)
+
+#                 if type_codes:
+#                     option_rows = (
+#                         KnowledgeTagOption.select(
+#                             KnowledgeTagOption.type_code,
+#                             KnowledgeTagOption.option_code,
+#                             KnowledgeTagOption.option_name,
+#                         )
+#                         .where(
+#                             KnowledgeTagOption.type_code.in_(
+#                                 list(type_codes)
+#                             )
+#                         )
+#                     )
+
+#                     for option in option_rows:
+#                         type_code = str(option.type_code)
+#                         option_code = str(option.option_code)
+
+#                         option_name_map[type_code][option_code] = (
+#                             option.option_name
+#                         )
+
+#                 # 将标签按 doc_id 汇总
+#                 for doc_id, doc_stage_ids in doc_stage_map.items():
+#                     tag_metadata = {}
+#                     meta_fields_display = {}
+
+#                     for stage_id in doc_stage_ids:
+#                         type_map = stage_tag_map.get(
+#                             stage_id,
+#                             {},
+#                         )
+
+#                         for type_code, option_codes in type_map.items():
+#                             type_name = type_name_map.get(
+#                                 type_code,
+#                                 type_code,
+#                             )
+
+#                             tag_item = tag_metadata.setdefault(
+#                                 type_code,
+#                                 {
+#                                     "type_code": type_code,
+#                                     "type_name": type_name,
+#                                     "options": [],
+#                                 },
+#                             )
+
+#                             display_values = (
+#                                 meta_fields_display.setdefault(
+#                                     type_code,
+#                                     [],
+#                                 )
+#                             )
+
+#                             for option_code in option_codes:
+#                                 option_name = (
+#                                     option_name_map[type_code].get(
+#                                         option_code,
+#                                         option_code,
+#                                     )
+#                                 )
+
+#                                 option_item = {
+#                                     "option_code": option_code,
+#                                     "option_name": option_name,
+#                                 }
+
+#                                 if (
+#                                     option_item
+#                                     not in tag_item["options"]
+#                                 ):
+#                                     tag_item["options"].append(
+#                                         option_item
+#                                     )
+
+#                                 if (
+#                                     option_name
+#                                     not in display_values
+#                                 ):
+#                                     display_values.append(
+#                                         option_name
+#                                     )
+
+#                     document_tag_data[doc_id] = {
+#                         "tag_metadata": tag_metadata,
+#                         "meta_fields_display": (
+#                             meta_fields_display
+#                         ),
+#                     }
+
+#         # ---------------------------------------------------------
+#         # 整理每篇文档的返回数据
+#         # ---------------------------------------------------------
+#         for doc_item in docs:
+#             doc_id = str(doc_item["id"])
+#             tasks = doc_tasks.get(doc_id, [])
+
+#             has_author_task = any(
+#                 task["task_type"] == "parse_author_info"
+#                 for task in tasks
+#             )
+
+#             has_parse_task = any(
+#                 task["task_type"] == ""
+#                 for task in tasks
+#             )
+
+#             doc_item["has_author_task"] = has_author_task
+#             doc_item["has_parse_task"] = has_parse_task
+
+#             if has_author_task and has_parse_task:
+#                 doc_item["process_scene"] = (
+#                     "author_with_parse"
+#                 )
+#             elif has_author_task:
+#                 doc_item["process_scene"] = "author_only"
+#             elif has_parse_task:
+#                 doc_item["process_scene"] = "parse_only"
+#             else:
+#                 doc_item["process_scene"] = "unknown"
+
+#             latest_task = tasks[-1] if tasks else None
+
+#             doc_item["latest_task_type"] = (
+#                 latest_task["task_type"]
+#                 if latest_task
+#                 else ""
+#             )
+
+#             if (
+#                 doc_item.get("thumbnail")
+#                 and not doc_item["thumbnail"].startswith(
+#                     IMG_BASE64_PREFIX
+#                 )
+#             ):
+#                 doc_item["thumbnail"] = (
+#                     f"/v1/document/image/"
+#                     f"{kb_id}-{doc_item['thumbnail']}"
+#                 )
+
+#             if doc_item.get("source_type"):
+#                 doc_item["source_type"] = (
+#                     doc_item["source_type"].split("/")[0]
+#                 )
+
+#             # 从 meta_fields 中解析作者、学校、发布时间
+#             meta_fields = doc_item.get("meta_fields") or {}
+
+#             if isinstance(meta_fields, str):
+#                 try:
+#                     meta_fields = json.loads(meta_fields)
+#                 except json.JSONDecodeError:
+#                     meta_fields = {}
+
+#             if not isinstance(meta_fields, dict):
+#                 meta_fields = {}
+
+#             doc_item["meta_fields"] = meta_fields
+
+#             doc_item["author"] = meta_fields.get(
+#                 "author",
+#                 "",
+#             )
+
+#             doc_item["school"] = meta_fields.get(
+#                 "school",
+#                 "",
+#             )
+
+#             doc_item["publish_time"] = meta_fields.get(
+#                 "publish_time",
+#                 "",
+#             )
+
+#             # 标签中文展示数据
+#             tag_data = document_tag_data.get(
+#                 doc_id,
+#                 {
+#                     "tag_metadata": {},
+#                     "meta_fields_display": {},
+#                 },
+#             )
+
+#             doc_item["tag_metadata"] = tag_data[
+#                 "tag_metadata"
+#             ]
+
+#             doc_item["meta_fields_display"] = tag_data[
+#                 "meta_fields_display"
+#             ]
+
+#         # 新增显示本周文件占比
+#         now = datetime.now()
+
+#         this_week_start = datetime.combine(
+#             now.date() - timedelta(days=now.weekday()),
+#             time.min,
+#         )
+
+#         this_week_start_ts = int(
+#             this_week_start.timestamp() * 1000
+#         )
+
+#         this_week_count = (
+#             Document.select()
+#             .where(
+#                 (Document.kb_id == kb_id) &
+#                 (Document.create_time >= this_week_start_ts) &
+#                 (Document.status != "2")
+#             )
+#             .count()
+#         )
+
+#         week_file_ratio = (
+#             0
+#             if total == 0
+#             else round(this_week_count / total * 100, 2)
+#         )
+
+#         return get_json_result(
+#             data={
+#                 "total": total,
+#                 "docs": docs,
+#                 "week_growth_rate": week_file_ratio,
+#                 "this_week_count": this_week_count,
+#             }
+#         )
+
+#     except Exception as e:
+#         return server_error_response(e)
 
 @manager.route("/list", methods=["POST"])  # noqa: F821
 @login_required
 async def list_docs():
+    import json
+    from collections import defaultdict
+    from datetime import datetime, timedelta, time
+
+    from api.apps import current_user
+
+    from api.db.db_models import (
+        Document,
+        KnowledgeTagOption,
+        KnowledgeTagType,
+        Role,
+        RoleUser,
+        StagedFile,
+        StagedFileTag,
+        Task,
+    )
+
+    PUBLIC = 1
+    INTERNAL = 2
+
+    def get_current_user_id():
+        """
+        获取当前登录用户 ID。
+
+        你项目里现在用的是：
+        from api.apps import current_user
+
+        所以这里做兼容处理。
+        """
+
+        if current_user is None:
+            return None
+
+        if hasattr(current_user, "user_id"):
+            return str(current_user.user_id)
+
+        if hasattr(current_user, "id"):
+            return str(current_user.id)
+
+        if hasattr(current_user, "get_id"):
+            user_id = current_user.get_id()
+            if user_id:
+                return str(user_id)
+
+        if isinstance(current_user, dict):
+            for key in ["user_id", "id", "uid"]:
+                if current_user.get(key):
+                    return str(current_user.get(key))
+
+        return None
+
+    def get_current_user_role(user_id):
+        """
+        当前业务：一个用户只绑定一个角色。
+        根据 role_user.user_id 查询 Role。
+        """
+
+        if not user_id:
+            return None
+
+        return (
+            Role
+            .select(
+                Role.id,
+                Role.file_permission_level,
+                Role.is_admin,
+                Role.enabled,
+            )
+            .join(
+                RoleUser,
+                on=(RoleUser.role_id == Role.id),
+            )
+            .where(
+                (RoleUser.user_id == str(user_id)) &
+                (Role.enabled == True)
+            )
+            .first()
+        )
+
+    def get_doc_visibility_from_tags(tag_data):
+        """
+        根据标签判断文档是公开还是内部。
+
+        返回：
+        1 = 公开
+        2 = 内部
+
+        当前逻辑：
+        - 只要 option_code 或 option_name 中出现“内部”，认为是内部文档
+        - 只要 option_code 或 option_name 中出现“公开”，认为是公开文档
+        - 没有相关标签时，默认公开
+        """
+
+        if not tag_data:
+            return PUBLIC
+
+        tag_metadata = tag_data.get("tag_metadata") or {}
+        meta_fields_display = (
+            tag_data.get("meta_fields_display") or {}
+        )
+
+        internal_values = {
+            "internal",
+            "INTERNAL",
+            "内部",
+            "内部文件",
+            "内部文档",
+            "2",
+        }
+
+        public_values = {
+            "public",
+            "PUBLIC",
+            "公开",
+            "公开文件",
+            "公开文档",
+            "1",
+        }
+
+        # 1. 从 tag_metadata 判断
+        for _, tag_item in tag_metadata.items():
+            options = tag_item.get("options") or []
+
+            for option in options:
+                option_code = str(
+                    option.get("option_code", "")
+                ).strip()
+
+                option_name = str(
+                    option.get("option_name", "")
+                ).strip()
+
+                if (
+                    option_code in internal_values
+                    or option_name in internal_values
+                ):
+                    return INTERNAL
+
+                if (
+                    option_code in public_values
+                    or option_name in public_values
+                ):
+                    return PUBLIC
+
+        # 2. 从 meta_fields_display 判断
+        for _, values in meta_fields_display.items():
+            if not isinstance(values, list):
+                values = [values]
+
+            for value in values:
+                value = str(value).strip()
+
+                if value in internal_values:
+                    return INTERNAL
+
+                if value in public_values:
+                    return PUBLIC
+
+        # 3. 没有公开/内部标签时默认公开
+        return PUBLIC
+
+    def can_view_document(role, visibility_level):
+        """
+        根据当前用户角色和文档可见级别判断是否可查看。
+
+        规则：
+        1 = 公开
+        2 = 内部
+
+        公开文档：所有登录用户可看
+        内部文档：内部用户或管理员可看
+        """
+
+        try:
+            visibility_level = int(visibility_level)
+        except Exception:
+            visibility_level = PUBLIC
+
+        # 没有绑定角色，按公开用户处理
+        if role is None:
+            return visibility_level == PUBLIC
+
+        if not role.enabled:
+            return False
+
+        if role.is_admin:
+            return True
+
+        if visibility_level == PUBLIC:
+            return True
+
+        if visibility_level == INTERNAL:
+            try:
+                return int(role.file_permission_level) == INTERNAL
+            except Exception:
+                return False
+
+        return False
+
     kb_id = request.args.get("kb_id")
+
     if not kb_id:
-        return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+        return get_json_result(
+            data=False,
+            message='Lack of "KB ID"',
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
     ok, kb = KnowledgebaseService.get_by_id(kb_id)
     if not ok:
-        return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
-    
-    # if not check_kb_team_permission(kb, current_user.id):
-    #     return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
+        return get_json_result(
+            data=False,
+            message="Dataset not found.",
+            code=RetCode.DATA_ERROR,
+        )
+
+    # ---------------------------------------------------------
+    # 查询当前用户角色，只查一次
+    # ---------------------------------------------------------
+    current_user_id = get_current_user_id()
+    current_role = get_current_user_role(current_user_id)
+
     keywords = request.args.get("keywords", "")
 
     page_number = int(request.args.get("page", 0))
     items_per_page = int(request.args.get("page_size", 0))
+
     orderby = request.args.get("orderby", "create_time")
-    if request.args.get("desc", "true").lower() == "false":
-        desc = False
-    else:
-        desc = True
-    create_time_from = int(request.args.get("create_time_from", 0))
-    create_time_to = int(request.args.get("create_time_to", 0))
+    desc = request.args.get("desc", "true").lower() != "false"
+
+    create_time_from = int(
+        request.args.get("create_time_from", 0)
+    )
+    create_time_to = int(
+        request.args.get("create_time_to", 0)
+    )
 
     req = await get_request_json()
 
     run_status = req.get("run_status", [])
     if run_status:
-        invalid_status = {s for s in run_status if s not in VALID_TASK_STATUS}
+        invalid_status = {
+            status for status in run_status
+            if status not in VALID_TASK_STATUS
+        }
+
         if invalid_status:
-            return get_data_error_result(message=f"Invalid filter run status conditions: {', '.join(invalid_status)}")
+            return get_data_error_result(
+                message=(
+                    "Invalid filter run status conditions: "
+                    f"{', '.join(invalid_status)}"
+                )
+            )
 
     types = req.get("types", [])
     if types:
-        invalid_types = {t for t in types if t not in VALID_FILE_TYPES}
+        invalid_types = {
+            file_type for file_type in types
+            if file_type not in VALID_FILE_TYPES
+        }
+
         if invalid_types:
-            return get_data_error_result(message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}")
+            return get_data_error_result(
+                message=(
+                    "Invalid filter conditions: "
+                    f"{', '.join(invalid_types)} type"
+                    f"{'s' if len(invalid_types) > 1 else ''}"
+                )
+            )
 
     suffix = req.get("suffix", [])
-    metadata_condition = req.get("metadata_condition", {}) or {}
-    if metadata_condition and not isinstance(metadata_condition, dict):
-        return get_data_error_result(message="metadata_condition must be an object.")
+
+    metadata_condition = (
+        req.get("metadata_condition", {}) or {}
+    )
+
+    if metadata_condition and not isinstance(
+        metadata_condition,
+        dict,
+    ):
+        return get_data_error_result(
+            message="metadata_condition must be an object."
+        )
 
     doc_ids_filter = None
+
     if metadata_condition:
         metas = DocumentService.get_flatted_meta_by_kbs([kb_id])
-        doc_ids_filter = meta_filter(metas, convert_conditions(metadata_condition), metadata_condition.get("logic", "and"))
-        if metadata_condition.get("conditions") and not doc_ids_filter:
-            return get_json_result(data={"total": 0, "docs": []})
+
+        doc_ids_filter = meta_filter(
+            metas,
+            convert_conditions(metadata_condition),
+            metadata_condition.get("logic", "and"),
+        )
+
+        if (
+            metadata_condition.get("conditions")
+            and not doc_ids_filter
+        ):
+            return get_json_result(
+                data={
+                    "total": 0,
+                    "docs": [],
+                }
+            )
 
     try:
-        docs, tol = DocumentService.get_by_kb_id(kb_id, page_number, items_per_page, orderby, desc, keywords, run_status, types, suffix, doc_ids_filter)
+        docs, total = DocumentService.get_by_kb_id(
+            kb_id,
+            page_number,
+            items_per_page,
+            orderby,
+            desc,
+            keywords,
+            run_status,
+            types,
+            suffix,
+            doc_ids_filter,
+        )
 
-        from collections import defaultdict
-        from api.db.db_models import Task
+        # 当前页文档 ID
+        doc_ids = [
+            doc["id"]
+            for doc in docs
+            if doc.get("id")
+        ]
 
-        doc_ids = [doc["id"] for doc in docs]
+        # ---------------------------------------------------------
+        # 查询当前页文档对应的解析任务
+        # ---------------------------------------------------------
         doc_tasks = defaultdict(list)
 
         if doc_ids:
             task_rows = (
-                Task.select(Task.doc_id, Task.task_type, Task.progress, Task.progress_msg, Task.begin_at)
+                Task.select(
+                    Task.doc_id,
+                    Task.task_type,
+                    Task.progress,
+                    Task.progress_msg,
+                    Task.begin_at,
+                )
                 .where(Task.doc_id.in_(doc_ids))
-                .order_by(Task.begin_at)
+                .order_by(Task.begin_at.asc())
             )
 
             for task in task_rows:
-                task_type = (task.task_type or "").lower().strip()
-                doc_tasks[task.doc_id].append({
+                task_type = (
+                    task.task_type or ""
+                ).lower().strip()
+
+                doc_tasks[str(task.doc_id)].append({
                     "task_type": task_type,
                     "progress": task.progress,
                     "progress_msg": task.progress_msg,
                     "begin_at": task.begin_at,
                 })
+
+        # ---------------------------------------------------------
+        # 按创建时间再次过滤
+        # 保留原来的行为
+        # ---------------------------------------------------------
         if create_time_from or create_time_to:
             filtered_docs = []
-            for doc in docs:
-                doc_create_time = doc.get("create_time", 0)
-                if (create_time_from == 0 or doc_create_time >= create_time_from) and (create_time_to == 0 or doc_create_time <= create_time_to):
-                    filtered_docs.append(doc)
-            docs = filtered_docs
-        for doc_item in docs:
-            tasks = doc_tasks.get(doc_item["id"], [])
 
-            has_author_task = any(t["task_type"] == "parse_author_info" for t in tasks)
-            has_parse_task = any(t["task_type"] == "" for t in tasks)
+            for doc in docs:
+                doc_create_time = doc.get(
+                    "create_time",
+                    0,
+                )
+
+                if (
+                    (
+                        create_time_from == 0
+                        or doc_create_time >= create_time_from
+                    )
+                    and
+                    (
+                        create_time_to == 0
+                        or doc_create_time <= create_time_to
+                    )
+                ):
+                    filtered_docs.append(doc)
+
+            docs = filtered_docs
+
+            # 过滤后重新整理 doc_ids
+            doc_ids = [
+                doc["id"]
+                for doc in docs
+                if doc.get("id")
+            ]
+
+        # ---------------------------------------------------------
+        # 批量查询文档标签
+        #
+        # Document.id
+        #     -> StagedFile.doc_id
+        #     -> StagedFile.id
+        #     -> StagedFileTag.stage_id
+        # ---------------------------------------------------------
+        document_tag_data = defaultdict(
+            lambda: {
+                "tag_metadata": {},
+                "meta_fields_display": {},
+            }
+        )
+
+        if doc_ids:
+            # doc_id -> stage_id list
+            doc_stage_map = defaultdict(list)
+
+            staged_rows = (
+                StagedFile.select(
+                    StagedFile.id,
+                    StagedFile.doc_id,
+                )
+                .where(
+                    StagedFile.doc_id.in_(doc_ids)
+                )
+            )
+
+            stage_ids = []
+
+            for staged in staged_rows:
+                if not staged.doc_id:
+                    continue
+
+                doc_id = str(staged.doc_id)
+                stage_id = str(staged.id)
+
+                doc_stage_map[doc_id].append(stage_id)
+                stage_ids.append(stage_id)
+
+            if stage_ids:
+                # stage_id -> type_code -> option_code list
+                stage_tag_map = defaultdict(
+                    lambda: defaultdict(list)
+                )
+
+                type_codes = set()
+
+                tag_rows = (
+                    StagedFileTag.select(
+                        StagedFileTag.stage_id,
+                        StagedFileTag.type_code,
+                        StagedFileTag.option_code,
+                    )
+                    .where(
+                        StagedFileTag.stage_id.in_(stage_ids)
+                    )
+                )
+
+                for tag in tag_rows:
+                    stage_id = str(tag.stage_id)
+                    type_code = str(tag.type_code)
+                    option_code = str(tag.option_code)
+
+                    if not type_code or not option_code:
+                        continue
+
+                    if (
+                        option_code
+                        not in stage_tag_map[stage_id][type_code]
+                    ):
+                        stage_tag_map[stage_id][type_code].append(
+                            option_code
+                        )
+
+                    type_codes.add(type_code)
+
+                # 查询标签类型名称
+                type_name_map = {}
+
+                if type_codes:
+                    type_rows = (
+                        KnowledgeTagType.select(
+                            KnowledgeTagType.type_code,
+                            KnowledgeTagType.type_name,
+                        )
+                        .where(
+                            KnowledgeTagType.type_code.in_(
+                                list(type_codes)
+                            )
+                        )
+                    )
+
+                    for tag_type in type_rows:
+                        type_name_map[
+                            str(tag_type.type_code)
+                        ] = tag_type.type_name
+
+                # 查询标签选项名称
+                option_name_map = defaultdict(dict)
+
+                if type_codes:
+                    option_rows = (
+                        KnowledgeTagOption.select(
+                            KnowledgeTagOption.type_code,
+                            KnowledgeTagOption.option_code,
+                            KnowledgeTagOption.option_name,
+                        )
+                        .where(
+                            KnowledgeTagOption.type_code.in_(
+                                list(type_codes)
+                            )
+                        )
+                    )
+
+                    for option in option_rows:
+                        type_code = str(option.type_code)
+                        option_code = str(option.option_code)
+
+                        option_name_map[type_code][option_code] = (
+                            option.option_name
+                        )
+
+                # 将标签按 doc_id 汇总
+                for doc_id, doc_stage_ids in doc_stage_map.items():
+                    tag_metadata = {}
+                    meta_fields_display = {}
+
+                    for stage_id in doc_stage_ids:
+                        type_map = stage_tag_map.get(
+                            stage_id,
+                            {},
+                        )
+
+                        for type_code, option_codes in type_map.items():
+                            type_name = type_name_map.get(
+                                type_code,
+                                type_code,
+                            )
+
+                            tag_item = tag_metadata.setdefault(
+                                type_code,
+                                {
+                                    "type_code": type_code,
+                                    "type_name": type_name,
+                                    "options": [],
+                                },
+                            )
+
+                            display_values = (
+                                meta_fields_display.setdefault(
+                                    type_code,
+                                    [],
+                                )
+                            )
+
+                            for option_code in option_codes:
+                                option_name = (
+                                    option_name_map[type_code].get(
+                                        option_code,
+                                        option_code,
+                                    )
+                                )
+
+                                option_item = {
+                                    "option_code": option_code,
+                                    "option_name": option_name,
+                                }
+
+                                if (
+                                    option_item
+                                    not in tag_item["options"]
+                                ):
+                                    tag_item["options"].append(
+                                        option_item
+                                    )
+
+                                if (
+                                    option_name
+                                    not in display_values
+                                ):
+                                    display_values.append(
+                                        option_name
+                                    )
+
+                    document_tag_data[doc_id] = {
+                        "tag_metadata": tag_metadata,
+                        "meta_fields_display": (
+                            meta_fields_display
+                        ),
+                    }
+
+        # ---------------------------------------------------------
+        # 整理每篇文档的返回数据
+        # ---------------------------------------------------------
+        for doc_item in docs:
+            doc_id = str(doc_item["id"])
+
+            tasks = doc_tasks.get(doc_id, [])
+
+            has_author_task = any(
+                task["task_type"] == "parse_author_info"
+                for task in tasks
+            )
+
+            has_parse_task = any(
+                task["task_type"] == ""
+                for task in tasks
+            )
 
             doc_item["has_author_task"] = has_author_task
             doc_item["has_parse_task"] = has_parse_task
 
             if has_author_task and has_parse_task:
-                doc_item["process_scene"] = "author_with_parse"
+                doc_item["process_scene"] = (
+                    "author_with_parse"
+                )
             elif has_author_task:
                 doc_item["process_scene"] = "author_only"
             elif has_parse_task:
@@ -2040,58 +4700,136 @@ async def list_docs():
                 doc_item["process_scene"] = "unknown"
 
             latest_task = tasks[-1] if tasks else None
-            doc_item["latest_task_type"] = latest_task["task_type"] if latest_task else ""
 
-            if doc_item["thumbnail"] and not doc_item["thumbnail"].startswith(IMG_BASE64_PREFIX):
-                doc_item["thumbnail"] = f"/v1/document/image/{kb_id}-{doc_item['thumbnail']}"
+            doc_item["latest_task_type"] = (
+                latest_task["task_type"]
+                if latest_task
+                else ""
+            )
+
+            if (
+                doc_item.get("thumbnail")
+                and not doc_item["thumbnail"].startswith(
+                    IMG_BASE64_PREFIX
+                )
+            ):
+                doc_item["thumbnail"] = (
+                    f"/v1/document/image/"
+                    f"{kb_id}-{doc_item['thumbnail']}"
+                )
+
             if doc_item.get("source_type"):
-                doc_item["source_type"] = doc_item["source_type"].split("/")[0]
-            # 将字段的meta_fields字段解析出新的字段，并且整理为我们需要的作者、学校、论文发布时间
-            if doc_item.get("meta_fields"):
-                meta_fields = doc_item["meta_fields"]
-                # 确保 meta_fields 是一个字典
-                if isinstance(meta_fields, str):
-                    try:
-                        meta_fields = json.loads(meta_fields)
-                    except json.JSONDecodeError:
-                        meta_fields = {}
-                # 确保 meta_fields 是一个字典
-                if isinstance(meta_fields, dict):
-                    doc_item["author"] = meta_fields.get("author", "")
-                    doc_item["school"] = meta_fields.get("school", "")
-                    doc_item["publish_time"] = meta_fields.get("publish_time", "")
-                else:
-                    doc_item["author"] = ""
-                    doc_item["school"] = ""
-                    doc_item["publish_time"] = ""
+                doc_item["source_type"] = (
+                    doc_item["source_type"].split("/")[0]
+                )
 
+            # 从 meta_fields 中解析作者、学校、发布时间
+            meta_fields = doc_item.get("meta_fields") or {}
+
+            if isinstance(meta_fields, str):
+                try:
+                    meta_fields = json.loads(meta_fields)
+                except json.JSONDecodeError:
+                    meta_fields = {}
+
+            if not isinstance(meta_fields, dict):
+                meta_fields = {}
+
+            doc_item["meta_fields"] = meta_fields
+
+            doc_item["author"] = meta_fields.get(
+                "author",
+                "",
+            )
+
+            doc_item["school"] = meta_fields.get(
+                "school",
+                "",
+            )
+
+            doc_item["publish_time"] = meta_fields.get(
+                "publish_time",
+                "",
+            )
+
+            # 标签中文展示数据
+            tag_data = document_tag_data.get(
+                doc_id,
+                {
+                    "tag_metadata": {},
+                    "meta_fields_display": {},
+                },
+            )
+
+            doc_item["tag_metadata"] = tag_data[
+                "tag_metadata"
+            ]
+
+            doc_item["meta_fields_display"] = tag_data[
+                "meta_fields_display"
+            ]
+
+            # -----------------------------------------------------
+            # 新增：根据标签判断公开 / 内部
+            # -----------------------------------------------------
+            visibility_level = get_doc_visibility_from_tags(
+                tag_data
+            )
+
+            doc_item["visibility_level"] = visibility_level
+
+            doc_item["visibility_name"] = (
+                "内部"
+                if visibility_level == INTERNAL
+                else "公开"
+            )
+
+            doc_item["can_view"] = can_view_document(
+                current_role,
+                visibility_level,
+            )
+
+        # ---------------------------------------------------------
         # 新增显示本周文件占比
-        from datetime import datetime, timedelta, time
-        from api.db.db_models import Document
-
+        # ---------------------------------------------------------
         now = datetime.now()
+
         this_week_start = datetime.combine(
             now.date() - timedelta(days=now.weekday()),
             time.min,
         )
 
-        this_week_start_ts = int(this_week_start.timestamp() * 1000)
+        this_week_start_ts = int(
+            this_week_start.timestamp() * 1000
+        )
 
-        this_week_count = Document.select().where(
-            Document.kb_id == kb_id,
-            Document.create_time >= this_week_start_ts,
-            Document.status != "2",
-        ).count()
+        this_week_count = (
+            Document.select()
+            .where(
+                (Document.kb_id == kb_id) &
+                (Document.create_time >= this_week_start_ts) &
+                (Document.status != "2")
+            )
+            .count()
+        )
 
-        week_file_ratio = 0 if tol == 0 else round(this_week_count / tol * 100, 2)
+        week_file_ratio = (
+            0
+            if total == 0
+            else round(this_week_count / total * 100, 2)
+        )
 
-        return get_json_result(data={"total": tol, "docs": docs,
-                                     "week_growth_rate": week_file_ratio,
-                                        "this_week_count": this_week_count,})
+        return get_json_result(
+            data={
+                "total": total,
+                "docs": docs,
+                "week_growth_rate": week_file_ratio,
+                "this_week_count": this_week_count,
+            }
+        )
+
     except Exception as e:
-        return server_error_response(e) 
-    
-
+        return server_error_response(e)
 
 @manager.route("/list_wasted", methods=["POST"])  # noqa: F821
 @login_required
@@ -2992,5 +5730,234 @@ async def list_staged_file():
         page_size=page_size,
         include_deleted=False,
     )
-
+    print(data)
     return get_json_result(data=data)
+
+@manager.route("/knowledge/tags/update-one", methods=["POST"])  # noqa: F821
+@login_required
+async def update_one_knowledge_tag():
+    import json
+    from datetime import datetime
+
+    try:
+        req = await get_request_json()
+
+        doc_id = req.get("doc_id")
+        type_code = req.get("type_code")
+        option_codes = req.get("option_codes", [])
+
+        if not doc_id:
+            return get_json_result(
+                data=False,
+                message="Missing doc_id.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        if not type_code:
+            return get_json_result(
+                data=False,
+                message="Missing type_code.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        if option_codes is None:
+            option_codes = []
+
+        if not isinstance(option_codes, list):
+            option_codes = [option_codes]
+
+        # 清理选项编码，并去除空值
+        option_codes = [
+            str(item).strip()
+            for item in option_codes
+            if item is not None and str(item).strip()
+        ]
+
+        # 如果同一个选项被重复提交，只保留一个
+        option_codes = list(dict.fromkeys(option_codes))
+
+        # 1. 查询文档
+        ok, doc = DocumentService.get_by_id(doc_id)
+
+        if not ok or not doc:
+            return get_json_result(
+                data=False,
+                message="Document not found.",
+                code=RetCode.DATA_ERROR,
+            )
+
+        # 2. 查询标签类型
+        tag_type = (
+            KnowledgeTagType
+            .select()
+            .where(
+                (KnowledgeTagType.type_code == type_code)
+                & (KnowledgeTagType.enabled == True)
+            )
+            .first()
+        )
+
+        if not tag_type:
+            return get_json_result(
+                data=False,
+                message=f"Tag type not found or disabled: {type_code}",
+                code=RetCode.DATA_ERROR,
+            )
+
+        # 3. 查询合法选项
+        option_rows = list(
+            KnowledgeTagOption
+            .select(
+                KnowledgeTagOption.option_code,
+                KnowledgeTagOption.option_name,
+            )
+            .where(
+                (KnowledgeTagOption.type_code == type_code)
+                & (KnowledgeTagOption.enabled == True)
+            )
+        )
+
+        valid_option_codes = {
+            row.option_code
+            for row in option_rows
+        }
+
+        invalid_options = [
+            code
+            for code in option_codes
+            if code not in valid_option_codes
+        ]
+
+        if invalid_options:
+            return get_json_result(
+                data=False,
+                message=(
+                    f"Invalid option_code for {type_code}: "
+                    f"{', '.join(invalid_options)}"
+                ),
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        # 4. 单选字段只允许一个值
+        if not tag_type.multi_select and len(option_codes) > 1:
+            return get_json_result(
+                data=False,
+                message=(
+                    f"Tag type '{type_code}' does not allow "
+                    "multiple values."
+                ),
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        # 5. 必填字段不允许为空
+        if tag_type.required and not option_codes:
+            return get_json_result(
+                data=False,
+                message=f"Tag type '{type_code}' is required.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        # 6. 查询文档对应的暂存文件
+        staged_files = list(
+            StagedFile
+            .select()
+            .where(StagedFile.doc_id == doc_id)
+            .order_by(
+                StagedFile.committed_at.desc(nulls="LAST"),
+                StagedFile.created_at.desc(),
+            )
+        )
+
+        stage_ids = [
+            staged_file.id
+            for staged_file in staged_files
+        ]
+
+        now = datetime.now()
+
+        # DocumentService.update_by_id() 不放在该事务中调用，
+        # 避免它内部的 ConnectionContext 关闭事务连接。
+        with DB.atomic():
+            # 7. 解析并更新 Document.meta_fields
+            meta_fields = doc.meta_fields or {}
+
+            if isinstance(meta_fields, str):
+                try:
+                    meta_fields = json.loads(meta_fields)
+                except (TypeError, ValueError):
+                    meta_fields = {}
+
+            if not isinstance(meta_fields, dict):
+                meta_fields = {}
+
+            # 复制一份，避免直接修改从数据库读取的对象引用
+            meta_fields = dict(meta_fields)
+            meta_fields[type_code] = option_codes
+
+            # doc 是 DocumentService.get_by_id() 返回的模型实例。
+            # 直接使用它的模型类更新，避免调用带独立连接上下文的服务方法。
+            document_model = type(doc)
+
+            updated_count = (
+                document_model
+                .update(
+                    meta_fields=meta_fields,
+                )
+                .where(document_model.id == doc_id)
+                .execute()
+            )
+
+            if updated_count == 0:
+                raise RuntimeError(
+                    f"Failed to update document meta_fields: {doc_id}"
+                )
+
+            # 8. 更新 StagedFileTag 中当前标签类型的数据
+            if stage_ids:
+                (
+                    StagedFileTag
+                    .delete()
+                    .where(
+                        (StagedFileTag.stage_id.in_(stage_ids))
+                        & (StagedFileTag.type_code == type_code)
+                    )
+                    .execute()
+                )
+
+                tag_rows = [
+                    {
+                        "stage_id": stage_id,
+                        "type_code": type_code,
+                        "option_code": option_code,
+                        "create_time": now,
+                    }
+                    for stage_id in stage_ids
+                    for option_code in option_codes
+                ]
+
+                if tag_rows:
+                    StagedFileTag.insert_many(tag_rows).execute()
+
+        # 9. 返回选项中文名称
+        option_name_map = {
+            row.option_code: row.option_name
+            for row in option_rows
+        }
+
+        return get_json_result(
+            data={
+                "doc_id": doc_id,
+                "stage_ids": stage_ids,
+                "type_code": type_code,
+                "type_name": tag_type.type_name,
+                "option_codes": option_codes,
+                "option_names": [
+                    option_name_map.get(code, code)
+                    for code in option_codes
+                ],
+                "meta_fields": meta_fields,
+            }
+        )
+
+    except Exception as e:
+        return server_error_response(e)

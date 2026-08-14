@@ -97,6 +97,7 @@ export function DatasetTable({
     showSetMetaModal,
     showLog,
     readonly,
+    documents,
   });
 
   const currentPagination = useMemo(() => {
