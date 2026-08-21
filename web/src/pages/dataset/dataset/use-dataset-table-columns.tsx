@@ -15,6 +15,7 @@ import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
 import { useDataSourceInfo } from '@/pages/user-setting/data-source/contant';
 // import { formatDate } from '@/utils/date';
+import { CurrentUserRole } from '@/hooks/use-document-request';
 import { getAuthorization } from '@/utils/authorization-util';
 import { CheckOutlined, CloseOutlined, DownOutlined } from '@ant-design/icons';
 import { ColumnDef } from '@tanstack/table-core';
@@ -33,6 +34,7 @@ type UseDatasetTableColumnsType = UseChangeDocumentParserShowType &
     showLog: (record: IDocumentInfo) => void;
     readonly?: boolean;
     documents?: IDocumentInfo[];
+    currentUserRole?: CurrentUserRole | null;
   };
 
 type TagOptionSchema = {
@@ -270,7 +272,7 @@ const EditableTagCell: React.FC<EditableTagCellProps> = ({
         }}
         style={{
           cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.55 : 1,
+          // opacity: disabled ? 0.55 : 1,
         }}
       >
         {visibleValues.length > 0 ? (
@@ -436,6 +438,7 @@ export function useDatasetTableColumns({
   showLog,
   readonly = false,
   documents = [],
+  currentUserRole,
 }: UseDatasetTableColumnsType) {
   const hasViewPermission = (record: IDocumentInfo) => {
     const displayRecord = record as DisplayDocument;
@@ -451,6 +454,27 @@ export function useDatasetTableColumns({
     return displayRecord.can_view === true;
   };
 
+  // 全局权限判断
+  type OperationPermissionKey =
+    | 'view'
+    | 'upload'
+    | 'download'
+    | 'delete'
+    | 'edit';
+
+  const hasOperationPermission = (key: OperationPermissionKey) => {
+    if (currentUserRole?.is_admin) {
+      return true;
+    }
+
+    return !!currentUserRole?.operation_permissions?.[key];
+  };
+
+  const canEdit = hasOperationPermission('edit');
+  const canDelete = hasOperationPermission('delete');
+  const canDownload = hasOperationPermission('download');
+  const canUpload = hasOperationPermission('upload');
+
   const PermissionLock = ({
     title = '当前用户没有查看该文档的权限',
   }: {
@@ -459,8 +483,8 @@ export function useDatasetTableColumns({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-center justify-center text-gray-400">
-            <LockKeyhole size={15} strokeWidth={2} />
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+            <LockKeyhole size={15} strokeWidth={2.2} />
           </div>
         </TooltipTrigger>
         <TooltipContent>
@@ -611,7 +635,7 @@ export function useDatasetTableColumns({
             displayValue={displayValue}
             schema={schema}
             authHeaders={authHeaders}
-            disabled={!canView || readonly}
+            disabled={!canView || readonly || !canEdit}
           />
         );
       },
@@ -824,23 +848,52 @@ export function useDatasetTableColumns({
   const columns: ColumnDef<IDocumentInfo>[] = [
     {
       id: 'select',
-      header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && 'indeterminate')
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Select row"
-        />
-      ),
+      header: ({ table }) => {
+        const selectableRows = table
+          .getRowModel()
+          .rows.filter((row) => row.original.can_view === true);
+
+        const selectedRows = selectableRows.filter((row) =>
+          row.getIsSelected(),
+        );
+
+        const allSelected =
+          selectableRows.length > 0 &&
+          selectedRows.length === selectableRows.length;
+
+        const someSelected =
+          selectedRows.length > 0 &&
+          selectedRows.length < selectableRows.length;
+
+        return (
+          <Checkbox
+            checked={allSelected || (someSelected ? 'indeterminate' : false)}
+            onCheckedChange={(value) => {
+              const checked = value === true;
+
+              selectableRows.forEach((row) => {
+                row.toggleSelected(checked);
+              });
+            }}
+            aria-label="Select all visible documents"
+          />
+        );
+      },
+      cell: ({ row }) => {
+        const canView = hasViewPermission(row.original);
+
+        if (!canView) {
+          return <PermissionLock title="当前用户没有操作该文档的权限" />;
+        }
+
+        return (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        );
+      },
       enableSorting: false,
       enableHiding: false,
     },
@@ -888,29 +941,34 @@ export function useDatasetTableColumns({
               <div
                 className={cn(
                   'flex min-w-0 items-center gap-2',
-                  canView ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
+                  canView ? 'cursor-pointer' : 'cursor-not-allowed ',
                 )}
                 onClick={handleOpenDocument}
-                title={canView ? name : '当前用户没有查看该文档的权限'}
+                title={
+                  canView
+                    ? name
+                    : '当前用户没有查看该文档的权限，请申请该库的内部权限'
+                }
               >
                 <FileIcon name={name} />
 
-                <span className={cn('truncate', !canView && 'text-gray-400')}>
+                {/* <span className={cn('truncate', !canView && 'text-gray-400')}>
                   {name}
-                </span>
+                </span> */}
+                <span className="truncate">{name}</span>
 
-                {!canView && (
+                {/* {!canView && (
                   <LockKeyhole
                     size={14}
                     strokeWidth={2}
                     className="shrink-0 text-gray-400"
                   />
-                )}
+                )} */}
               </div>
             </TooltipTrigger>
 
             <TooltipContent>
-              <p>{canView ? name : `${name}，当前用户没有查看权限`}</p>
+              <p>{canView ? name : `${name}`}</p>
             </TooltipContent>
           </Tooltip>
         );
@@ -937,170 +995,6 @@ export function useDatasetTableColumns({
       ),
     },
     ...tagColumns,
-    // {
-    //   id: 'metadata',
-    //   header: '来源信息',
-    //   cell: ({ row }) => {
-    //     const author = toText(row.original.author);
-    //     const schoolRaw = row.original.school;
-    //     let school = '';
-    //     if (typeof schoolRaw === 'string') {
-    //       const trimmed = schoolRaw.trim();
-    //       if (trimmed && trimmed[0] !== '{' && trimmed[0] !== '[') {
-    //         school = schoolRaw;
-    //       }
-    //     }
-    //     const publishTime = toText(row.original.publish_time);
-    //     return (
-    //       <div className="flex flex-col gap-1 text-xs text-text-secondary group relative min-h-[20px]">
-    //         <div className="flex items-center gap-1">
-    //           <span className="font-medium">作者:</span>
-    //           <span className="truncate max-w-[120px]" title={author}>
-    //             {author}
-    //           </span>
-    //         </div>
-    //         <div className="flex items-center gap-1">
-    //           <span className="font-medium">学校:</span>
-    //           <span className="truncate max-w-[120px]" title={school}>
-    //             {school}
-    //           </span>
-    //         </div>
-    //         <div className="flex items-center gap-1">
-    //           <span className="font-medium">发布日期:</span>
-    //           <span className="truncate max-w-[120px]" title={publishTime}>
-    //             {publishTime}
-    //           </span>
-    //         </div>
-    //         {!readonly && (
-    //           <div className="absolute right-0 top-0 hidden group-hover:block">
-    //             <Button
-    //               variant="ghost"
-    //               size="icon"
-    //               className="h-6 w-6"
-    //               title="手动输入"
-    //               onClick={() => showSetMetaModal(row.original)}
-    //             >
-    //               <Edit className="h-4 w-4" />
-    //             </Button>
-    //           </div>
-    //         )}
-    //       </div>
-    //     );
-    //   },
-    // },
-    //     {
-    //   id: 'metadata',
-    //   header: '来源信息',
-    //   meta: {
-    //     cellClassName: 'min-w-[280px] max-w-[380px]',
-    //   },
-    //   cell: ({ row }) => {
-    //     const document = row.original as IDocumentInfo & {
-    //       meta_fields?: Record<string, unknown> | string;
-    //       author?: unknown;
-    //       school?: unknown;
-    //       publish_time?: unknown;
-    //     };
-
-    //     const metaFields = parseMetaFields(document.meta_fields);
-
-    //     // 兼容 author、school、publish_time 已经被后端平铺到顶层的情况
-    //     const author = toText(
-    //       document.author ?? metaFields.author,
-    //     );
-
-    //     const school = toText(
-    //       document.school ?? metaFields.school,
-    //     );
-
-    //     const publishTime = toText(
-    //       document.publish_time ?? metaFields.publish_time,
-    //     );
-
-    //     const fixedKeys = new Set([
-    //       'author',
-    //       'school',
-    //       'publish_time',
-    //     ]);
-
-    //     const dynamicMetadata = Object.entries(metaFields).filter(
-    //       ([key]) => !fixedKeys.has(key),
-    //     );
-
-    //     return (
-    //       <div className="group relative flex min-h-[20px] flex-col gap-1 pr-7 text-xs text-text-secondary">
-    //         {/* 固定字段 */}
-    //         <div className="flex items-center gap-1">
-    //           <span className="font-medium">作者:</span>
-    //           <span
-    //             className="max-w-[160px] truncate"
-    //             title={author}
-    //           >
-    //             {author || '-'}
-    //           </span>
-    //         </div>
-
-    //         <div className="flex items-center gap-1">
-    //           <span className="font-medium">学校:</span>
-    //           <span
-    //             className="max-w-[160px] truncate"
-    //             title={school}
-    //           >
-    //             {school || '-'}
-    //           </span>
-    //         </div>
-
-    //         <div className="flex items-center gap-1">
-    //           <span className="font-medium">发布日期:</span>
-    //           <span
-    //             className="max-w-[160px] truncate"
-    //             title={publishTime}
-    //           >
-    //             {publishTime || '-'}
-    //           </span>
-    //         </div>
-
-    //         {/* 动态字段 */}
-    //         {dynamicMetadata.map(([typeCode, value]) => {
-    //           const typeName = getMetaTypeName(typeCode);
-    //           const valueText = toMetaText(typeCode, value);
-
-    //           return (
-    //             <div
-    //               key={typeCode}
-    //               className="flex items-center gap-1"
-    //             >
-    //               <span className="font-medium">
-    //                 {typeName}:
-    //               </span>
-
-    //               <span
-    //                 className="max-w-[160px] truncate"
-    //                 title={valueText}
-    //               >
-    //                 {valueText}
-    //               </span>
-    //             </div>
-    //           );
-    //         })}
-
-    //         {!readonly && (
-    //           <div className="absolute right-0 top-0 hidden group-hover:block">
-    //             <Button
-    //               variant="ghost"
-    //               size="icon"
-    //               className="h-6 w-6"
-    //               title="手动输入"
-    //               onClick={() => showSetMetaModal(row.original)}
-    //             >
-    //               <Edit className="h-4 w-4" />
-    //             </Button>
-    //           </div>
-    //         )}
-    //       </div>
-    //     );
-    //   },
-    // },
 
     {
       id: 'metadata',
@@ -1163,8 +1057,16 @@ export function useDatasetTableColumns({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6"
-                  title="手动输入"
-                  onClick={() => showSetMetaModal(row.original)}
+                  title={canEdit ? '手动输入' : '当前用户没有编辑权限'}
+                  disabled={!canEdit}
+                  onClick={() => {
+                    if (!canEdit) {
+                      message.warning('当前用户没有编辑权限');
+                      return;
+                    }
+
+                    showSetMetaModal(row.original);
+                  }}
                 >
                   <Edit className="h-4 w-4" />
                 </Button>
@@ -1219,8 +1121,13 @@ export function useDatasetTableColumns({
         return (
           <Switch
             checked={String(row.getValue('status') ?? '') === '1'}
-            disabled={readonly}
+            disabled={readonly || !canEdit}
             onCheckedChange={(e) => {
+              if (!canEdit) {
+                message.warning('当前用户没有编辑权限');
+                return;
+              }
+
               setDocumentStatus({ status: e, documentId: id });
             }}
           />
@@ -1378,6 +1285,10 @@ export function useDatasetTableColumns({
             record={record}
             showRenameModal={showRenameModal}
             readonly={readonly}
+            canEdit={canEdit}
+            canUpload={canUpload}
+            canDownload={canDownload}
+            canDelete={canDelete}
           />
         );
       },

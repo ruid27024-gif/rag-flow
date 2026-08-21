@@ -10,7 +10,10 @@ import {
   Typography,
   message,
 } from 'antd';
+
 import type { ColumnsType } from 'antd/es/table';
+
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -747,7 +750,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
 
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
 
   const fetchStagedFiles = async (
@@ -835,7 +838,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: tagType.type_name,
       dataIndex: 'tags',
       key: `tag_${tagType.type_code}`,
-      // width: 180,
+      width: 120,
       render: (tags: FileTagItem[] | null | undefined) =>
         renderTagValue(tags, tagType.type_code),
       onCell: () => ({
@@ -871,7 +874,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '上传人',
       dataIndex: 'user_name',
       key: 'user_name',
-      // width: 110,
+      width: 110,
       render: (_value, record) => (
         <Text style={{ fontSize: 12 }}>
           {record.user_name || record.user_id || '-'}
@@ -923,7 +926,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
       title: '审批人',
       dataIndex: 'approvers',
       key: 'approvers',
-      // width: 160,
+      width: 160,
       render: (_value, record) => renderApproverList(getRowApprovers(record)),
       onCell: () => ({
         style: {
@@ -999,40 +1002,35 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
     <Tag>个人视图</Tag>
   );
 
+  // 在 return 中：
   return (
-    <div style={{ fontSize: 12, lineHeight: 1.3 }}>
-      {/* {renderApproverConfig(approverConfig)} */}
+    <div
+      style={{
+        fontSize: 12,
+        lineHeight: 1.3,
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'calc(100vh - 120px)',
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
+    >
+      {/* 标题 */}
+      <div className="mb-4 flex shrink-0 items-center justify-between">
+        <span className="text-2xl font-semibold">上传日志</span>
+        <Space size={8}>
+          <Select
+            style={{ width: 120 }}
+            size="small"
+            value={status}
+            options={statusOptions}
+            onChange={handleStatusChange}
+          />
+        </Space>
+      </div>
 
-      <Card
-        size="small"
-        // bordered={false}
-
-        bodyStyle={{ padding: 12 }}
-        title={
-          <Space size={8}>
-            <span>上传日志</span>
-            {/* {viewTag} */}
-          </Space>
-        }
-        extra={
-          <Space size={8}>
-            <Select
-              style={{ width: 120 }}
-              size="small"
-              value={status}
-              options={statusOptions}
-              onChange={handleStatusChange}
-            />
-            {/* <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              onClick={() => fetchStagedFiles(page, pageSize, status)}
-            >
-              刷新
-            </Button> */}
-          </Space>
-        }
-      >
+      {/* 表格滚动区域 */}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <Table
           size="small"
           bordered
@@ -1040,23 +1038,26 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
           loading={loading}
           columns={columns}
           dataSource={dataSource}
-          tableLayout="fixed"
-          scroll={{ x: 'max-content' }}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            showTotal: (count) => `共 ${count} 条`,
-            pageSizeOptions: [10, 20, 50, 100],
-            onChange: (nextPage, nextPageSize) => {
-              setPage(nextPage);
-              setPageSize(nextPageSize);
-              fetchStagedFiles(nextPage, nextPageSize, status);
-            },
+          tableLayout="auto"
+          pagination={false}
+          style={{ height: '100%' }}
+          scroll={{ x: 'max-content', y: 600 }} // 这里改成具体数值
+        />
+      </div>
+
+      {/* 分页 */}
+      <div className="mt-2 flex shrink-0 items-center justify-end pb-3 pr-3">
+        <RAGFlowPagination
+          current={page}
+          pageSize={pageSize}
+          total={total}
+          onChange={(nextPage, nextPageSize) => {
+            setPage(nextPage);
+            setPageSize(nextPageSize);
+            fetchStagedFiles(nextPage, nextPageSize, status);
           }}
         />
-      </Card>
+      </div>
     </div>
   );
 };

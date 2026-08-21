@@ -23,7 +23,7 @@ import { buildChunkHighlights } from '@/utils/document-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { get } from 'lodash';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { IHighlight } from 'react-pdf-highlighter';
 import { useParams } from 'umi';
 import {
@@ -53,6 +53,38 @@ export const enum DocumentApiAction {
   RemoveWastedDocument = 'removeWastedDocument',
   FetchWastedDocumentFilter = 'fetchWastedDocumentFilter',
 }
+
+export type OperationPermissions = {
+  view: boolean;
+  upload: boolean;
+  download: boolean;
+  delete: boolean;
+  edit: boolean;
+};
+
+export type CurrentUserRole = {
+  role_id: number | null;
+  role_name: string;
+  enabled: boolean;
+  is_admin: boolean;
+  file_permission_level: number;
+  file_permission_name: string;
+  operation_permission_mask: number;
+  operation_permissions: OperationPermissions;
+  operation_permission_names: string[];
+  need_approval?: boolean;
+  approval_order?: number;
+  department_id?: string | null;
+  cover_child_dept?: boolean;
+};
+
+type DocumentListData = {
+  docs: IDocumentInfo[];
+  total: number;
+  week_growth_rate?: number;
+  this_week_count?: number;
+  current_user_role?: CurrentUserRole | null;
+};
 
 // export const useUploadNextDocument = () => {
 //   const queryClient = useQueryClient();
@@ -158,16 +190,12 @@ export const useFetchDocumentList = () => {
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
   const { filterValue, handleFilterSubmit } = useHandleFilterSubmit();
   const [docs, setDocs] = useState<IDocumentInfo[]>([]);
+
   const isLoop = useMemo(() => {
     return docs.some((doc) => doc.run === '1');
   }, [docs]);
 
-  const { data, isFetching: loading } = useQuery<{
-    docs: IDocumentInfo[];
-    total: number;
-    week_growth_rate?: number;
-    this_week_count?: number;
-  }>({
+  const { data, isFetching: loading } = useQuery<DocumentListData>({
     queryKey: [
       DocumentApiAction.FetchDocumentList,
       debouncedSearchString,
@@ -179,6 +207,7 @@ export const useFetchDocumentList = () => {
       total: 0,
       week_growth_rate: 0,
       this_week_count: 0,
+      current_user_role: null,
     },
     refetchInterval: isLoop ? 5000 : false,
     enabled: !!knowledgeId || !!id,
@@ -195,6 +224,7 @@ export const useFetchDocumentList = () => {
           run_status: filterValue.run,
         },
       );
+
       if (ret.data.code === 0) {
         return ret.data.data;
       }
@@ -204,12 +234,15 @@ export const useFetchDocumentList = () => {
         total: 0,
         week_growth_rate: 0,
         this_week_count: 0,
+        current_user_role: null,
       };
     },
   });
-  useMemo(() => {
+
+  useEffect(() => {
     setDocs(data.docs);
   }, [data.docs]);
+
   const onInputChange: React.ChangeEventHandler<HTMLInputElement> = useCallback(
     (e) => {
       setPagination({ page: 1 });
@@ -218,7 +251,6 @@ export const useFetchDocumentList = () => {
     [handleInputChange, setPagination],
   );
 
-  console.log(data.week_growth_rate);
   return {
     loading,
     searchString,
@@ -230,6 +262,7 @@ export const useFetchDocumentList = () => {
     handleFilterSubmit,
     weekGrowthRate: data?.week_growth_rate || 0,
     thisWeekCount: data?.this_week_count || 0,
+    currentUserRole: data?.current_user_role ?? null,
   };
 };
 

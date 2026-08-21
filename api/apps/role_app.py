@@ -3,13 +3,13 @@ from api.apps import login_required, current_user
 from api.utils.api_utils import get_json_result, server_error_response, validate_request, get_request_json
 from common.constants import RetCode
 from api.db.services.role_service import RoleService, validate_file_permission_level, validate_operation_permissions, build_operation_permission_mask
-from api.db.db_models import User,SyncPerson
+from api.db.db_models import User,SyncPerson,OaApplication
 import json
 
 import logging
 
 from api.apps import login_required, current_user
-from api.db.db_models import User, Role, SyncDept
+from api.db.db_models import User, Role, SyncDept,PermissionApplication,RoleUser
 from api.db.services.role_service import RoleService
 from api.db.services.roleuser_service import RoleUserService
 from api.utils.api_utils import (
@@ -18,6 +18,7 @@ from api.utils.api_utils import (
     validate_request,
     get_request_json,
 )
+import time
 
 def normalize_department_id(req: dict):
     """
@@ -184,9 +185,9 @@ async def add_role():
 async def role_list():
     try:
         # 判断是否超级管理员
-        error_response = check_admin(current_user)
-        if error_response:
-            return error_response
+        # error_response = check_admin(current_user)
+        # if error_response:
+        #     return error_response
 
         roles = RoleService.list_all()
 
@@ -252,9 +253,9 @@ async def role_list():
 async def person_role_list():
     try:
         # 判断是否超级管理员
-        error_response = check_admin(current_user)
-        if error_response:
-            return error_response
+        # error_response = check_admin(current_user)
+        # if error_response:
+        #     return error_response
 
         roles = RoleService.list_all()
 
@@ -859,6 +860,455 @@ async def get_person_detail():
 
         return get_json_result(data=data)
 
+    except Exception as e:
+        logging.exception(e)
+        return server_error_response(e)
+
+import json
+from typing import Set
+
+# 1. 部门集合解析函数（支持多种存储格式）
+def get_department_set(role) -> Set[str]:
+    """
+    解析角色的 department_id 字段，返回部门集合（set）
+    支持：
+    - None / 空字符串 / "null" / "[]" -> 空集合
+    - JSON 数组字符串: '["dept1","dept2"]' -> {"dept1","dept2"}
+    - 逗号分隔字符串: "dept1,dept2" -> {"dept1","dept2"}
+    - 单个字符串: "dept1" -> {"dept1"}
+    - 已经是 list 类型 -> 转 set
+    """
+    dept_value = role.department_id
+    if not dept_value:
+        return set()
+    
+    if isinstance(dept_value, list):
+        return {d for d in dept_value if d}
+    
+    if isinstance(dept_value, str):
+        # 尝试 JSON 解析
+        try:
+            parsed = json.loads(dept_value)
+            if isinstance(parsed, list):
+                return {d for d in parsed if d}
+            elif isinstance(parsed, str) and parsed:
+                return {parsed}
+            else:
+                return set()
+        except (json.JSONDecodeError, TypeError):
+            # 不是 JSON，按逗号分隔
+            parts = [d.strip() for d in dept_value.split(',') if d.strip()]
+            return set(parts)
+    
+    return set()
+
+# 2. 根据申请角色查找审批人（匹配相同部门集合）
+def find_approver_for_role(role) -> tuple:
+    """
+    根据申请角色查找对应的审批人
+    规则：审批角色为 need_approval=True 且部门集合与申请角色完全相同（集合相等）
+    返回: (approver_user_id, approver_user_name, approver_role_id)
+    如果找不到，返回 (None, None, None)
+    """
+    target_dept_set = get_department_set(role)
+    
+    # 查找所有启用且 need_approval=True 的审批角色
+    approver_roles = Role.select().where(
+        (Role.need_approval == True) &
+        (Role.enabled == True)
+    )
+    
+    for approver_role in approver_roles:
+        # 比较部门集合是否完全相同
+        if get_department_set(approver_role) == target_dept_set:
+            # 找到第一个匹配的审批角色
+            approver_user = RoleUser.select().where(
+                RoleUser.role_id == approver_role.id
+            ).first()
+            if approver_user:
+                # 获取用户姓名（假设有 User 模型）
+                user_obj = User.select().where(User.id == approver_user.user_id).first()
+                user_name = user_obj.nickname if user_obj else approver_user.user_id
+                return (approver_user.user_id, user_name, approver_role.id)
+    
+    # 没找到匹配的审批角色
+    return (None, None, None)
+
+@manager.route('/apply', methods=['POST'])
+@login_required
+@validate_request("role_id")
+async def apply_role_permission():
+    req = await get_request_json()
+    role_id = req.get("role_id")
+    reason = req.get("reason", "")
+    applicant = current_user
+
+    try:
+        # 1. 校验角色
+        role = Role.select().where(Role.id == role_id).first()
+        if not role:
+            return get_json_result(data=False, message="角色不存在")
+
+        # 2. 防重复提交
+        pending_exists = PermissionApplication.select().where(
+            (PermissionApplication.applicant_user_id == applicant.id) &
+            (PermissionApplication.role_id == role_id) &
+            (PermissionApplication.status == PermissionApplication.Status.PENDING)
+        ).exists()
+        if pending_exists:
+            return get_json_result(data=False, message="您已提交过该角色的申请，请等待审批完成")
+
+        # ========== 3. 查找审批人 ==========
+        approver_id, approver_name, approver_role_id = find_approver_for_role(role)
+        if not approver_id:
+            # 可提示具体部门集合，方便排查
+            dept_str = str(get_department_set(role))
+            return get_json_result(
+                data=False,
+                message=f"未找到与部门集合 {dept_str} 匹配的审批角色，请联系管理员配置"
+            )
+
+        # ========== 4. 构造 OA 请求 ==========
+
+        oa_payload = {
+            "business_type": "role_permission",
+            "business_id": f"role_apply_{role_id}_{applicant.id}_{int(time.time())}",
+            "applicant": {
+                "user_id": applicant.id,
+                "user_name": applicant.nickname
+            },
+            "approver": {
+                "user_id": approver_id,
+                "user_name": approver_name
+            },
+            "data": {
+                "role_id": role.id,
+                "role_name": role.role_name,
+                "dept_set": list(get_department_set(role))  # 传给OA展示
+            },
+            "reason": reason or f"申请角色【{role.role_name}】权限",
+
+            "timestamp": int(time.time())
+        }
+
+        # ========== 5. 调用 OA 接口 ==========
+        oa_resp = await call_oa_apply_api(oa_payload)
+        if not oa_resp.get("success"):
+            logging.error(f"OA申请失败: {oa_resp}")
+            return get_json_result(
+                data=False,
+                message=f"OA审批发起失败: {oa_resp.get('message', '未知错误')}"
+            )
+
+        oa_business_id = oa_resp.get("business_id") or oa_resp.get("process_instance_id")
+        if not oa_business_id:
+            logging.error(f"OA返回数据缺少business_id: {oa_resp}")
+            return get_json_result(data=False, message="OA接口返回异常，缺少业务ID")
+
+        # ========== 6. 插入本地申请表 ==========
+        application = PermissionApplication.create(
+            applicant_user_id=applicant.id,
+            role_id=role_id,
+            oa_business_id=oa_business_id,
+            reason=reason or f"申请角色【{role.role_name}】权限",
+            status=PermissionApplication.Status.PENDING,
+            created_by=applicant.nickname,
+            created_time=int(time.time()),
+            processed_time=None,
+            oa_callback_payload=None
+        )
+
+        return get_json_result(
+            data={
+                "application_id": application.id,
+                "oa_business_id": oa_business_id,
+                "status": "pending",
+                "approver": {"id": approver_id, "name": approver_name}
+            },
+            message="申请提交成功"
+        )
+
+    except Exception as e:
+        logging.exception(e)
+        return server_error_response(e)
+
+
+# ========== 辅助函数：实际调用OA接口（需要你实现） ==========
+async def call_oa_apply_api(payload: dict) -> dict:
+    """
+    调用 OA 申请接口，返回标准化字典
+    """
+    url = "http://localhost:9222/v1/role/oa/apply"  # 根据实际情况调整
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, timeout=30) as resp:
+            result = await resp.json()
+            
+            # 判断成功条件：模拟 OA 返回 code=0 且 data.success=True
+            # 真实 OA 可能返回 code=200 或 code=0，请按实际字段调整
+            if result.get("code") == 0 and result.get("data", {}).get("success") is True:
+                return {
+                    "success": True,
+                    "business_id": result["data"].get("business_id"),
+                    "message": result.get("message", "成功"),
+                    "raw": result
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": result.get("message", "OA 申请失败"),
+                    "raw": result
+                }
+
+import json
+import time
+import uuid
+from flask import request
+
+@manager.route('/oa/apply', methods=['POST'])
+async def mock_oa_apply():
+    """
+    模拟 OA 的 apply_for_permission 接口
+    接收与真实 OA 相同格式的 JSON，存储到本地表，返回 business_id
+    """
+    req = await get_request_json()
+    if not req:
+        return get_json_result(data=False, message="无效请求")
+
+    # 生成 OA 内部唯一 ID（例如时间戳+UUID）
+    business_id = f"OA_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+
+    # 提取一些关键字段用于后续查询
+    business_type = req.get("business_type", "unknown")
+    applicant = req.get("applicant", {})
+    approver = req.get("approver", {})
+
+    # 存入模拟 OA 申请表
+    try:
+        OaApplication.create(
+            business_id=business_id,
+            business_type=business_type,
+            payload=json.dumps(req, ensure_ascii=False),
+            status=0,  # 审批中
+            approver_id=approver.get("user_id"),
+            applicant_id=applicant.get("user_id"),
+            created_time=int(time.time()),
+            updated_time=None
+        )
+    except Exception as e:
+        logging.exception(e)
+        return get_json_result(data=False, message=f"存储失败: {str(e)}")
+
+    # 模拟 OA 返回格式（与真实 OA 一致）
+    return get_json_result(
+        data={
+            "success": True,
+            "business_id": business_id,
+            "message": "申请已提交到OA"
+        },
+        message="OK"
+    )
+
+import aiohttp
+import asyncio
+
+# 模拟OA侧审批通过
+@manager.route('/oa/approve', methods=['POST'])
+@login_required  # 仅管理员可操作（测试时可去掉）
+async def mock_oa_approve():
+    """
+    模拟 OA 审批动作：管理员传入 business_id 和 action (agree/reject)
+    然后主动调用业务系统的回调接口 /manager/oa-callback
+    """
+    req = await get_request_json()
+    business_id = req.get("business_id")
+    action = req.get("action")  # "agree" 或 "reject"
+    comment = req.get("comment", "")
+
+    if not business_id or action not in ("agree", "reject"):
+        return get_json_result(data=False, message="参数错误：需要 business_id 和 action (agree/reject)")
+
+    # 1. 从模拟 OA 表中获取申请记录
+    try:
+        oa_app = OaApplication.get(OaApplication.business_id == business_id)
+    except OaApplication.DoesNotExist:
+        return get_json_result(data=False, message="未找到该业务ID")
+
+    if oa_app.status != 0:
+        return get_json_result(data=False, message="该申请已处理过，请勿重复操作")
+
+    # 2. 更新 OA 表状态
+    new_status = 1 if action == "agree" else 2
+    oa_app.status = new_status
+    oa_app.updated_time = int(time.time())
+    oa_app.save()
+
+    # 3. 构造模拟 OA 回调的报文（模仿真实 OA 回调格式）
+    callback_payload = {
+        "business_id": business_id,
+        "business_type": oa_app.business_type,
+        "approval_result": "agree" if action == "agree" else "reject",
+        "comment": comment,
+        "approver": {"user_id": oa_app.approver_id},  # 可以从 payload 中解析，这里简化
+        "timestamp": int(time.time())
+    }
+
+    # 4. 调用真实的业务回调接口（本地）
+    #    注意：这里需要获取当前服务的主机和端口，测试时可硬编码为 http://localhost:5000
+    callback_url = "http://localhost:9222/v1/role/oa-callback"  # 请按实际部署地址修改
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(callback_url, json=callback_payload, timeout=10) as resp:
+                result = await resp.json()
+                # 记录结果（日志）
+                logging.info(f"模拟OA回调结果: {result}")
+                if resp.status != 200:
+                    return get_json_result(data=False, message=f"回调业务接口失败: {result}")
+    except Exception as e:
+        logging.exception(e)
+        return get_json_result(data=False, message=f"回调异常: {str(e)}")
+
+    return get_json_result(
+        data={"status": "success", "new_status": "approved" if action == "agree" else "rejected"},
+        message="审批完成，已触发回调"
+    )
+
+
+import json
+import logging
+import time
+from peewee import DoesNotExist
+
+@manager.route('/oa-callback', methods=['POST'])
+async def oa_callback():
+    """
+    OA 审批回调接口
+    接收 OA 的 POST 请求，更新本地申请状态，通过时直接绑定角色
+    """
+    try:
+        req = await get_request_json()
+        if not req:
+            logging.warning("OA回调: 请求体为空")
+            return get_json_result(data=False, message="请求体为空"), 200
+
+        # 提取参数（根据实际 OA 字段调整）
+        business_id = req.get("business_id") or req.get("process_instance_id")
+        approval_result = req.get("approval_result") or req.get("result")
+        if not business_id:
+            logging.error(f"OA回调缺少 business_id: {req}")
+            return get_json_result(data=False, message="缺少 business_id"), 200
+
+        # 归一化审批结果
+        is_approved = approval_result in ("agree", "approved", "pass")
+
+        # 查询本地申请表
+        try:
+            application = PermissionApplication.get(
+                PermissionApplication.oa_business_id == business_id
+            )
+        except DoesNotExist:
+            logging.error(f"未找到 business_id={business_id} 的申请记录")
+            return get_json_result(data=False, message="未找到对应申请"), 200
+
+        # 幂等性：已处理则直接返回成功
+        if application.status != PermissionApplication.Status.PENDING:
+            logging.info(f"申请 {business_id} 已处理过，状态={application.status}，忽略重复回调")
+            return get_json_result(data=True, message="已处理过"), 200
+
+        # 审批通过 → 绑定角色
+        if is_approved:
+            try:
+                # 检查是否已存在绑定关系（防止重复绑定）
+                existing = RoleUser.select().where(
+                    (RoleUser.role_id == application.role_id) &
+                    (RoleUser.user_id == application.applicant_user_id)
+                ).first()
+
+                if not existing:
+                    RoleUser.create(
+                        role_id=application.role_id,
+                        user_id=application.applicant_user_id,
+                        created_by="system_oa_callback",
+                        created_time=int(time.time())
+                    )
+                    logging.info(f"绑定成功: user_id={application.applicant_user_id}, role_id={application.role_id}")
+                else:
+                    logging.info(f"用户已拥有该角色，跳过绑定")
+
+                application.status = PermissionApplication.Status.APPROVED
+
+            except Exception as e:
+                logging.exception(f"绑定角色失败: {e}")
+                # 绑定失败，状态保持 PENDING，返回 200 防止 OA 重试，但需人工介入
+                # 可在此触发告警（邮件/钉钉）
+                return get_json_result(data=False, message="角色绑定失败，请人工处理"), 200
+
+        else:
+            # 审批拒绝
+            application.status = PermissionApplication.Status.REJECTED
+
+        # 更新公共字段
+        application.processed_time = int(time.time())
+        application.oa_callback_payload = json.dumps(req, ensure_ascii=False)
+        application.save()
+
+        logging.info(f"申请 {business_id} 处理完成，状态更新为 {application.status}")
+        return get_json_result(data=True, message="回调处理成功"), 200
+
+    except Exception as e:
+        logging.exception(f"OA回调处理异常: {e}")
+        # 返回 200 让 OA 不重试，但记录错误
+        return get_json_result(data=False, message="内部错误"), 200
+
+@manager.route('/oa/list', methods=['GET'])
+# @login_required
+async def get_oa_apply_list():
+    """
+    获取 OA 系统的申请列表（用于审批管理页面）
+    查询 OaApplication 表
+    """
+    try:
+        # 使用 await 异步获取请求参数
+        req = await get_request_json()
+        if not req:
+            req = {}  # 防止 GET 请求没有参数时报错
+            
+        status = req.get('status')
+        business_type = req.get('business_type')
+
+        query = OaApplication.select().order_by(OaApplication.created_time.desc())
+
+        if status is not None:
+            query = query.where(OaApplication.status == int(status))
+        if business_type:
+            query = query.where(OaApplication.business_type == business_type)
+
+        results = []
+        for app in query:
+            # 解析 payload 中的关键信息
+            payload = json.loads(app.payload) if app.payload else {}
+            applicant = payload.get('applicant', {})
+            approver = payload.get('approver', {})
+            data = payload.get('data', {})
+
+            results.append({
+                "id": app.id,
+                "business_id": app.business_id,
+                "business_type": app.business_type,
+                "applicant_user_id": app.applicant_id or applicant.get('user_id'),
+                "applicant_name": applicant.get('user_name'),
+                "approver_user_id": app.approver_id or approver.get('user_id'),
+                "approver_name": approver.get('user_name'),
+                "role_id": data.get('role_id'),
+                "role_name": data.get('role_name'),
+                "dept_codes": data.get('dept_codes') or data.get('dept_set'),
+                "reason": payload.get('reason'),
+                "status": app.status,
+                "created_time": app.created_time,
+                "updated_time": app.updated_time,
+                "payload": app.payload,
+            })
+        return get_json_result(data=results, message="OK")
     except Exception as e:
         logging.exception(e)
         return server_error_response(e)

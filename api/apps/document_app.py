@@ -22,10 +22,10 @@ import os
 from pathlib import Path
 from quart import request, make_response
 from api.apps import current_user, login_required
-from api.common.check_team_permission import check_kb_team_permission, check_kb_team_write_permission
+from api.common.check_team_permission import check_kb_team_permission, check_kb_team_write_permission,user_has_operation_permission
 from api.constants import FILE_NAME_LEN_LIMIT, IMG_BASE64_PREFIX
 from api.db import VALID_FILE_TYPES, FileType
-from api.db.db_models import Task, SyncDept, SyncPerson,StagedFileTag,StagedFile,KnowledgeTagOption,KnowledgeTagType,OAApprovalRequest,StagedFileApprovalRequest,StagedFileApprovalTask,OAApprovalTask
+from api.db.db_models import Task, SyncDept, SyncPerson,StagedFileTag,StagedFile,KnowledgeTagOption,KnowledgeTagType,OAApprovalRequest,StagedFileApprovalRequest,StagedFileApprovalTask,OAApprovalTask,Knowledgebase
 from api.db.services import duplicate_name
 from api.db.services.document_service import DocumentService, doc_upload_and_parse
 from common.metadata_utils import meta_filter, convert_conditions
@@ -34,6 +34,8 @@ from api.db.services.stagedfile_service import StagedFileService
 
 from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
+from api.db.services.operationlog_service import OperationLogService
+
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.db.services.user_service import UserTenantService
 from common.misc_utils import get_uuid
@@ -908,6 +910,14 @@ async def upload():
     uploader_id = current_user.id
     kb_id = form.get("kb_id")
     tags_text = form.get("tags")
+    # 新增判断当前用户是否存在上传权限
+    # 判断用户是否拥有上传权限
+    if not user_has_operation_permission(uploader_id, "upload"):
+        return get_json_result(
+            data=False,
+            message="没有上传权限",
+            code=RetCode.FORBIDDEN,
+        )
 
     if not kb_id:
         return get_json_result(
@@ -2422,13 +2432,112 @@ async def oa_approval_callback():
                     StagedFileApprovalTask.approval_id == oa_request_id
                 ).execute()
 
-        # 真正入库并启动解析
+       # 真正入库并启动解析
         imported_docs, import_errors = await asyncio.to_thread(
             import_staged_files_and_run_by_callback,
             kb,
             staged_files,
             uploader_user_id,
         )
+
+        # 记录上传操作日志
+        try:
+            # 重新查询，拿到回写后的 doc_id/status/committed_at
+            latest_staged_files = list(
+                StagedFile
+                .select()
+                .where(StagedFile.batch_id == batch_id)
+                .order_by(StagedFile.created_at.asc(), StagedFile.id.asc())
+            )
+
+            stage_ids = [sf.id for sf in latest_staged_files]
+
+            # 查询这些暂存文件的标签
+            staged_tags = list(
+                StagedFileTag
+                .select()
+                .where(StagedFileTag.stage_id.in_(stage_ids))
+                .dicts()
+            ) if stage_ids else []
+
+            tags_by_stage_id = {}
+
+            for tag in staged_tags:
+                stage_id = tag["stage_id"]
+
+                if stage_id not in tags_by_stage_id:
+                    tags_by_stage_id[stage_id] = []
+
+                tags_by_stage_id[stage_id].append({
+                    "type_code": tag["type_code"],
+                    "option_code": tag["option_code"],
+                })
+            from api.db.services.operationlog_service import OperationLogService
+            from api.db.db_models import StagedFile, StagedFileTag, User
+            uploader = User.get_or_none(User.id == str(uploader_user_id))
+
+            for sf in latest_staged_files:
+                # 只记录真正生成 doc_id 的文件
+                if not sf.doc_id:
+                    continue
+
+                file_tags = tags_by_stage_id.get(sf.id, [])
+
+                OperationLogService.add_log(
+                    user_id=sf.user_id,
+                    user_name=getattr(uploader, "nickname", None),
+                    user_email=getattr(uploader, "email", None),
+
+                    kb_id=sf.kb_id,
+                    kb_name=getattr(kb, "name", None),
+
+                    target_id=sf.doc_id,
+                    target_name=sf.filename,
+
+                    action="upload",
+                    status="success",
+                    message="文件上传成功",
+
+                    before_data={
+                        "staged_file_id": sf.id,
+                        "batch_id": sf.batch_id,
+                        "filename": sf.filename,
+                        "size": sf.size,
+                        "tags": file_tags,
+                        "status": "approved",
+                    },
+
+                    after_data={
+                        "staged_file_id": sf.id,
+                        "batch_id": sf.batch_id,
+                        "kb_id": sf.kb_id,
+                        "tenant_id": sf.tenant_id,
+                        "user_id": sf.user_id,
+                        "doc_id": sf.doc_id,
+                        "filename": sf.filename,
+                        "size": sf.size,
+                        "status": sf.status,
+                        "tags": file_tags,
+                        "approved_at": (
+                            sf.approved_at.strftime("%Y-%m-%d %H:%M:%S")
+                            if sf.approved_at else None
+                        ),
+                        "approved_by": sf.approved_by,
+                        "committed_at": (
+                            sf.committed_at.strftime("%Y-%m-%d %H:%M:%S")
+                            if sf.committed_at else None
+                        ),
+                        "oa_request_id": oa_request_id,
+                        "approver_user_id": approver_user_id,
+                        "approver_user_name": approver_user_name,
+                    },
+
+                    request_obj=request,
+                )
+
+        except Exception:
+            logging.exception("Add upload operation log failed.")
+
 
         final_status = "imported"
         if import_errors and imported_docs:
@@ -4078,7 +4187,7 @@ def build_document_tag_metadata(doc_ids):
 
 #     except Exception as e:
 #         return server_error_response(e)
-
+from api.db.db_models import AdminUser
 @manager.route("/list", methods=["POST"])  # noqa: F821
 @login_required
 async def list_docs():
@@ -4101,6 +4210,7 @@ async def list_docs():
 
     PUBLIC = 1
     INTERNAL = 2
+
 
     def get_current_user_id():
         """
@@ -4133,21 +4243,32 @@ async def list_docs():
 
         return None
 
+    def get_current_super_admin(user_id):
+        if not user_id:
+            return False
+
+        admin = AdminUser.query(user_id=user_id, role_level=1)
+        return bool(admin)
+    
     def get_current_user_role(user_id):
         """
         当前业务：一个用户只绑定一个角色。
         根据 role_user.user_id 查询 Role。
         """
-
         if not user_id:
             return None
 
         return (
-            Role
-            .select(
+            Role.select(
                 Role.id,
+                Role.role_name,
                 Role.file_permission_level,
+                Role.operation_permission_mask,
+                Role.need_approval,
+                Role.approval_order,
+                Role.department_id,
                 Role.is_admin,
+                Role.cover_child_dept,
                 Role.enabled,
             )
             .join(
@@ -4155,11 +4276,69 @@ async def list_docs():
                 on=(RoleUser.role_id == Role.id),
             )
             .where(
-                (RoleUser.user_id == str(user_id)) &
-                (Role.enabled == True)
+                (RoleUser.user_id == str(user_id))
+                & (Role.enabled == True)
             )
             .first()
         )
+
+    def serialize_current_role_permissions(role):
+        operation_permission_map = {
+            "view": 1,
+            "upload": 2,
+            "download": 4,
+            "delete": 8,
+            "edit": 16,
+        }
+
+        if role is None:
+            return None
+
+        try:
+            file_permission_level = int(role.file_permission_level or PUBLIC)
+        except Exception:
+            file_permission_level = PUBLIC
+
+        try:
+            operation_permission_mask = int(role.operation_permission_mask or 0)
+        except Exception:
+            operation_permission_mask = 0
+
+        is_admin = bool(role.is_admin)
+
+        operation_permissions = {
+            key: True if is_admin else bool(operation_permission_mask & value)
+            for key, value in operation_permission_map.items()
+        }
+
+        operation_permission_names = []
+        name_map = {
+            "view": "查看",
+            "upload": "上传",
+            "download": "下载",
+            "delete": "删除",
+            "edit": "编辑",
+        }
+
+        for key, allowed in operation_permissions.items():
+            if allowed:
+                operation_permission_names.append(name_map[key])
+
+        return {
+            "role_id": role.id,
+            "role_name": role.role_name,
+            "enabled": bool(role.enabled),
+            "is_admin": is_admin,
+            "file_permission_level": file_permission_level,
+            "file_permission_name": "内部" if file_permission_level == INTERNAL else "公开",
+            "operation_permission_mask": operation_permission_mask,
+            "operation_permissions": operation_permissions,
+            "operation_permission_names": operation_permission_names,
+            "need_approval": bool(role.need_approval),
+            "approval_order": role.approval_order or 0,
+            "department_id": role.department_id,
+            "cover_child_dept": bool(role.cover_child_dept),
+        }
 
     def get_doc_visibility_from_tags(tag_data):
         """
@@ -4243,24 +4422,15 @@ async def list_docs():
         # 3. 没有公开/内部标签时默认公开
         return PUBLIC
 
-    def can_view_document(role, visibility_level):
-        """
-        根据当前用户角色和文档可见级别判断是否可查看。
-
-        规则：
-        1 = 公开
-        2 = 内部
-
-        公开文档：所有登录用户可看
-        内部文档：内部用户或管理员可看
-        """
-
+    def can_view_document(role, visibility_level, is_super_admin=False):
         try:
             visibility_level = int(visibility_level)
         except Exception:
             visibility_level = PUBLIC
 
-        # 没有绑定角色，按公开用户处理
+        if is_super_admin:
+            return True
+
         if role is None:
             return visibility_level == PUBLIC
 
@@ -4303,6 +4473,36 @@ async def list_docs():
     # ---------------------------------------------------------
     current_user_id = get_current_user_id()
     current_role = get_current_user_role(current_user_id)
+    is_super_admin = get_current_super_admin(current_user_id)
+    
+
+    def serialize_super_admin_permissions():
+        return {
+            "role_id": "super_admin",
+            "role_name": "超级管理员",
+            "enabled": True,
+            "is_admin": True,
+            "file_permission_level": INTERNAL,
+            "file_permission_name": "内部",
+            "operation_permission_mask": 31,  # 1|2|4|8|16
+            "operation_permissions": {
+                "view": True,
+                "upload": True,
+                "download": True,
+                "delete": True,
+                "edit": True,
+            },
+            "operation_permission_names": ["查看", "上传", "下载", "删除", "编辑"],
+            "need_approval": False,
+            "approval_order": 0,
+            "department_id": None,
+            "cover_child_dept": True,
+        }
+
+    if is_super_admin:
+        current_user_role = serialize_super_admin_permissions()
+    else:
+        current_user_role = serialize_current_role_permissions(current_role)
 
     keywords = request.args.get("keywords", "")
 
@@ -4787,6 +4987,7 @@ async def list_docs():
             doc_item["can_view"] = can_view_document(
                 current_role,
                 visibility_level,
+                is_super_admin,
             )
 
         # ---------------------------------------------------------
@@ -4818,6 +5019,7 @@ async def list_docs():
             if total == 0
             else round(this_week_count / total * 100, 2)
         )
+        print(current_user_role)
 
         return get_json_result(
             data={
@@ -4825,6 +5027,7 @@ async def list_docs():
                 "docs": docs,
                 "week_growth_rate": week_file_ratio,
                 "this_week_count": this_week_count,
+                "current_user_role": current_user_role,
             }
         )
 
@@ -5093,6 +5296,13 @@ async def metadata_update():
     kb_id = req.get("kb_id")
     if not kb_id:
         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+    # 判断用户是否拥有编辑权限
+    if not user_has_operation_permission(current_user.id, "edit"):
+        return get_json_result(
+            data=False,
+            message="没有编辑权限",
+            code=RetCode.FORBIDDEN,
+    )
 
     tenants = UserTenantService.query(user_id=current_user.id)
     if not KnowledgebaseService.writable(kb_id, current_user.id):
@@ -5172,8 +5382,44 @@ async def change_status():
 
     if status not in ["0", "1"]:
         return get_json_result(data=False, message='"Status" must be either 0 or 1!', code=RetCode.ARGUMENT_ERROR)
+    # 判断用户是否拥有编辑权限
+    if not user_has_operation_permission(current_user.id, "edit"):
+        return get_json_result(
+            data=False,
+            message="没有编辑权限",
+            code=RetCode.FORBIDDEN,
+    )
 
     result = {}
+    # for doc_id in doc_ids:
+    #     try:
+    #         e, doc = DocumentService.get_by_id(doc_id)
+    #         if not e:
+    #             result[doc_id] = {"error": "No authorization."}
+    #             continue
+    #         e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+    #         if not e:
+    #             result[doc_id] = {"error": "Can't find this dataset!"}
+    #             continue
+    #         if not check_kb_team_write_permission(kb, current_user.id):
+    #             result[doc_id] = {"error": "No authorization."}
+    #             continue
+    #         if not DocumentService.update_by_id(doc_id, {"status": str(status)}):
+    #             result[doc_id] = {"error": "Database error (Document update)!"}
+    #             continue
+
+    #         PipelineOperationLogService.update_status_by_document_ids(
+    #             doc_id,
+    #             status,
+    #         )
+
+
+    #         status_int = int(status)
+    #         if not settings.docStoreConn.update({"doc_id": doc_id}, {"available_int": status_int}, search.index_name(kb.tenant_id), doc.kb_id):
+    #             result[doc_id] = {"error": "Database error (docStore update)!"}
+    #         result[doc_id] = {"status": status}
+    #     except Exception as e:
+    #         result[doc_id] = {"error": f"Internal server error: {str(e)}"}
     for doc_id in doc_ids:
         try:
             e, doc = DocumentService.get_by_id(doc_id)
@@ -5187,6 +5433,11 @@ async def change_status():
             if not check_kb_team_write_permission(kb, current_user.id):
                 result[doc_id] = {"error": "No authorization."}
                 continue
+
+            # ====== 新增：获取旧状态，用于 before_data ======
+            old_status = doc.status  # 假设 Document 模型有 status 字段
+
+            # 更新文档状态
             if not DocumentService.update_by_id(doc_id, {"status": str(status)}):
                 result[doc_id] = {"error": "Database error (Document update)!"}
                 continue
@@ -5196,11 +5447,62 @@ async def change_status():
                 status,
             )
 
-
             status_int = int(status)
-            if not settings.docStoreConn.update({"doc_id": doc_id}, {"available_int": status_int}, search.index_name(kb.tenant_id), doc.kb_id):
+            docstore_ok = settings.docStoreConn.update(
+                {"doc_id": doc_id}, {"available_int": status_int},
+                search.index_name(kb.tenant_id), doc.kb_id
+            )
+            if not docstore_ok: 
                 result[doc_id] = {"error": "Database error (docStore update)!"}
+                # 注意：此时文档状态已更新，但 docStore 更新失败，日志中可记录该异常
+                # 可以根据业务决定是否回滚，或继续记录日志（但标记为部分失败）
+
+            # 在更新前获取 old_status，更新后 status 为传入的值
+            old_status = doc.status  # "0" 或 "1"
+            # ...执行更新...
+
+            # 确定日志 action
+            action_type = "enable" if status == "1" else "disable"
+            status_text = "开启" if status == "1" else "关闭"
+            old_status_text = "开启" if old_status == "1" else "关闭"
+
+            OperationLogService.add_log(
+                user_id=current_user.id,
+                user_name=getattr(current_user, "nickname", None),
+                user_email=getattr(current_user, "email", None),
+
+                kb_id=doc.kb_id,
+                kb_name=getattr(kb, "name", None),
+
+                target_id=doc.id,
+                target_name=doc.name,
+
+                action=action_type,               # "enable" 或 "disable"
+                status="success",                 # 可根据 docStore 结果调整
+                message=f"{status_text}",  # 例如“文档由「关闭」开启”
+
+                before_data={
+                    "doc_id": doc.id,
+                    "doc_name": doc.name,
+                    "kb_id": doc.kb_id,
+                    "status_code": old_status,
+                    "status_text": old_status_text,
+                },
+                after_data={
+                    "doc_id": doc.id,
+                    "doc_name": doc.name,
+                    "kb_id": doc.kb_id,
+                    "kb_name": getattr(kb, "name", None),
+                    "status_code": status,
+                    "status_text": status_text,
+                },
+
+                request_obj=request,
+            )
+
+            # 最后记录结果
             result[doc_id] = {"status": status}
+
         except Exception as e:
             result[doc_id] = {"error": f"Internal server error: {str(e)}"}
 
@@ -5216,6 +5518,14 @@ async def rm():
     if isinstance(doc_ids, str):
         doc_ids = [doc_ids]
 
+    # 判断用户是否拥有编辑权限
+    if not user_has_operation_permission(current_user.id, "delete"):
+        return get_json_result(
+            data=False,
+            message="没有删除权限",
+            code=RetCode.FORBIDDEN,
+    )
+
     for doc_id in doc_ids:
         e, doc = DocumentService.get_by_id(doc_id)
         if not e:
@@ -5225,8 +5535,8 @@ async def rm():
         if not e:
             return get_data_error_result(message="Can't find this dataset!")
 
-        if not check_kb_team_write_permission(kb, current_user.id):
-            return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+        # if not check_kb_team_write_permission(kb, current_user.id):
+        #     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
 
     try:
         for doc_id in doc_ids:
@@ -5252,6 +5562,13 @@ async def rm_wasted():
     doc_ids = req["doc_id"]
     if isinstance(doc_ids, str):
         doc_ids = [doc_ids]
+    # 判断用户是否拥有编辑权限
+    if not user_has_operation_permission(current_user.id, "delete"):
+        return get_json_result(
+            data=False,
+            message="没有删除权限",
+            code=RetCode.FORBIDDEN,
+    )
 
     for doc_id in doc_ids:
         e, doc = DocumentService.get_by_id(doc_id)
@@ -5281,6 +5598,13 @@ async def rm_wasted():
 @validate_request("doc_ids", "run")
 async def run():
     req = await get_request_json()
+    # 判断用户是否拥有上传限
+    if not user_has_operation_permission(current_user.id, "upload"):
+        return get_json_result(
+            data=False,
+            message="没有上传权限",
+            code=RetCode.FORBIDDEN,
+    )
     try:
         def _run_sync():
             # 遍历传入的文档id
@@ -5295,8 +5619,8 @@ async def run():
                     return get_data_error_result(message="Can't find this dataset!")
                 
                 # 确保当前用户有权限修改这个知识库（防止越权操作）。
-                if not check_kb_team_write_permission(kb, current_user.id):
-                    return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+                # if not check_kb_team_write_permission(kb, current_user.id):
+                #     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
             # 用于在多次解析间共享表格数量信息的临时字典
             kb_table_num_map = {}
             for id in req["doc_ids"]:
@@ -5367,45 +5691,135 @@ async def run():
         return server_error_response(e)
 
 
+# @manager.route("/rename", methods=["POST"])  # noqa: F821
+# @login_required
+# @validate_request("doc_id", "name")
+# async def rename():
+#     req = await get_request_json()
+#     # 判断用户是否拥有编辑权限
+#     if not user_has_operation_permission(current_user.id, "edit"):
+#         return get_json_result(
+#             data=False,
+#             message="没有编辑权限",
+#             code=RetCode.FORBIDDEN,
+#     )
+#     try:
+#         def _rename_sync():
+#             e, doc = DocumentService.get_by_id(req["doc_id"])
+#             if not e:
+#                 return get_data_error_result(message="Document not found!")
+#             e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+#             if not e:
+#                 return get_data_error_result(message="Can't find this dataset!")
+#             # if not check_kb_team_write_permission(kb, current_user.id):
+#             #     return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+#             if pathlib.Path(req["name"].lower()).suffix != pathlib.Path(doc.name.lower()).suffix:
+#                 return get_json_result(data=False, message="文件的扩展名无法更改。", code=RetCode.ARGUMENT_ERROR)
+#             if len(req["name"].encode("utf-8")) > FILE_NAME_LEN_LIMIT:
+#                 return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
+
+#             for d in DocumentService.query(name=req["name"], kb_id=doc.kb_id):
+#                 if d.name == req["name"]:
+#                     return get_data_error_result(message="Duplicated document name in the same dataset.")
+
+#             if not DocumentService.update_by_id(req["doc_id"], {"name": req["name"]}):
+#                 return get_data_error_result(message="Database error (Document rename)!")
+
+#             informs = File2DocumentService.get_by_document_id(req["doc_id"])
+#             if informs:
+#                 e, file = FileService.get_by_id(informs[0].file_id)
+#                 FileService.update_by_id(file.id, {"name": req["name"]})
+
+#             tenant_id = DocumentService.get_tenant_id(req["doc_id"])
+#             title_tks = rag_tokenizer.tokenize(req["name"])
+#             es_body = {
+#                 "docnm_kwd": req["name"],
+#                 "title_tks": title_tks,
+#                 "title_sm_tks": rag_tokenizer.fine_grained_tokenize(title_tks),
+#             }
+#             if settings.docStoreConn.indexExist(search.index_name(tenant_id), doc.kb_id):
+#                 settings.docStoreConn.update(
+#                     {"doc_id": req["doc_id"]},
+#                     es_body,
+#                     search.index_name(tenant_id),
+#                     doc.kb_id,
+#                 )
+#             return get_json_result(data=True)
+
+#         return await asyncio.to_thread(_rename_sync)
+
+#     except Exception as e:
+#         return server_error_response(e)
+
 @manager.route("/rename", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("doc_id", "name")
 async def rename():
     req = await get_request_json()
+
+    user_id = str(current_user.id)
+    user_name = getattr(current_user, "nickname", None)
+    user_email = getattr(current_user, "email", None)
+
+    # 判断用户是否拥有编辑权限
+    if not user_has_operation_permission(user_id, "edit"):
+        return get_json_result(
+            data=False,
+            message="没有编辑权限",
+            code=RetCode.FORBIDDEN,
+        )
+
     try:
         def _rename_sync():
             e, doc = DocumentService.get_by_id(req["doc_id"])
             if not e:
                 return get_data_error_result(message="Document not found!")
+
             e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
             if not e:
                 return get_data_error_result(message="Can't find this dataset!")
-            if not check_kb_team_write_permission(kb, current_user.id):
-                return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
-            if pathlib.Path(req["name"].lower()).suffix != pathlib.Path(doc.name.lower()).suffix:
-                return get_json_result(data=False, message="文件的扩展名无法更改。", code=RetCode.ARGUMENT_ERROR)
-            if len(req["name"].encode("utf-8")) > FILE_NAME_LEN_LIMIT:
-                return get_json_result(data=False, message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.", code=RetCode.ARGUMENT_ERROR)
 
-            for d in DocumentService.query(name=req["name"], kb_id=doc.kb_id):
-                if d.name == req["name"]:
-                    return get_data_error_result(message="Duplicated document name in the same dataset.")
+            old_name = doc.name
+            new_name = req["name"]
 
-            if not DocumentService.update_by_id(req["doc_id"], {"name": req["name"]}):
+            if pathlib.Path(new_name.lower()).suffix != pathlib.Path(old_name.lower()).suffix:
+                return get_json_result(
+                    data=False,
+                    message="文件的扩展名无法更改。",
+                    code=RetCode.ARGUMENT_ERROR,
+                )
+
+            if len(new_name.encode("utf-8")) > FILE_NAME_LEN_LIMIT:
+                return get_json_result(
+                    data=False,
+                    message=f"File name must be {FILE_NAME_LEN_LIMIT} bytes or less.",
+                    code=RetCode.ARGUMENT_ERROR,
+                )
+
+            for d in DocumentService.query(name=new_name, kb_id=doc.kb_id):
+                if d.name == new_name:
+                    return get_data_error_result(
+                        message="Duplicated document name in the same dataset."
+                    )
+
+            if not DocumentService.update_by_id(req["doc_id"], {"name": new_name}):
                 return get_data_error_result(message="Database error (Document rename)!")
 
             informs = File2DocumentService.get_by_document_id(req["doc_id"])
             if informs:
                 e, file = FileService.get_by_id(informs[0].file_id)
-                FileService.update_by_id(file.id, {"name": req["name"]})
+                if e:
+                    FileService.update_by_id(file.id, {"name": new_name})
 
             tenant_id = DocumentService.get_tenant_id(req["doc_id"])
-            title_tks = rag_tokenizer.tokenize(req["name"])
+            title_tks = rag_tokenizer.tokenize(new_name)
+
             es_body = {
-                "docnm_kwd": req["name"],
+                "docnm_kwd": new_name,
                 "title_tks": title_tks,
                 "title_sm_tks": rag_tokenizer.fine_grained_tokenize(title_tks),
             }
+
             if settings.docStoreConn.indexExist(search.index_name(tenant_id), doc.kb_id):
                 settings.docStoreConn.update(
                     {"doc_id": req["doc_id"]},
@@ -5413,6 +5827,35 @@ async def rename():
                     search.index_name(tenant_id),
                     doc.kb_id,
                 )
+
+            # 记录重命名操作日志
+            OperationLogService.add_log(
+                user_id=user_id,
+                user_name=user_name,
+                user_email=user_email,
+
+                kb_id=doc.kb_id,
+                kb_name=getattr(kb, "name", None),
+
+                target_id=doc.id,
+                target_name=new_name,
+
+                action="rename",
+                status="success",
+                message="文件重命名成功",
+
+                before_data={
+                    "doc_id": doc.id,
+                    "name": old_name,
+                },
+                after_data={
+                    "doc_id": doc.id,
+                    "name": new_name,
+                },
+
+                request_obj=request,
+            )
+
             return get_json_result(data=True)
 
         return await asyncio.to_thread(_rename_sync)
@@ -5420,66 +5863,177 @@ async def rename():
     except Exception as e:
         return server_error_response(e)
 
+# # 获取原始文件
+# @manager.route("/get/<doc_id>", methods=["GET"])  # noqa: F821
+# # @login_required
+# async def get(doc_id):
+#     print("获取二进制流")
+#     if not user_has_operation_permission(current_user.id, "download"):
+#         return get_json_result(
+#             data=False,
+#             message="没有下载权限",
+#             code=RetCode.FORBIDDEN,
+#     )
+#     try:
+#         e, doc = DocumentService.get_by_id(doc_id)
+#         if not e:
+#             return get_data_error_result(message="Document not found!")
+
+#         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
+#         print(b, n)
+#         data = await asyncio.to_thread(settings.STORAGE_IMPL.get, b, n)
+#         response = await make_response(data)
+
+#         # --- 👇 核心修改开始：优先信任文件头检测 ---
+
+#         real_content_type = None
+
+#         # 确保 data 是 bytes 类型并进行魔数检测
+#         if isinstance(data, bytes):
+#             # 检查是否是 PDF (%PDF)
+#             if data.startswith(b'%PDF'):
+#                 real_content_type = 'application/pdf'
+#                 print(f"⚠️ 修正：文件 {doc.name} 实际是 PDF，将强制设置为 PDF 类型。")
+
+#             # 检查是否是 DOCX (PK...) - 可选，为了严谨可以加上
+#             elif data.startswith(b'PK'):
+#                 # 简单判断，实际上 docx/pptx/xlsx 都是 zip 格式
+#                 if doc.name.lower().endswith('.docx'):
+#                     real_content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+#                 elif doc.name.lower().endswith('.pptx'):
+#                     real_content_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentationml'
+#                 else:
+#                     # 如果不知道具体是什么，但肯定是 zip 类，暂时不覆盖，交给后面逻辑处理
+#                     pass
+
+#         # 如果检测到了真实类型，直接设置并返回，不再执行后面的文件名逻辑
+#         if real_content_type:
+#             response.headers.set("Content-Type", real_content_type)
+#             # 建议：同时也修正下载时的文件名，防止浏览器混淆
+#             # response.headers.set("Content-Disposition", f'inline; filename="{doc.id}.pdf"')
+#             return response
+
+#         # --- 👆 核心修改结束 ---
+
+#         ext = re.search(r"\.([^.]+)$", doc.name.lower())
+#         ext = ext.group(1) if ext else None 
+#         if ext:
+#             if doc.type == FileType.VISUAL.value:
+
+#                 content_type = CONTENT_TYPE_MAP.get(ext, f"image/{ext}")
+#             else:
+#                 content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
+#             response.headers.set("Content-Type", content_type)
+
+
+#         return response
+#     except Exception as e:
+#         return server_error_response(e)
+
 # 获取原始文件
 @manager.route("/get/<doc_id>", methods=["GET"])  # noqa: F821
-# @login_required
+@login_required
 async def get(doc_id):
     print("获取二进制流")
+
+    user_id = str(current_user.id)
+    user_name = getattr(current_user, "nickname", None)
+    user_email = getattr(current_user, "email", None)
+
+    if not user_has_operation_permission(user_id, "download"):
+        return get_json_result(
+            data=False,
+            message="没有下载权限",
+            code=RetCode.FORBIDDEN,
+        )
+
     try:
         e, doc = DocumentService.get_by_id(doc_id)
         if not e:
             return get_data_error_result(message="Document not found!")
 
+        e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+        if not e:
+            return get_data_error_result(message="Can't find this dataset!")
+
         b, n = File2DocumentService.get_storage_address(doc_id=doc_id)
         print(b, n)
+
         data = await asyncio.to_thread(settings.STORAGE_IMPL.get, b, n)
         response = await make_response(data)
 
-        # --- 👇 核心修改开始：优先信任文件头检测 ---
+        # 记录下载成功日志
+        OperationLogService.add_log(
+            user_id=user_id,
+            user_name=user_name,
+            user_email=user_email,
+
+            kb_id=doc.kb_id,
+            kb_name=getattr(kb, "name", None),
+
+            target_id=doc.id,
+            target_name=doc.name,
+
+            action="download",
+            status="success",
+            message="文件下载成功",
+
+            before_data={
+                "doc_id": doc.id,
+                "doc_name": doc.name,
+                "kb_id": doc.kb_id,
+            },
+            after_data={
+                "doc_id": doc.id,
+                "doc_name": doc.name,
+                "kb_id": doc.kb_id,
+                "kb_name": getattr(kb, "name", None),
+                "storage_bucket": b,
+                "storage_object": n,
+            },
+
+            request_obj=request,
+        )
 
         real_content_type = None
 
-        # 确保 data 是 bytes 类型并进行魔数检测
         if isinstance(data, bytes):
-            # 检查是否是 PDF (%PDF)
             if data.startswith(b'%PDF'):
                 real_content_type = 'application/pdf'
                 print(f"⚠️ 修正：文件 {doc.name} 实际是 PDF，将强制设置为 PDF 类型。")
 
-            # 检查是否是 DOCX (PK...) - 可选，为了严谨可以加上
             elif data.startswith(b'PK'):
-                # 简单判断，实际上 docx/pptx/xlsx 都是 zip 格式
                 if doc.name.lower().endswith('.docx'):
-                    real_content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    real_content_type = (
+                        'application/vnd.openxmlformats-officedocument.'
+                        'wordprocessingml.document'
+                    )
                 elif doc.name.lower().endswith('.pptx'):
-                    real_content_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentationml'
-                else:
-                    # 如果不知道具体是什么，但肯定是 zip 类，暂时不覆盖，交给后面逻辑处理
-                    pass
+                    real_content_type = (
+                        'application/vnd.openxmlformats-officedocument.'
+                        'presentationml.presentation'
+                    )
 
-        # 如果检测到了真实类型，直接设置并返回，不再执行后面的文件名逻辑
         if real_content_type:
             response.headers.set("Content-Type", real_content_type)
-            # 建议：同时也修正下载时的文件名，防止浏览器混淆
-            # response.headers.set("Content-Disposition", f'inline; filename="{doc.id}.pdf"')
             return response
-
-        # --- 👆 核心修改结束 ---
 
         ext = re.search(r"\.([^.]+)$", doc.name.lower())
         ext = ext.group(1) if ext else None
+
         if ext:
             if doc.type == FileType.VISUAL.value:
-
                 content_type = CONTENT_TYPE_MAP.get(ext, f"image/{ext}")
             else:
                 content_type = CONTENT_TYPE_MAP.get(ext, f"application/{ext}")
+
             response.headers.set("Content-Type", content_type)
 
-
         return response
+
     except Exception as e:
         return server_error_response(e)
+
 
 
 @manager.route("/download/<attachment_id>", methods=["GET"])  # noqa: F821
@@ -5649,6 +6203,44 @@ async def parse():
     return get_json_result(data=txt)
 
 
+# @manager.route("/set_meta", methods=["POST"])  # noqa: F821
+# @login_required
+# @validate_request("doc_id", "meta")
+# async def set_meta():
+#     req = await get_request_json()
+#     try:
+#         meta = json.loads(req["meta"])
+#         if not isinstance(meta, dict):
+#             return get_json_result(data=False, message="Only dictionary type supported.", code=RetCode.ARGUMENT_ERROR)
+#         for k, v in meta.items():
+#             if isinstance(v, list):
+#                 if not all(isinstance(i, (str, int, float)) for i in v):
+#                     return get_json_result(data=False, message=f"The type is not supported in list: {v}", code=RetCode.ARGUMENT_ERROR)
+#             elif not isinstance(v, (str, int, float)):
+#                 return get_json_result(data=False, message=f"The type is not supported: {v}", code=RetCode.ARGUMENT_ERROR)
+#     except Exception as e:
+#         return get_json_result(data=False, message=f"Json syntax error: {e}", code=RetCode.ARGUMENT_ERROR)
+#     if not isinstance(meta, dict):
+#         return get_json_result(data=False, message='Meta data should be in Json map format, like {"key": "value"}', code=RetCode.ARGUMENT_ERROR)
+
+#     try:
+#         e, doc = DocumentService.get_by_id(req["doc_id"])
+#         if not e:
+#             return get_data_error_result(message="Document not found!")
+
+#         e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+#         if not e:
+#             return get_data_error_result(message="Can't find this dataset!")
+#         if not check_kb_team_write_permission(kb, current_user.id):
+#             return get_json_result(data=False, message="No authorization.", code=RetCode.AUTHENTICATION_ERROR)
+
+#         if not DocumentService.update_by_id(req["doc_id"], {"meta_fields": meta}):
+#             return get_data_error_result(message="Database error (meta updates)!")
+
+#         return get_json_result(data=True)
+#     except Exception as e:
+#         return server_error_response(e)
+
 @manager.route("/set_meta", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("doc_id", "meta")
@@ -5674,6 +6266,16 @@ async def set_meta():
         if not e:
             return get_data_error_result(message="Document not found!")
 
+        # 记录旧 meta（用于 before_data）
+        old_meta = doc.meta_fields or {}
+        if isinstance(old_meta, str):
+            try:
+                old_meta = json.loads(old_meta)
+            except (TypeError, ValueError):
+                old_meta = {}
+        if not isinstance(old_meta, dict):
+            old_meta = {}
+
         e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
         if not e:
             return get_data_error_result(message="Can't find this dataset!")
@@ -5682,6 +6284,48 @@ async def set_meta():
 
         if not DocumentService.update_by_id(req["doc_id"], {"meta_fields": meta}):
             return get_data_error_result(message="Database error (meta updates)!")
+
+        # ====== 新增：记录操作日志 ======
+        try:
+            user_id = current_user.id
+            user_name = getattr(current_user, "nickname", None)
+            user_email = getattr(current_user, "email", None)
+            kb_name = getattr(kb, "name", None)
+
+            OperationLogService.add_log(
+                user_id=user_id,
+                user_name=user_name,
+                user_email=user_email,
+
+                kb_id=doc.kb_id,
+                kb_name=kb_name,
+
+                target_id=doc.id,
+                target_name=doc.name,
+
+                action="update_meta",
+                status="success",
+                message="更新文档元数据",
+
+                before_data={
+                    "doc_id": doc.id,
+                    "doc_name": doc.name,
+                    "kb_id": doc.kb_id,
+                    "meta_fields": old_meta,  # 旧完整元数据
+                },
+                after_data={
+                    "doc_id": doc.id,
+                    "doc_name": doc.name,
+                    "kb_id": doc.kb_id,
+                    "kb_name": kb_name,
+                    "meta_fields": meta,      # 新完整元数据
+                },
+
+                request_obj=request,
+            )
+        except Exception as log_e:
+            # 日志记录失败不影响主流程
+            print(f"操作日志记录失败: {log_e}")   # 生产环境可改用 logging.error
 
         return get_json_result(data=True)
     except Exception as e:
@@ -5739,6 +6383,7 @@ async def update_one_knowledge_tag():
     import json
     from datetime import datetime
 
+    print("修改标签")
     try:
         req = await get_request_json()
 
@@ -5875,6 +6520,25 @@ async def update_one_knowledge_tag():
 
         now = datetime.now()
 
+        # 在更新前，保存旧值（从 doc.meta_fields 中读取）
+        old_meta = doc.meta_fields or {}
+        if isinstance(old_meta, str):
+            try:
+                old_meta = json.loads(old_meta)
+            except (TypeError, ValueError):
+                old_meta = {}
+        if not isinstance(old_meta, dict):
+            old_meta = {}
+
+        old_option_codes = old_meta.get(type_code, [])
+        if not isinstance(old_option_codes, list):
+            old_option_codes = [old_option_codes] if old_option_codes else []
+
+        # 清理 old_option_codes（确保是字符串列表）
+        old_option_codes = [str(c).strip() for c in old_option_codes if c and str(c).strip()]
+
+
+
         # DocumentService.update_by_id() 不放在该事务中调用，
         # 避免它内部的 ConnectionContext 关闭事务连接。
         with DB.atomic():
@@ -5938,12 +6602,81 @@ async def update_one_knowledge_tag():
                 if tag_rows:
                     StagedFileTag.insert_many(tag_rows).execute()
 
+        
+
         # 9. 返回选项中文名称
         option_name_map = {
             row.option_code: row.option_name
             for row in option_rows
         }
 
+
+        # 事务成功后，记录日志
+        try:
+            # 获取用户信息
+            user_id = current_user.id
+            user_name = getattr(current_user, "nickname", None)
+            user_email = getattr(current_user, "email", None)
+
+            # 获取知识库信息
+            e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+            kb_name = getattr(kb, "name", None) if e else None
+
+            # 选项名称映射
+            option_name_map = {row.option_code: row.option_name for row in option_rows}
+            def codes_to_names(codes):
+                return [option_name_map.get(c, c) for c in codes]
+
+            old_names = codes_to_names(old_option_codes)
+            new_names = codes_to_names(option_codes)
+
+            # 构造日志消息
+            old_text = "、".join(old_names) if old_names else "空"
+            new_text = "、".join(new_names) if new_names else "空"
+            message = f"更新标签「{tag_type.type_name}」从「{old_text}」变为「{new_text}」"
+
+            OperationLogService.add_log(
+                user_id=user_id,
+                user_name=user_name,
+                user_email=user_email,
+
+                kb_id=doc.kb_id,
+                kb_name=kb_name,
+
+                target_id=doc.id,
+                target_name=doc.name,
+
+                action="update_tags",
+                status="success",
+                message=message,
+
+                before_data={
+                    "doc_id": doc.id,
+                    "doc_name": doc.name,
+                    "kb_id": doc.kb_id,
+                    "type_code": type_code,
+                    "type_name": tag_type.type_name,
+                    "option_codes": old_option_codes,
+                    "option_names": old_names,
+                },
+                after_data={
+                    "doc_id": doc.id,
+                    "doc_name": doc.name,
+                    "kb_id": doc.kb_id,
+                    "kb_name": kb_name,
+                    "type_code": type_code,
+                    "type_name": tag_type.type_name,
+                    "option_codes": option_codes,
+                    "option_names": new_names,
+                },
+
+                request_obj=request,
+            )
+        except Exception as log_e:
+            # 日志记录失败不应影响接口返回
+            print(f"日志记录失败: {log_e}")   # 生产环境可改用 logging.error
+
+        # 最终返回结果
         return get_json_result(
             data={
                 "doc_id": doc_id,
@@ -5951,13 +6684,46 @@ async def update_one_knowledge_tag():
                 "type_code": type_code,
                 "type_name": tag_type.type_name,
                 "option_codes": option_codes,
-                "option_names": [
-                    option_name_map.get(code, code)
-                    for code in option_codes
-                ],
+                "option_names": [option_name_map.get(c, c) for c in option_codes],
                 "meta_fields": meta_fields,
             }
         )
 
     except Exception as e:
         return server_error_response(e)
+    
+@manager.route("/operation_logs", methods=["POST"])  # noqa: F821
+@login_required
+async def list_operation_logs():
+    req = await get_request_json()
+
+    kb_id = req.get("kb_id")  # 可选
+    page = int(req.get("page", 1))
+    page_size = int(req.get("page_size", 20))
+    action = req.get("action")
+    keyword = req.get("keyword")
+
+    try:
+        logs, total = OperationLogService.list_by_kb_id(
+            kb_id=kb_id,
+            page_number=page,
+            items_per_page=page_size,
+            action=action,
+            keyword=keyword,
+        )
+
+        return get_json_result(
+            data={
+                "logs": logs,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+            }
+        )
+
+    except Exception as e:
+        return get_json_result(
+            data=False,
+            message=str(e),
+            code=RetCode.EXCEPTION_ERROR,
+        )

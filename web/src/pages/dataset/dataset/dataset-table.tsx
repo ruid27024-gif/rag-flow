@@ -42,7 +42,7 @@ import { useSaveMeta } from './use-save-meta';
 
 export type DatasetTableProps = Pick<
   ReturnType<typeof useFetchDocumentList>,
-  'documents' | 'setPagination' | 'pagination' | 'loading'
+  'documents' | 'setPagination' | 'pagination' | 'loading' | 'currentUserRole'
 > &
   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> & {
     readonly?: boolean;
@@ -55,7 +55,20 @@ export function DatasetTable({
   rowSelection,
   setRowSelection,
   readonly = false,
+  currentUserRole,
 }: DatasetTableProps) {
+  const isAdmin = currentUserRole?.is_admin === true;
+  const operationPermissions = currentUserRole?.operation_permissions;
+  console.log(currentUserRole);
+  console.log(operationPermissions);
+  const canUpload = isAdmin || operationPermissions?.upload === true;
+
+  const canDownload = isAdmin || operationPermissions?.download === true;
+
+  const canDelete = isAdmin || operationPermissions?.delete === true;
+
+  const canEdit = isAdmin || operationPermissions?.edit === true;
+
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     [],
@@ -98,6 +111,7 @@ export function DatasetTable({
     showLog,
     readonly,
     documents,
+    currentUserRole,
   });
 
   const currentPagination = useMemo(() => {
@@ -118,6 +132,8 @@ export function DatasetTable({
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
+
+    enableRowSelection: (row) => row.original.can_view === true,
     manualPagination: true, //we're doing manual "server-side" pagination
     state: {
       sorting,

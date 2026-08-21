@@ -147,6 +147,17 @@ const routes = [
       },
     ],
   },
+  // {
+  //   path: '/operation-log',
+  //   layout: false,
+  //   component: '@/layouts/next',
+  //   routes: [
+  //     {
+  //       path: '/operation-log',
+  //       component: '@/pages/operationlog',
+  //     },
+  //   ],
+  // },
   {
     path: '/filetree-admin',
     layout: false,
@@ -225,6 +236,31 @@ const routes = [
       },
     ],
   },
+
+  {
+    path: '/role_apply',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/role_apply',
+        component: '@/pages/role_apply',
+      },
+    ],
+  },
+
+  {
+    path: '/oa_role',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/oa_role',
+        component: '@/pages/oa_role',
+      },
+    ],
+  },
+
   // {
   //   path: '/role/create',
   //   layout: false,
@@ -431,6 +467,10 @@ const routes = [
         component: '@/pages/stagedfile',
       },
       {
+        path: `${Routes.DatasetBase}/operationlog/:id`,
+        component: '@/pages/operationlog',
+      },
+      {
         path: `${Routes.DatasetBase}${Routes.DataSetSetting}/:id`,
         component: `@/pages${Routes.DatasetBase}${Routes.DataSetSetting}`,
       },
@@ -554,6 +594,10 @@ const routes = [
       {
         path: 'users', // 假设是 '/admin/users'
         component: '@/pages/admin/users',
+      },
+      {
+        path: 'role_apply', // 假设是 '/admin/users'
+        component: '@/pages/role_apply',
       },
     ],
   },

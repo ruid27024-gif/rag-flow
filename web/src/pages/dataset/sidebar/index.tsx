@@ -61,6 +61,11 @@ export function SideBar({ refreshCount }: PropType) {
         label: '上传记录',
         key: '/stagedfile',
       },
+      {
+        icon: <Logs className="size-4" />,
+        label: '操作日志',
+        key: '/operationlog',
+      },
       // {
       //   icon: <Banknote className="size-4" />,
       //   label: t(`knowledgeDetails.configuration`),

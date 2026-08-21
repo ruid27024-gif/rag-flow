@@ -1585,6 +1585,51 @@ class StagedFileTag(DataBaseModel):
             (("stage_id", "type_code", "option_code"), True),
         )
 
+# 记录操作日志的
+class OperationLog(DataBaseModel):
+    id = CharField(primary_key=True, max_length=32)
+
+    # 用户
+    user_id = CharField(index=True)
+    user_name = CharField(null=True)
+    user_email = CharField(null=True)
+
+    # 知识库
+    kb_id = CharField(index=True, null=True)
+    kb_name = CharField(null=True)
+
+    # 对象：一般是文档
+    target_id = CharField(index=True, null=True)
+    target_name = CharField(null=True)
+
+    # 操作类型：upload/download/rename/update_tags/update_meta
+    action = CharField(index=True)
+
+    # 操作结果：success/failed
+    status = CharField(default="success", index=True)
+
+    # 操作说明或失败原因
+    message = TextField(null=True)
+
+    # 操作前后数据
+    before_data = TextField(null=True)
+    after_data = TextField(null=True)
+
+    # IP
+    ip = CharField(null=True)
+
+    # 时间
+    operation_time = DateTimeField(default=datetime.now, index=True)
+
+    class Meta:
+        table_name = "operation_log"
+        indexes = (
+            (("user_id", "create_time"), False),
+            (("kb_id", "create_time"), False),
+            (("target_id", "create_time"), False),
+            (("action", "create_time"), False),
+        )
+
 # RAGFlow 审批主表 StagedFileApprovalRequest 这张表用来记录 OA 审批单在 RAGFlow 侧的镜像状态。
 
 class StagedFileApprovalRequest(DataBaseModel):
@@ -1702,6 +1747,69 @@ class OAApprovalTask(DataBaseModel):
             (("approval_id", "level", "approver_user_id"), True),
         )
 
+
+# OA权限申请
+class PermissionApplication(DataBaseModel):
+    """
+    权限申请表（OA审批流程关联表）
+    状态流转：审批中(0) -> 已通过(1) / 已拒绝(2)
+    """
+    class Status:
+        PENDING = 0      # 审批中
+        APPROVED = 1     # 已通过
+        REJECTED = 2     # 已拒绝
+
+    id = AutoField(primary_key=True)
+
+    # ========== 申请主体 ==========
+    applicant_user_id = CharField(max_length=64, index=True, help_text="申请人ID")
+    role_id = IntegerField(index=True, help_text="申请的角色ID")
+
+    # ========== OA 回调关联（核心） ==========
+    oa_business_id = CharField(
+        max_length=128,
+        index=True,
+        unique=True,      # 防止OA重复回调
+        help_text="OA系统返回的业务ID"
+    )
+
+    # ========== 申请信息 ==========
+    reason = TextField(null=True, help_text="申请理由")
+
+    # ========== 审批状态与回调数据 ==========
+    status = IntegerField(index=True, default=Status.PENDING, help_text="0:审批中,1:通过,2:拒绝")
+    oa_callback_payload = TextField(null=True, help_text="OA回调原始报文")
+
+    # ========== 审计字段 ==========
+    created_by = CharField(max_length=64, null=True, help_text="申请人")
+    created_time = BigIntegerField(null=True, help_text="申请时间戳")
+    processed_time = BigIntegerField(null=True, help_text="处理完成时间戳")
+
+    class Meta:
+        db_table = "permission_application"
+        indexes = (
+            (('applicant_user_id', 'status'), False),
+            (('role_id', 'status'), False),
+        )
+
+# models.py 或当前文件顶部
+class OaApplication(DataBaseModel):
+    """
+    模拟 OA 系统的申请表（仅用于测试/演示）
+    """
+    id = AutoField(primary_key=True)
+
+    business_id = CharField(max_length=128, unique=True, index=True, help_text="OA系统内部唯一业务ID")
+    business_type = CharField(max_length=64, help_text="业务类型，如 role_permission")
+    payload = TextField(help_text="完整的申请 JSON 报文")          # 存储原始请求
+    status = IntegerField(default=0, help_text="0-审批中, 1-已通过, 2-已拒绝")
+    approver_id = CharField(max_length=64, null=True, help_text="审批人ID")
+    applicant_id = CharField(max_length=64, null=True, help_text="申请人ID")
+    created_time = BigIntegerField(null=True)
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        db_table = "oa_application"
 
 def migrate_db():
     logging.disable(logging.ERROR)

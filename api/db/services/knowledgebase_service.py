@@ -866,6 +866,7 @@ class KnowledgebaseService(CommonService):
 
         return dept_name_map
 
+    # 根据用户角色来判断用户可见库表的范围
     @classmethod
     @DB.connection_context()
     def get_by_tenant_ids3(cls, joined_tenant_ids, user_id,
@@ -1619,3 +1620,4 @@ class KnowledgebaseService(CommonService):
             row["id"]: row["name"]
             for row in rows
         }
+

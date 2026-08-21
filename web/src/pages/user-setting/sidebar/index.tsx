@@ -12,7 +12,12 @@ import {
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 import { TFunction } from 'i18next';
-import { LucideServerCrash, LucideUserCog, User } from 'lucide-react';
+import {
+  LucideServerCrash,
+  LucideUserCog,
+  LucideUsers,
+  User,
+} from 'lucide-react';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useHandleMenuClick } from './hooks';
@@ -53,6 +58,11 @@ const menuItems = (t: TFunction) => {
 
   return [
     { icon: User, label: t('setting.profile'), key: Routes.Profile },
+    {
+      icon: LucideUsers,
+      label: '权限申请',
+      key: '/role_apply', // 确保与路由配置中的 path 一致
+    },
     // { icon: User, label: t('setting.model'), key: Routes.Model },
     // 如果是管理员，就展开这两个对象；否则展开空数组（相当于不渲染）
     ...(isAdmin
