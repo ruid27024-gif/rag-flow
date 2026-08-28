@@ -19,6 +19,15 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'umi';
+import './index.less';
+
+import {
+  CheckCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PlusSquareOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
 
 const { Title } = Typography;
 
@@ -514,9 +523,15 @@ const KnowledgeTagPage: React.FC = () => {
 
   const columns: ColumnsType<TagType> = [
     {
-      title: '排序',
+      title: '序号',
       dataIndex: 'sort_order',
-      width: 80,
+      width: 90,
+      align: 'center',
+      render: (value) => {
+        const displayValue = String(value ?? 0).padStart(2, '0');
+
+        return <span className="tag-type-order">{displayValue}</span>;
+      },
     },
     {
       title: '类型名称',
@@ -580,46 +595,81 @@ const KnowledgeTagPage: React.FC = () => {
     },
     {
       title: '操作',
-      width: 260,
+      key: 'action',
+      width: 280,
+      fixed: 'right',
       render: (_, record) => {
+        const isEnabled = record.enabled !== false;
+
         return (
-          <Space>
+          <div className="tag-action-container">
+            {/* 编辑类型 */}
             <Button
-              type="link"
-              style={{ color: '#00A870' }}
+              type="text"
+              className="tag-action-button tag-action-edit"
               onClick={() => openEditTypeModal(record)}
             >
-              编辑类型
+              <span className="tag-action-icon-box">
+                <EditOutlined className="tag-action-icon" />
+              </span>
+
+              <span className="tag-action-text">编辑类型</span>
             </Button>
 
+            {/* 新增选项 */}
             <Button
-              type="link"
-              style={{ color: '#00A870' }}
+              type="text"
+              className="tag-action-button tag-action-add"
               onClick={() => openCreateOptionModal(record.type_code)}
             >
-              新增选项
+              <span className="tag-action-icon-box">
+                <PlusSquareOutlined className="tag-action-icon" />
+              </span>
+
+              <span className="tag-action-text">新增选项</span>
             </Button>
 
-            {record.enabled === false ? (
+            {/* 启用 / 禁用 */}
+            {isEnabled ? (
               <Popconfirm
-                title="确认启用该标签类型？"
-                onConfirm={() => enableTagType(record.type_code)}
+                title="确认禁用该标签类型？"
+                description="禁用后新上传文件不会再展示该类型，历史数据不删除。"
+                okText="确认禁用"
+                cancelText="取消"
+                onConfirm={() => disableTagType(record.type_code)}
               >
-                <Button type="link" style={{ color: '#00A870' }}>
-                  启用
+                <Button
+                  type="text"
+                  className="tag-action-button tag-action-disable"
+                >
+                  <span className="tag-action-icon-box">
+                    <StopOutlined className="tag-action-icon" />
+                  </span>
+
+                  <span className="tag-action-text">禁用</span>
                 </Button>
               </Popconfirm>
             ) : (
               <Popconfirm
-                title="确认禁用该标签类型？"
-                description="禁用后新上传文件不会再展示该类型，历史数据不删除。"
-                onConfirm={() => disableTagType(record.type_code)}
+                title="确认启用该标签类型？"
+                okText="确认启用"
+                cancelText="取消"
+                onConfirm={() => enableTagType(record.type_code)}
               >
-                <Button type="link" danger>
-                  禁用
+                <Button
+                  type="text"
+                  className="tag-action-button tag-action-enable"
+                >
+                  <span className="tag-action-icon-box">
+                    <CheckCircleOutlined className="tag-action-icon" />
+                  </span>
+
+                  <span className="tag-action-text">启用</span>
                 </Button>
               </Popconfirm>
             )}
+
+            {/* 删除 */}
             <Popconfirm
               title="确认删除该标签类型？"
               description="删除后该类型及其所有选项都会被删除，请确认是否为误建数据。"
@@ -627,11 +677,18 @@ const KnowledgeTagPage: React.FC = () => {
               cancelText="取消"
               onConfirm={() => deleteTagType(record.type_code)}
             >
-              <Button type="link" danger>
-                删除
+              <Button
+                type="text"
+                className="tag-action-button tag-action-delete"
+              >
+                <span className="tag-action-icon-box">
+                  <DeleteOutlined className="tag-action-icon" />
+                </span>
+
+                <span className="tag-action-text">删除</span>
               </Button>
             </Popconfirm>
-          </Space>
+          </div>
         );
       },
     },
@@ -763,12 +820,14 @@ const KnowledgeTagPage: React.FC = () => {
           dataSource={tagConfig}
           pagination={false}
           expandable={{
+            expandedRowClassName: () => 'knowledge-tag-expanded-row',
+
             expandIcon: ({ expanded, onExpand, record }) => {
               return (
                 <Button
                   type="text"
                   size="small"
-                  onClick={(e) => onExpand(record, e)}
+                  onClick={(event) => onExpand(record, event)}
                   style={{
                     color: '#00A870',
                     padding: 0,
@@ -787,9 +846,17 @@ const KnowledgeTagPage: React.FC = () => {
             expandedRowRender: (record) => {
               const optionColumns: ColumnsType<TagOption> = [
                 {
-                  title: '排序',
+                  title: '序号',
                   dataIndex: 'sort_order',
                   width: 100,
+                  align: 'center',
+                  render: (value) => {
+                    return (
+                      <span className="tag-option-order-circle">
+                        {value ?? 0}
+                      </span>
+                    );
+                  },
                 },
                 {
                   title: '选项名称',
@@ -801,7 +868,6 @@ const KnowledgeTagPage: React.FC = () => {
                   dataIndex: 'option_code',
                   width: 220,
                 },
-
                 {
                   title: '状态',
                   dataIndex: 'enabled',
@@ -824,12 +890,13 @@ const KnowledgeTagPage: React.FC = () => {
                 },
                 {
                   title: '操作',
-                  width: 180,
+                  width: 260,
                   render: (_, option) => {
                     return (
                       <Space>
                         <Button
                           type="link"
+                          icon={<EditOutlined />}
                           style={{ color: '#00A870' }}
                           onClick={() =>
                             openEditOptionModal(record.type_code, option)
@@ -848,7 +915,11 @@ const KnowledgeTagPage: React.FC = () => {
                               )
                             }
                           >
-                            <Button type="link" style={{ color: '#00A870' }}>
+                            <Button
+                              type="link"
+                              icon={<CheckCircleOutlined />}
+                              style={{ color: '#00A870' }}
+                            >
                               启用
                             </Button>
                           </Popconfirm>
@@ -863,7 +934,7 @@ const KnowledgeTagPage: React.FC = () => {
                               )
                             }
                           >
-                            <Button type="link" danger>
+                            <Button type="link" icon={<StopOutlined />} danger>
                               禁用
                             </Button>
                           </Popconfirm>
@@ -881,7 +952,7 @@ const KnowledgeTagPage: React.FC = () => {
                             )
                           }
                         >
-                          <Button type="link" danger>
+                          <Button type="link" icon={<DeleteOutlined />} danger>
                             删除
                           </Button>
                         </Popconfirm>
@@ -892,14 +963,27 @@ const KnowledgeTagPage: React.FC = () => {
               ];
 
               return (
-                <Table
-                  rowKey="option_code"
-                  columns={optionColumns}
-                  dataSource={record.options || []}
-                  pagination={false}
-                  size="small"
-                  tableLayout="fixed"
-                />
+                <div className="knowledge-tag-option-wrapper">
+                  <div className="knowledge-tag-option-title">
+                    <span className="knowledge-tag-option-title-line" />
+
+                    <span>选项列表</span>
+
+                    <span className="knowledge-tag-option-count">
+                      共 {record.options?.length || 0} 个选项
+                    </span>
+                  </div>
+
+                  <Table
+                    className="knowledge-tag-option-table"
+                    rowKey="option_code"
+                    columns={optionColumns}
+                    dataSource={record.options || []}
+                    pagination={false}
+                    size="small"
+                    tableLayout="fixed"
+                  />
+                </div>
               );
             },
           }}

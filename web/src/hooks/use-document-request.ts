@@ -126,8 +126,68 @@ type DocumentListData = {
 //   return { uploadDocument: mutateAsync, loading, data };
 // };
 
+// type UploadDocumentPayload = {
+//   fileList: File[];
+//   tags?: Record<string, string[]>;
+// };
+
+// export const useUploadNextDocument = () => {
+//   const queryClient = useQueryClient();
+//   const { id } = useParams();
+
+//   const {
+//     data,
+//     isPending: loading,
+//     mutateAsync,
+//   } = useMutation<ResponseType<any>, Error, UploadDocumentPayload>({
+//     mutationKey: [DocumentApiAction.UploadDocument],
+
+//     mutationFn: async ({ fileList, tags }) => {
+//       const formData = new FormData();
+
+//       formData.append('kb_id', id!);
+
+//       fileList.forEach((file: any) => {
+//         formData.append('file', file);
+//       });
+
+//       formData.append('tags', JSON.stringify(tags || {}));
+
+//       try {
+//         const ret = await kbService.document_upload(formData);
+//         const code = get(ret, 'data.code');
+
+//         if (code === 0 || code === 500) {
+//           queryClient.invalidateQueries({
+//             queryKey: [DocumentApiAction.FetchDocumentList],
+//           });
+//         }
+
+//         return ret?.data;
+//       } catch (error) {
+//         console.warn(error);
+
+//         return {
+//           code: 500,
+//           message: error + '',
+//         };
+//       }
+//     },
+//   });
+
+//   return {
+//     uploadDocument: mutateAsync,
+//     loading,
+//     data,
+//   };
+// };
+
 type UploadDocumentPayload = {
   fileList: File[];
+
+  // 新增版本号
+  version?: string;
+
   tags?: Record<string, string[]>;
 };
 
@@ -142,19 +202,24 @@ export const useUploadNextDocument = () => {
   } = useMutation<ResponseType<any>, Error, UploadDocumentPayload>({
     mutationKey: [DocumentApiAction.UploadDocument],
 
-    mutationFn: async ({ fileList, tags }) => {
+    mutationFn: async ({ fileList, version, tags }) => {
       const formData = new FormData();
 
       formData.append('kb_id', id!);
 
-      fileList.forEach((file: any) => {
+      fileList.forEach((file) => {
         formData.append('file', file);
       });
+
+      // 新增：版本号
+      // 未传版本时默认按照 v1.0 处理
+      formData.append('version', version?.trim() || 'v1.0');
 
       formData.append('tags', JSON.stringify(tags || {}));
 
       try {
         const ret = await kbService.document_upload(formData);
+
         const code = get(ret, 'data.code');
 
         if (code === 0 || code === 500) {
@@ -169,7 +234,7 @@ export const useUploadNextDocument = () => {
 
         return {
           code: 500,
-          message: error + '',
+          message: String(error),
         };
       }
     },
@@ -195,6 +260,49 @@ export const useFetchDocumentList = () => {
     return docs.some((doc) => doc.run === '1');
   }, [docs]);
 
+  // const { data, isFetching: loading } = useQuery<DocumentListData>({
+  //   queryKey: [
+  //     DocumentApiAction.FetchDocumentList,
+  //     debouncedSearchString,
+  //     pagination,
+  //     filterValue,
+  //   ],
+  //   initialData: {
+  //     docs: [],
+  //     total: 0,
+  //     week_growth_rate: 0,
+  //     this_week_count: 0,
+  //     current_user_role: null,
+  //   },
+  //   refetchInterval: isLoop ? 5000 : false,
+  //   enabled: !!knowledgeId || !!id,
+  //   queryFn: async () => {
+  //     const ret = await listDocument(
+  //       {
+  //         kb_id: knowledgeId || id,
+  //         keywords: debouncedSearchString,
+  //         page_size: pagination.pageSize,
+  //         page: pagination.current,
+  //       },
+  //       {
+  //         suffix: filterValue.type,
+  //         run_status: filterValue.run,
+  //       },
+  //     );
+
+  //     if (ret.data.code === 0) {
+  //       return ret.data.data;
+  //     }
+
+  //     return {
+  //       docs: [],
+  //       total: 0,
+  //       week_growth_rate: 0,
+  //       this_week_count: 0,
+  //       current_user_role: null,
+  //     };
+  //   },
+  // });
   const { data, isFetching: loading } = useQuery<DocumentListData>({
     queryKey: [
       DocumentApiAction.FetchDocumentList,
@@ -222,6 +330,12 @@ export const useFetchDocumentList = () => {
         {
           suffix: filterValue.type,
           run_status: filterValue.run,
+          version: filterValue.version,
+          document_status: filterValue.document_status,
+          applicable_lines: filterValue.applicable_lines,
+          knowledge_category: filterValue.knowledge_category,
+          knowledge_level: filterValue.knowledge_level,
+          knowledge_type: filterValue.knowledge_type,
         },
       );
 

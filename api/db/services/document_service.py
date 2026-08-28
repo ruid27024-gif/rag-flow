@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime
 from io import BytesIO
+from collections import Counter
 
 import xxhash
 from peewee import fn, Case, JOIN
@@ -29,7 +30,7 @@ from peewee import fn, Case, JOIN
 from api.constants import IMG_BASE64_PREFIX, FILE_NAME_LEN_LIMIT
 from api.db import PIPELINE_SPECIAL_PROGRESS_FREEZE_TASK_TYPES, FileType, UserTenantRole, CanvasCategory
 from api.db.db_models import DB, Document, Knowledgebase, Task, Tenant, UserTenant, File2Document, File, UserCanvas, \
-    User, AdminUser
+    User, AdminUser,StagedFile,StagedFileTag
 from api.db.db_utils import bulk_insert_into_db
 from api.db.services.common_service import CommonService
 from api.db.services.knowledgebase_service import KnowledgebaseService
@@ -41,6 +42,42 @@ from rag.utils.redis_conn import REDIS_CONN
 from rag.utils.doc_store_conn import OrderByExpr
 from common import settings
 
+FILTER_OPTIONS = {
+    "knowledge_level": {
+        "internal": "内部",
+        "public": "公开",
+    },
+    "knowledge_category": {
+        "pulping": "打浆",
+        "modulation": "调制",
+        "papermaking": "抄造",
+        "processing": "加工",
+        "general_mgmt": "通用管理",
+        "water_management": "用水与水处理/环保",
+        "equipment_maintenance": "设备与维护",
+        "quality_control": "质量检测与控制",
+        "energy_carbon": "节能与碳排/绿色低碳",
+        "raw_materials": "原料",
+        "paper_conservation": "纸质文献保护修复",
+        "paper_industry_history": "造纸历史与文化",
+        "papermaking_process_simulation": "造纸过程建模与仿真",
+        "uncategorized": "未分类",
+    },
+    "knowledge_type": {
+        "operation_sop": "操作规程",
+        "equipment_manual": "设备手册",
+        "fault_case": "故障案例",
+        "improvement_plan": "技改方案",
+        "quality_standard": "质量标准",
+        "safety_rule": "安全规程",
+    },
+    "applicable_lines": {
+        "line_1": "1号机",
+        "line_2": "2号机",
+        "public_engineering": "公用工程",
+        "qc_center": "质检中心",
+    },
+}
 
 class DocumentService(CommonService):
     model = Document
@@ -267,70 +304,567 @@ class DocumentService(CommonService):
     #         "run_status": run_status_counter
     #     }, total
 
+    # @classmethod
+    # @DB.connection_context()
+    # def get_filter_by_kb_id(cls, kb_id, keywords, run_status, types, suffix):
+    #     """
+    #     returns:
+    #     {
+    #         "suffix": {
+    #             "ppt": 1,
+    #             "doxc": 2
+    #         },
+    #         "run_status": {
+    #         "1": 2,
+    #         "2": 2
+    #         }
+    #     }, total
+    #     where "1" => RUNNING, "2" => CANCEL
+    #     """
+    #     fields = cls.get_cls_model_fields()
+
+    #     if keywords:
+    #         query = (
+    #             cls.model
+    #             .select(*fields)
+    #             .join(File2Document, on=(File2Document.document_id == cls.model.id))
+    #             .join(File, on=(File.id == File2Document.file_id))
+    #             .where(
+    #                 cls.model.kb_id == kb_id,
+    #                 cls.model.status != "2",
+    #                 fn.LOWER(cls.model.name).contains(keywords.lower()),
+    #             )
+    #         )
+    #     else:
+    #         query = (
+    #             cls.model
+    #             .select(*fields)
+    #             .join(File2Document, on=(File2Document.document_id == cls.model.id))
+    #             .join(File, on=(File.id == File2Document.file_id))
+    #             .where(
+    #                 cls.model.kb_id == kb_id,
+    #                 cls.model.status != "2",
+    #             )
+    #         )
+
+    #     if run_status:
+    #         query = query.where(cls.model.run.in_(run_status))
+    #     if types:
+    #         query = query.where(cls.model.type.in_(types))
+    #     if suffix:
+    #         query = query.where(cls.model.suffix.in_(suffix))
+
+    #     rows = query.select(cls.model.run, cls.model.suffix)
+    #     total = rows.count()
+
+    #     suffix_counter = {}
+    #     run_status_counter = {}
+
+    #     for row in rows:
+    #         suffix_counter[row.suffix] = suffix_counter.get(row.suffix, 0) + 1
+    #         run_status_counter[str(row.run)] = run_status_counter.get(str(row.run), 0) + 1
+
+    #     return {
+    #         "suffix": suffix_counter,
+    #         "run_status": run_status_counter,   
+    #     }, total
+
     @classmethod
-    @DB.connection_context()
-    def get_filter_by_kb_id(cls, kb_id, keywords, run_status, types, suffix):
+    def _build_filter_base_query(cls, kb_id, keywords=""):
         """
-        returns:
-        {
-            "suffix": {
-                "ppt": 1,
-                "doxc": 2
-            },
-            "run_status": {
-            "1": 2,
-            "2": 2
-            }
-        }, total
-        where "1" => RUNNING, "2" => CANCEL
+        构建基础文档查询。
+
+        当前应用条件：
+        1. kb_id
+        2. status != 2，排除回收站文档
+        3. keywords（匹配文件名 Document.name）
         """
-        fields = cls.get_cls_model_fields()
+        query = cls.model.select().where(
+            (cls.model.kb_id == kb_id) &
+            (cls.model.status != "2")
+        )
+
+        keywords = (keywords or "").strip()
 
         if keywords:
-            query = (
-                cls.model
-                .select(*fields)
-                .join(File2Document, on=(File2Document.document_id == cls.model.id))
-                .join(File, on=(File.id == File2Document.file_id))
-                .where(
-                    cls.model.kb_id == kb_id,
-                    cls.model.status != "2",
-                    fn.LOWER(cls.model.name).contains(keywords.lower()),
-                )
-            )
-        else:
-            query = (
-                cls.model
-                .select(*fields)
-                .join(File2Document, on=(File2Document.document_id == cls.model.id))
-                .join(File, on=(File.id == File2Document.file_id))
-                .where(
-                    cls.model.kb_id == kb_id,
-                    cls.model.status != "2",
+            query = query.where(
+                fn.LOWER(cls.model.name).contains(
+                    keywords.lower()
                 )
             )
 
-        if run_status:
-            query = query.where(cls.model.run.in_(run_status))
-        if types:
-            query = query.where(cls.model.type.in_(types))
-        if suffix:
-            query = query.where(cls.model.suffix.in_(suffix))
+        return query
 
-        rows = query.select(cls.model.run, cls.model.suffix)
-        total = rows.count()
+    @classmethod
+    def _get_document_field_counts(
+        cls,
+        base_query,
+        field,
+        known_values=None,
+    ):
+        """
+        对 Document 表中的普通字段进行分组统计。
 
-        suffix_counter = {}
-        run_status_counter = {}
+        可用于：
+        - suffix
+        - type
+        - run
+        - status
+        """
+        rows = (
+            base_query
+            .select(
+                field.alias("filter_value"),
+                fn.COUNT(cls.model.id).alias("document_count"),
+            )
+            .group_by(field)
+            .dicts()
+        )
+
+        result = {}
+
+        # 如果传入已知选项，则即使没有数据也返回 0。
+        if known_values:
+            result.update({
+                str(value): 0
+                for value in known_values
+            })
 
         for row in rows:
-            suffix_counter[row.suffix] = suffix_counter.get(row.suffix, 0) + 1
-            run_status_counter[str(row.run)] = run_status_counter.get(str(row.run), 0) + 1
+            value = row.get("filter_value")
 
-        return {
-            "suffix": suffix_counter,
-            "run_status": run_status_counter,
-        }, total
+            if value is None:
+                continue
+
+            result[str(value)] = row.get(
+                "document_count",
+                0,
+            )
+
+        return result
+
+    @classmethod
+    def _get_tag_counts(
+        cls,
+        base_query,
+        type_code,
+    ):
+        """
+        统计 StagedFileTag 中指定 type_code 的数量。
+
+        关联关系：
+
+        Document.id
+            -> StagedFile.doc_id
+
+        StagedFile.id
+            -> StagedFileTag.stage_id
+
+        使用 COUNT(DISTINCT StagedFile.doc_id)，
+        避免同一个文档因为存在多条关联记录而重复统计。
+        """
+        document_id_query = base_query.select(
+            cls.model.id
+        )
+
+        query = (
+            StagedFileTag
+            .select(
+                StagedFileTag.option_code.alias(
+                    "option_code"
+                ),
+                fn.COUNT(
+                    fn.DISTINCT(StagedFile.doc_id)
+                ).alias("document_count"),
+            )
+            .join(
+                StagedFile,
+                on=(
+                    StagedFile.id
+                    == StagedFileTag.stage_id
+                ),
+            )
+            .where(
+                StagedFile.doc_id.is_null(False),
+                StagedFile.doc_id.in_(document_id_query),
+                StagedFileTag.type_code == type_code,
+            )
+            .group_by(StagedFileTag.option_code)
+            .dicts()
+        )
+
+        counts = {}
+
+        for row in query:
+            option_code = row.get("option_code")
+
+            if not option_code:
+                continue
+
+            counts[str(option_code)] = row.get(
+                "document_count",
+                0,
+            )
+
+        return counts
+
+    @classmethod
+    def _format_tag_counts(
+        cls,
+        type_code,
+        counts,
+    ):
+        """
+        将统计数量和固定筛选项配置合并。
+
+        返回格式：
+
+        {
+            "pulping": {
+                "name": "打浆",
+                "count": 10
+            }
+        }
+
+        即使某个选项数量为 0，也会返回给前端。
+        """
+        option_config = FILTER_OPTIONS.get(
+            type_code,
+            {},
+        )
+
+        result = {}
+
+        # 先加入所有固定配置项
+        for option_code, option_name in option_config.items():
+            result[option_code] = {
+                "name": option_name,
+                "count": counts.get(option_code, 0),
+            }
+
+        # 数据库中有，但是配置里没有的选项也返回
+        for option_code, count in counts.items():
+            if option_code in result:
+                continue
+
+            result[option_code] = {
+                "name": option_code,
+                "count": count,
+            }
+
+        return result
+
+    @classmethod
+    def _split_authors(cls, value):
+        """
+        拆分作者字段。
+
+        支持：
+        - 赵黎, 国磊
+        - 赵黎，国磊
+        - 赵黎;国磊
+        - 赵黎；国磊
+        - 赵黎、国磊
+        - ["赵黎", "国磊"]
+        """
+        if value is None:
+            return []
+
+        if isinstance(value, (list, tuple, set)):
+            result = []
+
+            for item in value:
+                result.extend(cls._split_authors(item))
+
+            return result
+
+        value = str(value).strip()
+
+        if not value:
+            return []
+
+        values = re.split(
+            r"[,，;；、\n]+",
+            value,
+        )
+
+        return [
+            item.strip()
+            for item in values
+            if item and item.strip()
+        ]
+
+    @classmethod
+    def _normalize_school(cls, value):
+        """
+        标准化学校字段。
+        """
+        if value is None:
+            return None
+
+        # 兼容学校被存成数组的情况
+        if isinstance(value, (list, tuple)):
+            if not value:
+                return None
+
+            value = value[0]
+
+        value = str(value).strip()
+
+        return value or None
+
+    @classmethod
+    def _get_meta_field_counts(cls, base_query):
+        """
+        从 Document.meta_fields 中统计作者和学校。
+
+        meta_fields 示例：
+
+        {
+            "author": "赵黎, 国磊",
+            "publish_time": "2012年8月",
+            "school": "山东水利职业学院"
+        }
+        """
+        rows = base_query.select(
+            cls.model.id,
+            cls.model.meta_fields,
+        )
+
+        author_counter = Counter()
+        school_counter = Counter()
+
+        for row in rows:
+            meta_fields = row.meta_fields or {}
+
+            if not isinstance(meta_fields, dict):
+                continue
+
+            # 作者统计
+            authors = set(
+                cls._split_authors(
+                    meta_fields.get("author")
+                )
+            )
+
+            # 同一篇文档中相同作者只统计一次
+            for author in authors:
+                author_counter[author] += 1
+
+            # 学校统计
+            school = cls._normalize_school(
+                meta_fields.get("school")
+            )
+
+            if school:
+                school_counter[school] += 1
+
+        authors = {
+            author: count
+            for author, count in sorted(
+                author_counter.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        }
+
+        schools = {
+            school: count
+            for school, count in sorted(
+                school_counter.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        }
+
+        return authors, schools
+
+    @classmethod
+    def _get_version_counts(
+        cls,
+        base_query,
+    ):
+        """
+        根据 StagedFile.version 统计文档数量。
+
+        关联关系：
+
+        Document.id
+            -> StagedFile.doc_id
+
+        使用 COUNT(DISTINCT StagedFile.doc_id)，
+        避免同一文档存在多条相同版本的 StagedFile 记录时重复统计。
+
+        注意：
+        如果同一个文档存在多个不同版本，
+        则该文档会分别计入对应的版本。
+        """
+        document_id_query = base_query.select(
+            cls.model.id
+        )
+
+        rows = (
+            StagedFile
+            .select(
+                StagedFile.version.alias("version"),
+                fn.COUNT(
+                    fn.DISTINCT(StagedFile.doc_id)
+                ).alias("document_count"),
+            )
+            .where(
+                StagedFile.doc_id.is_null(False),
+                StagedFile.doc_id.in_(document_id_query),
+                StagedFile.version.is_null(False),
+            )
+            .group_by(StagedFile.version)
+            .dicts()
+        )
+
+        result = {}
+
+        for row in rows:
+            version = row.get("version")
+
+            if version is None:
+                continue
+
+            version = str(version).strip()
+
+            if not version:
+                continue
+
+            result[version] = row.get(
+                "document_count",
+                0,
+            )
+
+        return result
+
+    @classmethod
+    @DB.connection_context()
+    def get_filter_by_kb_id(
+        cls,
+        kb_id,
+        keywords="",
+    ):
+        """
+        返回指定知识库下所有筛选项及其文档数量。
+
+        当前查询条件只有：
+        - kb_id
+        - keywords，匹配 Document.name
+
+        不受前端已勾选筛选条件影响。
+        """
+        base_query = cls._build_filter_base_query(
+            kb_id=kb_id,
+            keywords=keywords,
+        )
+
+        # 因为基础查询没有 JOIN，所以直接 count 即可。
+        total = base_query.count()
+
+        # -------------------------
+        # Document 普通字段统计
+        # -------------------------
+
+        suffix_counts = cls._get_document_field_counts(
+            base_query=base_query,
+            field=cls.model.suffix,
+        )
+
+        file_type_counts = cls._get_document_field_counts(
+            base_query=base_query,
+            field=cls.model.type,
+        )
+
+        run_status_counts = cls._get_document_field_counts(
+            base_query=base_query,
+            field=cls.model.run,
+            known_values=["0", "1", "2"],
+        )
+
+        document_status_counts = (
+            cls._get_document_field_counts(
+                base_query=base_query,
+                field=cls.model.status,
+                known_values=["0", "1"],
+            )
+        )
+
+        # -------------------------
+        # StagedFile 版本统计
+        # -------------------------
+
+        version_counts = cls._get_version_counts(
+            base_query=base_query,
+        )
+
+        # -------------------------
+        # StagedFileTag 标签统计
+        # -------------------------
+
+        knowledge_level_raw = cls._get_tag_counts(
+            base_query=base_query,
+            type_code="knowledge_level",
+        )
+
+        knowledge_category_raw = cls._get_tag_counts(
+            base_query=base_query,
+            type_code="knowledge_category",
+        )
+
+        knowledge_type_raw = cls._get_tag_counts(
+            base_query=base_query,
+            type_code="knowledge_type",
+        )
+
+        applicable_lines_raw = cls._get_tag_counts(
+            base_query=base_query,
+            type_code="applicable_lines",
+        )
+
+        knowledge_level_counts = cls._format_tag_counts(
+            type_code="knowledge_level",
+            counts=knowledge_level_raw,
+        )
+
+        knowledge_category_counts = cls._format_tag_counts(
+            type_code="knowledge_category",
+            counts=knowledge_category_raw,
+        )
+
+        knowledge_type_counts = cls._format_tag_counts(
+            type_code="knowledge_type",
+            counts=knowledge_type_raw,
+        )
+
+        applicable_lines_counts = cls._format_tag_counts(
+            type_code="applicable_lines",
+            counts=applicable_lines_raw,
+        )
+
+        # # -------------------------
+        # # meta_fields 统计
+        # # -------------------------
+
+        # author_counts, school_counts = (
+        #     cls._get_meta_field_counts(base_query)
+        # )
+
+        filter_result = {
+            "suffix": suffix_counts,
+            "file_type": file_type_counts,
+            "run_status": run_status_counts,
+            "document_status": document_status_counts,
+            "knowledge_level": knowledge_level_counts,
+            "knowledge_category": knowledge_category_counts,
+            "knowledge_type": knowledge_type_counts,
+            "applicable_lines": applicable_lines_counts,
+            "version": version_counts,
+            # "author": author_counts,
+            # "school": school_counts,
+        }
+
+        return filter_result, total
     
     @classmethod
     @DB.connection_context()

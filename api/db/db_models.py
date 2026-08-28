@@ -1541,6 +1541,12 @@ class StagedFile(DataBaseModel):
     filename = CharField()
     path = CharField()
     size = IntegerField(default=0)
+    # 新增，版本只保存在暂存文件表
+    version = CharField(
+        max_length=32,
+        null=True,
+        default="v1.0",
+    )
 
     status = CharField(default="pending")
     # pending / oa_submitted / approved / committing / committed / rejected / failed / deleted

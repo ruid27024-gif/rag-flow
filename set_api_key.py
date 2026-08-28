@@ -116,7 +116,7 @@ BASE_URL = "http://localhost:9222/v1"
 
 # 设置 API Key 所需的参数
 LLM_FACTORY = "Tongyi-Qianwen"       # 👈 替换为实际的 LLM 厂商名称
-API_KEY = "sk-07313e1059724edb81c1daa60584d454"          # 👈 替换为你的真实通义千问 API Key
+API_KEY = "sk-ws-H.EDIHPRL.RRr3.MEQCHybUX2NyotJScLSrKWV6lAA5niqfAv-I7n8GlL6NrSQCIQCFJieAnNLTw1yKk50U4PKdQ70Dr0qkNTczLQufruFwNQ"          # 👈 替换为你的真实通义千问 API Key
 
 # 设置 Tenant Info 所需的默认模型 ID (基于你提供的信息)
 LLM_ID = "qwen3-32b@Tongyi-Qianwen"                 # 默认大语言模型

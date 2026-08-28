@@ -30,7 +30,18 @@ export interface IFetchKnowledgeListRequestParams {
   page_size?: number;
 }
 
+// export interface IFetchDocumentListRequestBody {
+//   suffix?: string[];
+//   run_status?: string[];
+// }
+
 export interface IFetchDocumentListRequestBody {
   suffix?: string[];
   run_status?: string[];
+  version?: string[];
+  document_status?: string[];
+  applicable_lines?: string[];
+  knowledge_category?: string[];
+  knowledge_level?: string[];
+  knowledge_type?: string[];
 }

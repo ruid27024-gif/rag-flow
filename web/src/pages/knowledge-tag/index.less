@@ -1,0 +1,423 @@
+.tag-action-container {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* 操作按钮基础样式 */
+.tag-action-button.ant-btn {
+  width: 62px;
+  min-width: 62px;
+  height: 54px;
+  padding: 0;
+
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+
+  color: #647481;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+
+  /* 取消 Ant Design 按钮默认悬浮背景 */
+  &:hover,
+  &:focus,
+  &:active {
+    background: transparent !important;
+  }
+
+  /* 取消图标默认间距 */
+  .anticon {
+    margin-inline-end: 0 !important;
+  }
+}
+
+/* 图标外层，悬浮时只改变这一块背景 */
+.tag-action-icon-box {
+  width: 36px;
+  height: 30px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 10px;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.tag-action-icon {
+  margin: 0 !important;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.tag-action-text {
+  font-size: 13px;
+  line-height: 20px;
+  color: #647481;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+/* 编辑悬浮效果 */
+.tag-action-edit.ant-btn:hover {
+  .tag-action-icon-box {
+    color: #00a870;
+    background-color: #e8f8f2;
+  }
+
+  .tag-action-text {
+    color: #00a870;
+  }
+}
+
+/* 新增选项悬浮效果 */
+.tag-action-add.ant-btn:hover {
+  .tag-action-icon-box {
+    color: #00a870;
+    background-color: #e8f8f2;
+  }
+
+  .tag-action-text {
+    color: #00a870;
+  }
+}
+
+/*
+ * 禁用悬浮效果：
+ * 模仿图片中的浅黄色图标背景和橙黄色文字
+ */
+.tag-action-disable.ant-btn:hover {
+  .tag-action-icon-box {
+    color: #d89614;
+    background-color: #fff7dc;
+  }
+
+  .tag-action-text {
+    color: #d89614;
+  }
+}
+
+/* 启用悬浮效果 */
+.tag-action-enable.ant-btn:hover {
+  .tag-action-icon-box {
+    color: #00a870;
+    background-color: #e8f8f2;
+  }
+
+  .tag-action-text {
+    color: #00a870;
+  }
+}
+
+/* 删除悬浮效果 */
+.tag-action-delete.ant-btn:hover {
+  .tag-action-icon-box {
+    color: #ff4d4f;
+    background-color: #fff1f0;
+  }
+
+  .tag-action-text {
+    color: #ff4d4f;
+  }
+}
+
+.knowledge-tag-table {
+  /* 父级表头 */
+  > .ant-table-container {
+    > .ant-table-content,
+    > .ant-table-body {
+      > table {
+        > .ant-table-thead {
+          > tr {
+            > th {
+              font-weight: 600;
+              color: #1f2329;
+              background: #fafafa;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /* 父级行悬浮 */
+  .ant-table-tbody > tr:not(.ant-table-expanded-row):hover > td {
+    background: rgba(0, 168, 112, 0.035);
+  }
+}
+
+/* ==========================================================
+ * 展开的子层级区域
+ * ========================================================== */
+
+/*
+ * Ant Design 默认会给 expanded row 的 td 添加较大 padding。
+ * 这里重新设置，让子表具有明显的缩进。
+ */
+.knowledge-tag-table {
+  .knowledge-tag-expanded-row {
+    > td.ant-table-cell {
+      padding: 0 20px 18px 48px !important;
+      background: #fff !important;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    &:hover {
+      > td.ant-table-cell {
+        background: #fff !important;
+      }
+    }
+  }
+}
+
+/* ==========================================================
+ * 子层级容器
+ * ========================================================== */
+
+/* 展开行 */
+.knowledge-tag-table {
+  .knowledge-tag-expanded-row {
+    > td.ant-table-cell {
+      padding: 0 20px 18px 48px !important;
+      background: transparent !important;
+    }
+
+    &:hover {
+      > td.ant-table-cell {
+        background: transparent !important;
+      }
+    }
+  }
+}
+
+/* 子层级容器 */
+.knowledge-tag-option-wrapper {
+  position: relative;
+  overflow: hidden;
+
+  padding: 12px 12px 12px 16px;
+
+  /* 不设置背景 */
+  background: transparent;
+
+  /* 用左侧绿色线表现层级 */
+  border: none;
+  border-left: 3px solid #00a870;
+}
+
+/* 子层级标题 */
+.knowledge-tag-option-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  min-height: 28px;
+  margin-bottom: 10px;
+
+  /* 继承主题文字颜色 */
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.knowledge-tag-option-title-line {
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+
+  background: #00a870;
+  border-radius: 999px;
+}
+
+.knowledge-tag-option-count {
+  padding: 1px 8px;
+
+  /* 使用继承色，并降低透明度 */
+  color: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.65;
+
+  /* 不设置背景 */
+  background: transparent;
+
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+/* 子表整体透明 */
+.knowledge-tag-option-table {
+  overflow: hidden;
+
+  color: inherit;
+  background: transparent;
+
+  /* 只留一圈较淡边框，也可以删除 */
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 6px;
+
+  .ant-table,
+  .ant-table-container,
+  .ant-table-content {
+    color: inherit;
+    background: transparent !important;
+  }
+
+  /* 子表表头 */
+  .ant-table-thead {
+    > tr {
+      > th {
+        height: 40px;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+
+        color: inherit !important;
+        font-size: 13px;
+        font-weight: 600;
+
+        /* 关键：表头也透明 */
+        background: transparent !important;
+
+        border-bottom: 1px solid rgba(127, 127, 127, 0.18) !important;
+
+        &::before {
+          background-color: rgba(127, 127, 127, 0.18) !important;
+        }
+      }
+    }
+  }
+
+  /* 子表行 */
+  .ant-table-tbody {
+    > tr {
+      > td {
+        height: 46px;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+
+        color: inherit;
+        background: transparent !important;
+        border-bottom-color: rgba(127, 127, 127, 0.14);
+      }
+
+      /*
+       * 悬浮时只使用很轻的中性透明色，
+       * 白天和黑夜模式都可以使用。
+       */
+      &:hover {
+        > td {
+          background: rgba(127, 127, 127, 0.08) !important;
+        }
+      }
+
+      &:last-child {
+        > td {
+          border-bottom: none;
+        }
+      }
+    }
+  }
+
+  /* 空数据 */
+  .ant-table-placeholder {
+    background: transparent !important;
+
+    > td {
+      background: transparent !important;
+    }
+  }
+
+  .ant-btn-link {
+    height: 30px;
+    padding: 4px 6px;
+  }
+}
+
+/* 父级标签类型序号 */
+.tag-type-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+
+  color: #00a870;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+
+  background: rgba(0, 168, 112, 0.1);
+  border: 1px solid rgba(0, 168, 112, 0.22);
+  border-radius: 8px;
+
+  font-variant-numeric: tabular-nums;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+/* 父级行悬浮时的序号效果 */
+.knowledge-tag-table
+  .ant-table-tbody
+  > tr:not(.ant-table-expanded-row):hover
+  .tag-type-order {
+  color: #008f60;
+  background: rgba(0, 168, 112, 0.16);
+  border-color: rgba(0, 168, 112, 0.38);
+}
+
+/* 子级标签选项序号 */
+.tag-option-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 30px;
+  height: 24px;
+  padding: 0 7px;
+
+  color: #4e8f79;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+
+  background: #f0f7f4;
+  border-radius: 6px;
+
+  font-variant-numeric: tabular-nums;
+}
+
+/* 子表行悬浮时的序号效果 */
+.knowledge-tag-option-table .ant-table-tbody > tr:hover .tag-option-order {
+  color: #00a870;
+  background: rgba(0, 168, 112, 0.12);
+}
+
+.tag-option-order-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 28px;
+  height: 28px;
+  padding: 0 5px;
+
+  color: #00a870;
+  font-size: 12px;
+  font-weight: 600;
+
+  background: rgba(0, 168, 112, 0.1);
+  border: 1px solid rgba(0, 168, 112, 0.25);
+  border-radius: 999px;
+}

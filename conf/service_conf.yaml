@@ -92,33 +92,33 @@ task_executor:
 
 user_default_llm:
   factory: 'Tongyi-Qianwen'
-  api_key: 'sk-07313e1059724edb81c1daa60584d454'
+  api_key: 'sk-ws-H.EDIHPRL.RRr3.MEQCHybUX2NyotJScLSrKWV6lAA5niqfAv-I7n8GlL6NrSQCIQCFJieAnNLTw1yKk50U4PKdQ70Dr0qkNTczLQufruFwNQ'
   base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   default_models:
     chat_model:
       model: 'qwen-plus'
       factory: 'Tongyi-Qianwen'
-      api_key: 'sk-07313e1059724edb81c1daa60584d454'
+      api_key: 'sk-ws-H.EDIHPRL.RRr3.MEQCHybUX2NyotJScLSrKWV6lAA5niqfAv-I7n8GlL6NrSQCIQCFJieAnNLTw1yKk50U4PKdQ70Dr0qkNTczLQufruFwNQ'
       max_tokens: 32768
       base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     embedding_model:
       model: 'text-embedding-v2'
       factory: 'Tongyi-Qianwen'
-      api_key: 'sk-07313e1059724edb81c1daa60584d454'
+      api_key: 'sk-ws-H.EDIHPRL.RRr3.MEQCHybUX2NyotJScLSrKWV6lAA5niqfAv-I7n8GlL6NrSQCIQCFJieAnNLTw1yKk50U4PKdQ70Dr0qkNTczLQufruFwNQ'
       max_tokens: 1024
       base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
     rerank_model:
       model: 'gte-rerank-v2'
       factory: 'Tongyi-Qianwen'
-      api_key: 'sk-07313e1059724edb81c1daa60584d454'
+      api_key: 'sk-ws-H.EDIHPRL.RRr3.MEQCHybUX2NyotJScLSrKWV6lAA5niqfAv-I7n8GlL6NrSQCIQCFJieAnNLTw1yKk50U4PKdQ70Dr0qkNTczLQufruFwNQ'
       max_tokens: 1024
       base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
     image2text_model:
       model: 'qwen-vl-plus'
       factory: 'Tongyi-Qianwen'
-      api_key: 'sk-07313e1059724edb81c1daa60584d454'
+      api_key: 'sk-ws-H.EDIHPRL.RRr3.MEQCHybUX2NyotJScLSrKWV6lAA5niqfAv-I7n8GlL6NrSQCIQCFJieAnNLTw1yKk50U4PKdQ70Dr0qkNTczLQufruFwNQ'
       max_tokens: 4096
       base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 

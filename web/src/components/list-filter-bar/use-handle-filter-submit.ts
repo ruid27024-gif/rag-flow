@@ -3,7 +3,17 @@ import { useCallback, useState } from 'react';
 import { FilterChange, FilterValue } from './interface';
 
 export function useHandleFilterSubmit() {
-  const [filterValue, setFilterValue] = useState<FilterValue>({});
+  // const [filterValue, setFilterValue] = useState<FilterValue>({});
+  const [filterValue, setFilterValue] = useState<FilterValue>({
+    type: [],
+    run: [],
+    version: [],
+    document_status: [],
+    applicable_lines: [],
+    knowledge_category: [],
+    knowledge_level: [],
+    knowledge_type: [],
+  });
   const { setPagination } = useGetPaginationWithRouter();
   const handleFilterSubmit: FilterChange = useCallback(
     (value) => {

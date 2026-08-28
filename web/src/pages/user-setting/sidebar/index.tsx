@@ -57,6 +57,7 @@ const menuItems = (t: TFunction) => {
   const isAdmin = is_admin_user || role_level === 1;
 
   return [
+    { icon: User, label: t('setting.model'), key: Routes.Model },
     { icon: User, label: t('setting.profile'), key: Routes.Profile },
     {
       icon: LucideUsers,

@@ -55,6 +55,36 @@ from common import settings
 from api.db.services.pipeline_operation_log_service import PipelineOperationLogService
 from api.db.db_models import DB
 from api.utils.file_utils import filename_type, read_potential_broken_pdf, thumbnail_img, sanitize_path
+from api.db.services.operationlog_service import OperationLogService
+from api.db.db_models import StagedFile, StagedFileTag, User
+
+import re
+
+
+def normalize_document_version(version):
+    """
+    空版本、1、1.0、v1、v1.0 最终都转换为 v1.0。
+    """
+
+    if version is None or str(version).strip() == "":
+        return "v1.0"
+
+    value = str(version).strip().lower()
+
+    if value.startswith("v"):
+        value = value[1:]
+
+    if not re.fullmatch(r"\d+(?:\.\d+)?", value):
+        raise ValueError(
+            "版本号格式错误，只允许 1、1.0、2.3、v1.0、v2.3"
+        )
+
+    if "." not in value:
+        value = f"{value}.0"
+
+    major, minor = value.split(".", 1)
+
+    return f"v{int(major)}.{int(minor)}"
 
 # 新增报告推送接口
 @manager.route("/upload/report", methods=["POST"])  # noqa: F821
@@ -910,6 +940,18 @@ async def upload():
     uploader_id = current_user.id
     kb_id = form.get("kb_id")
     tags_text = form.get("tags")
+    version_text = form.get("version")
+    print(version_text)
+    try:
+        document_version = normalize_document_version(
+            version_text
+        )
+    except ValueError as e:
+        return get_json_result(
+            data=False,
+            message=str(e),
+            code=RetCode.ARGUMENT_ERROR,
+        )
     # 新增判断当前用户是否存在上传权限
     # 判断用户是否拥有上传权限
     if not user_has_operation_permission(uploader_id, "upload"):
@@ -1096,6 +1138,8 @@ async def upload():
                     "filename": filename,
                     "path": stage_path,
                     "size": len(blob),
+                    # 新增
+                    "version": document_version,
                     "status": "pending",
                     "approval_level_1": level_1_approvers,
                     "approval_level_2": level_2_approvers,
@@ -1125,6 +1169,7 @@ async def upload():
                 "tenant_id": kb.tenant_id,
                 "user_id": uploader_id,
                 "filename": filename,
+                "version": document_version,
                 "path": stage_path,
                 "bucket": temp_bucket,
                 "object_name": object_name,
@@ -2139,10 +2184,17 @@ def import_staged_files_and_run_by_callback(kb, staged_files, uploader_user_id):
                 )
 
             # 2. 真正入知识库
+            # err, uploaded_files = FileService.upload_document(
+            #     kb,
+            #     [file_obj],
+            #     uploader_user_id,
+            # )
             err, uploaded_files = FileService.upload_document(
                 kb,
                 [file_obj],
                 uploader_user_id,
+                version=getattr(staged, "version", None),
+                current_stage_id=staged.id,
             )
 
             if err:
@@ -2472,8 +2524,7 @@ async def oa_approval_callback():
                     "type_code": tag["type_code"],
                     "option_code": tag["option_code"],
                 })
-            from api.db.services.operationlog_service import OperationLogService
-            from api.db.db_models import StagedFile, StagedFileTag, User
+
             uploader = User.get_or_none(User.id == str(uploader_user_id))
 
             for sf in latest_staged_files:
@@ -4555,8 +4606,105 @@ async def list_docs():
     suffix = req.get("suffix", [])
 
     metadata_condition = (
-        req.get("metadata_condition", {}) or {}
+    req.get("metadata_condition", {}) or {}
+)
+
+
+    def clean_filter_values(values):
+        """
+        清洗前端传来的筛选数组。
+        """
+        if not values:
+            return []
+
+        if not isinstance(values, list):
+            values = [values]
+
+        return [
+            str(value).strip()
+            for value in values
+            if str(value).strip()
+        ]
+
+
+    def intersect_doc_ids(current_ids, new_ids):
+        """
+        多个筛选条件之间取交集。
+
+        current_ids:
+        - None 表示之前还没有筛选过
+        - set/list 表示已有筛选结果
+        """
+        new_ids = {
+            str(doc_id)
+            for doc_id in new_ids
+            if doc_id
+        }
+
+        if current_ids is None:
+            return new_ids
+
+        return {
+            str(doc_id)
+            for doc_id in current_ids
+            if doc_id
+        } & new_ids
+
+
+    def return_empty_if_no_docs(doc_ids):
+        """
+        如果筛选后没有任何文档，直接返回空结果。
+        """
+        return doc_ids is not None and len(doc_ids) == 0
+
+
+    def empty_document_list_result():
+        """
+        统一返回空列表。
+        """
+        return get_json_result(
+            data={
+                "total": 0,
+                "docs": [],
+                "week_growth_rate": 0,
+                "this_week_count": 0,
+                "current_user_role": current_user_role,
+            }
+        )
+
+
+    # ---------------------------------------------------------
+    # 清洗前端传来的筛选条件
+    # ---------------------------------------------------------
+
+    version = clean_filter_values(
+        req.get("version", [])
     )
+
+    document_status = clean_filter_values(
+        req.get("document_status", [])
+    )
+
+    applicable_lines = clean_filter_values(
+        req.get("applicable_lines", [])
+    )
+
+    knowledge_category = clean_filter_values(
+        req.get("knowledge_category", [])
+    )
+
+    knowledge_level = clean_filter_values(
+        req.get("knowledge_level", [])
+    )
+
+    knowledge_type = clean_filter_values(
+        req.get("knowledge_type", [])
+    )
+
+
+    # ---------------------------------------------------------
+    # metadata_condition 校验
+    # ---------------------------------------------------------
 
     if metadata_condition and not isinstance(
         metadata_condition,
@@ -4566,29 +4714,211 @@ async def list_docs():
             message="metadata_condition must be an object."
         )
 
+
+    # ---------------------------------------------------------
+    # doc_ids_filter 用来收集所有额外筛选后的 Document.id
+    #
+    # None 表示暂时没有额外 doc_id 限制
+    # set(...) 表示已经筛选出来的文档 ID
+    # ---------------------------------------------------------
+
     doc_ids_filter = None
+
+
+    # ---------------------------------------------------------
+    # metadata_condition 过滤
+    # ---------------------------------------------------------
 
     if metadata_condition:
         metas = DocumentService.get_flatted_meta_by_kbs([kb_id])
 
-        doc_ids_filter = meta_filter(
+        metadata_doc_ids = meta_filter(
             metas,
             convert_conditions(metadata_condition),
             metadata_condition.get("logic", "and"),
         )
 
+        doc_ids_filter = intersect_doc_ids(
+            doc_ids_filter,
+            metadata_doc_ids,
+        )
+
         if (
             metadata_condition.get("conditions")
-            and not doc_ids_filter
+            and return_empty_if_no_docs(doc_ids_filter)
         ):
-            return get_json_result(
-                data={
-                    "total": 0,
-                    "docs": [],
-                }
+            return empty_document_list_result()
+
+
+    # ---------------------------------------------------------
+    # 文档状态过滤 Document.status
+    # 前端字段：document_status
+    # 后端表字段：Document.status
+    # ---------------------------------------------------------
+
+    if document_status:
+        status_doc_rows = (
+            Document
+            .select(Document.id)
+            .where(
+                (Document.kb_id == kb_id) &
+                (Document.status.in_(document_status))
+            )
+        )
+
+        status_doc_ids = [
+            row.id
+            for row in status_doc_rows
+            if row.id
+        ]
+
+        doc_ids_filter = intersect_doc_ids(
+            doc_ids_filter,
+            status_doc_ids,
+        )
+
+        if return_empty_if_no_docs(doc_ids_filter):
+            return empty_document_list_result()
+
+
+    # ---------------------------------------------------------
+    # 版本过滤 StagedFile.version
+    # 前端字段：version
+    # 后端表字段：StagedFile.version
+    # ---------------------------------------------------------
+
+    if version:
+        version_values = set()
+
+        for item in version:
+            raw_value = str(item).strip()
+
+            if not raw_value:
+                continue
+
+            version_values.add(raw_value)
+
+            # 兼容前端传 v1.0，数据库存 1.0
+            if raw_value.lower().startswith("v"):
+                version_values.add(raw_value[1:])
+            else:
+                version_values.add(f"v{raw_value}")
+
+        version_condition = StagedFile.version.in_(
+            list(version_values)
+        )
+
+        # 如果前端选择 v1.0，兼容数据库 version 为空的情况
+        normalized_versions = {
+            str(item).lower()
+            for item in version_values
+        }
+
+        if (
+            "v1.0" in normalized_versions
+            or "1.0" in normalized_versions
+        ):
+            version_condition = (
+                version_condition |
+                StagedFile.version.is_null(True) |
+                (StagedFile.version == "")
             )
 
+        version_doc_rows = (
+            StagedFile
+            .select(StagedFile.doc_id)
+            .where(
+                (StagedFile.kb_id == kb_id) &
+                (StagedFile.doc_id.is_null(False)) &
+                version_condition
+            )
+            .distinct()
+        )
+
+        version_doc_ids = [
+            row.doc_id
+            for row in version_doc_rows
+            if row.doc_id
+        ]
+
+        doc_ids_filter = intersect_doc_ids(
+            doc_ids_filter,
+            version_doc_ids,
+        )
+
+        if return_empty_if_no_docs(doc_ids_filter):
+            return empty_document_list_result()
+
+
+    # ---------------------------------------------------------
+    # 标签过滤 StagedFileTag
+    #
+    # 关系：
+    # Document.id -> StagedFile.doc_id
+    # StagedFile.id -> StagedFileTag.stage_id
+    #
+    # 规则：
+    # - 同一个 type_code 内部多个 option_code 是 OR
+    # - 不同 type_code 之间是 AND
+    # ---------------------------------------------------------
+
+    tag_filter_map = {
+        "applicable_lines": applicable_lines,
+        "knowledge_category": knowledge_category,
+        "knowledge_level": knowledge_level,
+        "knowledge_type": knowledge_type,
+    }
+
+    for type_code, option_codes in tag_filter_map.items():
+        if not option_codes:
+            continue
+
+        tag_doc_rows = (
+            StagedFile
+            .select(StagedFile.doc_id)
+            .join(
+                StagedFileTag,
+                on=(
+                    StagedFile.id ==
+                    StagedFileTag.stage_id
+                ),
+            )
+            .where(
+                (StagedFile.kb_id == kb_id) &
+                (StagedFile.doc_id.is_null(False)) &
+                (StagedFileTag.type_code == type_code) &
+                (StagedFileTag.option_code.in_(option_codes))
+            )
+            .distinct()
+        )
+
+        tag_doc_ids = [
+            row.doc_id
+            for row in tag_doc_rows
+            if row.doc_id
+        ]
+
+        doc_ids_filter = intersect_doc_ids(
+            doc_ids_filter,
+            tag_doc_ids,
+        )
+
+        if return_empty_if_no_docs(doc_ids_filter):
+            return empty_document_list_result()
+
     try:
+        # docs, total = DocumentService.get_by_kb_id(
+        #     kb_id,
+        #     page_number,
+        #     items_per_page,
+        #     orderby,
+        #     desc,
+        #     keywords,
+        #     run_status,
+        #     types,
+        #     suffix,
+        #     doc_ids_filter,
+        # )
         docs, total = DocumentService.get_by_kb_id(
             kb_id,
             page_number,
@@ -4599,8 +4929,9 @@ async def list_docs():
             run_status,
             types,
             suffix,
-            doc_ids_filter,
+            list(doc_ids_filter) if doc_ids_filter is not None else None,
         )
+
 
         # 当前页文档 ID
         doc_ids = [
@@ -4675,12 +5006,18 @@ async def list_docs():
             ]
 
         # ---------------------------------------------------------
-        # 批量查询文档标签
+        # 批量查询文档标签和版本号
         #
+        # 标签关系：
         # Document.id
         #     -> StagedFile.doc_id
         #     -> StagedFile.id
         #     -> StagedFileTag.stage_id
+        #
+        # 版本关系：
+        # Document.id
+        #     -> StagedFile.doc_id
+        #     -> StagedFile.version
         # ---------------------------------------------------------
         document_tag_data = defaultdict(
             lambda: {
@@ -4688,6 +5025,9 @@ async def list_docs():
                 "meta_fields_display": {},
             }
         )
+
+        # doc_id -> version
+        document_version_map = {}
 
         if doc_ids:
             # doc_id -> stage_id list
@@ -4697,9 +5037,18 @@ async def list_docs():
                 StagedFile.select(
                     StagedFile.id,
                     StagedFile.doc_id,
+                    StagedFile.version,
+                    StagedFile.committed_at,
+                    StagedFile.created_at,
                 )
                 .where(
-                    StagedFile.doc_id.in_(doc_ids)
+                    (StagedFile.doc_id.in_(doc_ids)) &
+                    (StagedFile.kb_id == kb_id)
+                )
+                .order_by(
+                    StagedFile.committed_at.desc(),
+                    StagedFile.created_at.desc(),
+                    StagedFile.id.desc(),
                 )
             )
 
@@ -4709,11 +5058,35 @@ async def list_docs():
                 if not staged.doc_id:
                     continue
 
-                doc_id = str(staged.doc_id)
+                current_doc_id = str(staged.doc_id)
                 stage_id = str(staged.id)
 
-                doc_stage_map[doc_id].append(stage_id)
+                # 标签查询使用
+                doc_stage_map[current_doc_id].append(
+                    stage_id
+                )
+
                 stage_ids.append(stage_id)
+
+                # 获取当前文档版本
+                # 因为查询已经按最新时间倒序，
+                # 所以同一个 doc_id 只取第一条。
+                if current_doc_id not in document_version_map:
+                    raw_version = str(
+                        getattr(staged, "version", None)
+                        or ""
+                    ).strip()
+
+                    if not raw_version:
+                        display_version = "v1.0"
+                    elif raw_version.lower().startswith("v"):
+                        display_version = raw_version
+                    else:
+                        display_version = f"v{raw_version}"
+
+                    document_version_map[current_doc_id] = (
+                        display_version
+                    )
 
             if stage_ids:
                 # stage_id -> type_code -> option_code list
@@ -4730,23 +5103,33 @@ async def list_docs():
                         StagedFileTag.option_code,
                     )
                     .where(
-                        StagedFileTag.stage_id.in_(stage_ids)
+                        StagedFileTag.stage_id.in_(
+                            stage_ids
+                        )
                     )
                 )
 
                 for tag in tag_rows:
                     stage_id = str(tag.stage_id)
-                    type_code = str(tag.type_code)
-                    option_code = str(tag.option_code)
+                    type_code = str(
+                        tag.type_code or ""
+                    ).strip()
+                    option_code = str(
+                        tag.option_code or ""
+                    ).strip()
 
                     if not type_code or not option_code:
                         continue
 
                     if (
                         option_code
-                        not in stage_tag_map[stage_id][type_code]
+                        not in stage_tag_map[
+                            stage_id
+                        ][type_code]
                     ):
-                        stage_tag_map[stage_id][type_code].append(
+                        stage_tag_map[
+                            stage_id
+                        ][type_code].append(
                             option_code
                         )
 
@@ -4791,15 +5174,25 @@ async def list_docs():
                     )
 
                     for option in option_rows:
-                        type_code = str(option.type_code)
-                        option_code = str(option.option_code)
+                        current_type_code = str(
+                            option.type_code
+                        )
 
-                        option_name_map[type_code][option_code] = (
+                        current_option_code = str(
+                            option.option_code
+                        )
+
+                        option_name_map[
+                            current_type_code
+                        ][current_option_code] = (
                             option.option_name
                         )
 
                 # 将标签按 doc_id 汇总
-                for doc_id, doc_stage_ids in doc_stage_map.items():
+                for (
+                    current_doc_id,
+                    doc_stage_ids,
+                ) in doc_stage_map.items():
                     tag_metadata = {}
                     meta_fields_display = {}
 
@@ -4809,19 +5202,28 @@ async def list_docs():
                             {},
                         )
 
-                        for type_code, option_codes in type_map.items():
+                        for (
+                            type_code,
+                            option_codes,
+                        ) in type_map.items():
                             type_name = type_name_map.get(
                                 type_code,
                                 type_code,
                             )
 
-                            tag_item = tag_metadata.setdefault(
-                                type_code,
-                                {
-                                    "type_code": type_code,
-                                    "type_name": type_name,
-                                    "options": [],
-                                },
+                            tag_item = (
+                                tag_metadata.setdefault(
+                                    type_code,
+                                    {
+                                        "type_code": (
+                                            type_code
+                                        ),
+                                        "type_name": (
+                                            type_name
+                                        ),
+                                        "options": [],
+                                    },
+                                )
                             )
 
                             display_values = (
@@ -4833,22 +5235,30 @@ async def list_docs():
 
                             for option_code in option_codes:
                                 option_name = (
-                                    option_name_map[type_code].get(
+                                    option_name_map[
+                                        type_code
+                                    ].get(
                                         option_code,
                                         option_code,
                                     )
                                 )
 
                                 option_item = {
-                                    "option_code": option_code,
-                                    "option_name": option_name,
+                                    "option_code": (
+                                        option_code
+                                    ),
+                                    "option_name": (
+                                        option_name
+                                    ),
                                 }
 
                                 if (
                                     option_item
                                     not in tag_item["options"]
                                 ):
-                                    tag_item["options"].append(
+                                    tag_item[
+                                        "options"
+                                    ].append(
                                         option_item
                                     )
 
@@ -4860,7 +5270,9 @@ async def list_docs():
                                         option_name
                                     )
 
-                    document_tag_data[doc_id] = {
+                    document_tag_data[
+                        current_doc_id
+                    ] = {
                         "tag_metadata": tag_metadata,
                         "meta_fields_display": (
                             meta_fields_display
@@ -4872,6 +5284,11 @@ async def list_docs():
         # ---------------------------------------------------------
         for doc_item in docs:
             doc_id = str(doc_item["id"])
+            # 返回文档版本号
+            doc_item["version"] = (
+                document_version_map.get(doc_id)
+                or "v1.0"
+            )
 
             tasks = doc_tasks.get(doc_id, [])
 
@@ -5184,42 +5601,108 @@ async def list_docs_wasted():
         return server_error_response(e)
 
 
+# @manager.route("/filter", methods=["POST"])  # noqa: F821
+# @login_required
+# async def get_filter():
+#     req = await get_request_json()
+
+#     kb_id = req.get("kb_id")
+#     if not kb_id:
+#         return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
+#     ok, kb = KnowledgebaseService.get_by_id(kb_id)
+#     if not ok:
+#         return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
+#     # if not check_kb_team_permission(kb, current_user.id):
+#     #     return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
+
+#     keywords = req.get("keywords", "")
+
+#     suffix = req.get("suffix", [])
+
+#     run_status = req.get("run_status", [])
+#     if run_status:
+#         invalid_status = {s for s in run_status if s not in VALID_TASK_STATUS}
+#         if invalid_status:
+#             return get_data_error_result(message=f"Invalid filter run status conditions: {', '.join(invalid_status)}")
+
+#     types = req.get("types", [])
+#     if types:
+#         invalid_types = {t for t in types if t not in VALID_FILE_TYPES}
+#         if invalid_types:
+#             return get_data_error_result(message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}")
+
+#     try:
+#         filter, total = DocumentService.get_filter_by_kb_id(kb_id, keywords, run_status, types, suffix)
+#         return get_json_result(data={"total": total, "filter": filter})
+#     except Exception as e:
+#         return server_error_response(e)
+
+
 @manager.route("/filter", methods=["POST"])  # noqa: F821
 @login_required
 async def get_filter():
     req = await get_request_json()
 
     kb_id = req.get("kb_id")
-    if not kb_id:
-        return get_json_result(data=False, message='Lack of "KB ID"', code=RetCode.ARGUMENT_ERROR)
-    ok, kb = KnowledgebaseService.get_by_id(kb_id)
-    if not ok:
-        return get_json_result(data=False, message="Dataset not found.", code=RetCode.DATA_ERROR)
-    # if not check_kb_team_permission(kb, current_user.id):
-    #     return get_json_result(data=False, message="Only owner or team members are authorized for this operation.", code=RetCode.OPERATING_ERROR)
 
+    if not kb_id:
+        return get_json_result(
+            data=False,
+            message='Lack of "KB ID"',
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    ok, kb = KnowledgebaseService.get_by_id(kb_id)
+
+    if not ok:
+        return get_json_result(
+            data=False,
+            message="Dataset not found.",
+            code=RetCode.DATA_ERROR,
+        )
+
+    # 建议恢复权限检查
+    # if not check_kb_team_permission(
+    #     kb,
+    #     current_user.id,
+    # ):
+    #     return get_json_result(
+    #         data=False,
+    #         message=(
+    #             "Only owner or team members are "
+    #             "authorized for this operation."
+    #         ),
+    #         code=RetCode.OPERATING_ERROR,
+    #     )
+
+    # keywords 只表示文件名关键词
     keywords = req.get("keywords", "")
 
-    suffix = req.get("suffix", [])
+    if keywords is None:
+        keywords = ""
 
-    run_status = req.get("run_status", [])
-    if run_status:
-        invalid_status = {s for s in run_status if s not in VALID_TASK_STATUS}
-        if invalid_status:
-            return get_data_error_result(message=f"Invalid filter run status conditions: {', '.join(invalid_status)}")
-
-    types = req.get("types", [])
-    if types:
-        invalid_types = {t for t in types if t not in VALID_FILE_TYPES}
-        if invalid_types:
-            return get_data_error_result(message=f"Invalid filter conditions: {', '.join(invalid_types)} type{'s' if len(invalid_types) > 1 else ''}")
+    if not isinstance(keywords, str):
+        return get_data_error_result(
+            message='"keywords" must be a string.'
+        )
 
     try:
-        filter, total = DocumentService.get_filter_by_kb_id(kb_id, keywords, run_status, types, suffix)
-        return get_json_result(data={"total": total, "filter": filter})
+        filter_result, total = (
+            DocumentService.get_filter_by_kb_id(
+                kb_id=kb_id,
+                keywords=keywords,
+            )
+        )
+
+        return get_json_result(
+            data={
+                "total": total,
+                "filter": filter_result,
+            }
+        )
+
     except Exception as e:
         return server_error_response(e)
-    
 
 @manager.route("/filter_wasted", methods=["POST"])  # noqa: F821
 @login_required
@@ -5942,7 +6425,7 @@ async def get(doc_id):
 
     if not user_has_operation_permission(user_id, "download"):
         return get_json_result(
-            data=False,
+            data=False, 
             message="没有下载权限",
             code=RetCode.FORBIDDEN,
         )

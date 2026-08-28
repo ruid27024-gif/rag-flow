@@ -52,11 +52,6 @@ export function SideBar({ refreshCount }: PropType) {
         key: Routes.DatasetBaseWasted,
       },
       {
-        icon: <FolderTree className="size-4" />,
-        label: '上传待审批',
-        key: '/filetree',
-      },
-      {
         icon: <Logs className="size-4" />,
         label: '上传记录',
         key: '/stagedfile',
@@ -65,6 +60,11 @@ export function SideBar({ refreshCount }: PropType) {
         icon: <Logs className="size-4" />,
         label: '操作日志',
         key: '/operationlog',
+      },
+      {
+        icon: <FolderTree className="size-4" />,
+        label: '上传待审批',
+        key: '/filetree',
       },
       // {
       //   icon: <Banknote className="size-4" />,

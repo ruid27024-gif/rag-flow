@@ -213,6 +213,8 @@ class QWenEmbed(Base):
 
     def encode_queries(self, text):
         resp = dashscope.TextEmbedding.call(model=self.model_name, input=text[:2048], api_key=self.key, text_type="query")
+        print(self.key)
+        print(resp)
         try:
             return np.array(resp["output"]["embeddings"][0]["embedding"]), total_token_count_from_response(resp)
         except Exception as _e:

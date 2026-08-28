@@ -27,7 +27,7 @@ from typing import Union
 from peewee import fn
 
 from api.db import KNOWLEDGEBASE_FOLDER_NAME, FileType
-from api.db.db_models import DB, AdminUser, User, Document, File, File2Document, Knowledgebase, Task
+from api.db.db_models import DB, AdminUser, User, Document, File, File2Document, Knowledgebase, Task,StagedFile
 from api.db.services import duplicate_name
 from api.db.services.common_service import CommonService
 from api.db.services.document_service import DocumentService
@@ -43,6 +43,51 @@ from rag.llm.cv_model import GptV4
 from common import settings
 from api.db.services.file_admin_service import FileAdminService
 from api.db.services.file_group_service import FileGroupService
+
+def normalize_document_version(version):
+        """
+        标准化版本号。
+
+        规则：
+        - None、空字符串 -> v1.0
+        - 1、v1 -> v1.0
+        - 1.0、v1.0 -> v1.0
+        - 2.3、v2.3 -> v2.3
+
+        只允许：
+        - 主版本号
+        - 主版本号.次版本号
+        """
+
+        if version is None:
+            return "v1.0"
+
+        value = str(version).strip().lower()
+
+        if not value:
+            return "v1.0"
+
+        # 去掉开头的 v
+        if value.startswith("v"):
+            value = value[1:]
+
+        # 只允许 1、1.0、2.3 这种格式
+        if not re.fullmatch(r"\d+(?:\.\d+)?", value):
+            raise ValueError(
+                "版本号格式错误，只允许 1、1.0、2.3、v1.0、v2.3"
+            )
+
+        # 只传主版本号时自动补 .0
+        if "." not in value:
+            value = f"{value}.0"
+
+        major, minor = value.split(".", 1)
+
+        # 清除前导 0，例如 02.03 -> v2.3
+        major = int(major)
+        minor = int(minor)
+
+        return f"v{major}.{minor}"
 
 
 class FileService(CommonService):
@@ -956,95 +1001,483 @@ class FileService(CommonService):
             raise RuntimeError("Database error (File move)!")
 
 
+    # @classmethod
+    # @DB.connection_context()
+    # def upload_document(self, kb, file_objs, user_id, src="local", parent_path: str | None = None):
+        
+    #     # 获取知识库的tenant_id
+    #     kb_tenant_id = kb.tenant_id
+    #     user_id = kb_tenant_id
+    #     # 获取当前用户的根
+    #     root_folder = self.get_root_folder(user_id)
+    #     pf_id = root_folder["id"]
+    #     # 已经存在的，知识库全部挂载到.knowladge ; 文件挂载到库名
+    #     self.init_knowledgebase_docs(pf_id, user_id)
+
+    #     # 未存在的，新增的 .knowladge
+    #     kb_root_folder = self.get_kb_folder(user_id)
+    #     # 库名称号 --> .knowladge
+    #     kb_folder = self.new_a_file_from_kb(kb.tenant_id, kb.name, kb_root_folder["id"])
+
+    #     safe_parent_path = sanitize_path(parent_path)
+
+    #     max_doc_num_per_kb = int(os.environ.get("MAX_DOC_NUM_PER_KB", "100"))
+    #     if max_doc_num_per_kb > 0 and not AdminUser.query(user_id=user_id):
+    #         if user_id == settings.REFERENCE_TENANT_ID or user_id in KnowledgebaseService.get_all_group_reference_tenant_ids():
+    #             pass
+    #         else:
+    #             user = User.select().where(User.id == user_id).first()
+    #             if not user or user.email != "1505114161@qq.com":
+    #                 current_doc_count = (
+    #                     Document.select(fn.COUNT(1))
+    #                     .where(
+    #                         (Document.kb_id == kb.id) & (Document.status == StatusEnum.VALID.value)
+    #                     )
+    #                     .scalar()
+    #                 )
+    #                 incoming_count = len(file_objs) if hasattr(file_objs, "__len__") else 1
+    #                 if int(current_doc_count or 0) + int(incoming_count or 0) > max_doc_num_per_kb:
+    #                     return [f"QUOTA: 非管理员账户每个知识库最多只能上传 {max_doc_num_per_kb} 篇文件。"], []
+
+    #     err, files = [], []
+    #     for file in file_objs:
+    #         try:
+    #             DocumentService.check_doc_health(kb.tenant_id, file.filename)
+    #             from urllib.parse import unquote
+    #             from urllib.parse import unquote
+
+    #             filename = duplicate_name(DocumentService.query, name=file.filename, kb_id=kb.id)
+
+    #             filetype = filename_type(filename)
+    #             if filetype == FileType.OTHER.value:
+    #                 raise RuntimeError("This type of file has not been supported yet!")
+    #             # 存储到Minio的位置
+    #             location = filename if not safe_parent_path else f"{safe_parent_path}/{filename}"
+    #             while settings.STORAGE_IMPL.obj_exist(kb.id, location):
+    #                 location += "_"
+
+    #             blob = file.read()
+    #             if filetype == FileType.PDF.value:
+    #                 blob = read_potential_broken_pdf(blob)
+    #             settings.STORAGE_IMPL.put(kb.id, location, blob)
+
+    #             doc_id = get_uuid()
+
+    #             img = thumbnail_img(filename, blob)
+    #             thumbnail_location = ""
+    #             if img is not None:
+    #                 thumbnail_location = f"thumbnail_{doc_id}.png"
+    #                 settings.STORAGE_IMPL.put(kb.id, thumbnail_location, img)
+
+    #             doc = {
+    #                 "id": doc_id,
+    #                 "kb_id": kb.id,
+    #                 "parser_id": self.get_parser(filetype, filename, kb.parser_id),
+    #                 "pipeline_id": kb.pipeline_id,
+    #                 "parser_config": kb.parser_config,
+    #                 "created_by": user_id,
+    #                 "type": filetype,
+    #                 "name": filename,
+    #                 "source_type": src,
+    #                 "suffix": Path(filename).suffix.lstrip("."),
+    #                 "location": location,
+    #                 "size": len(blob),
+    #                 "thumbnail": thumbnail_location,
+    #             }
+    #             DocumentService.insert(doc) 
+    #             # 将doc的情况复制一份到file表 位置
+    #             FileService.add_file_from_kb(doc, kb_folder["id"], kb.tenant_id)
+    #             files.append((doc, blob))
+    #         except Exception as e:
+    #             err.append(file.filename + ": " + str(e))
+
+    #     return err, files
+
     @classmethod
     @DB.connection_context()
-    def upload_document(self, kb, file_objs, user_id, src="local", parent_path: str | None = None):
-        
-        # 获取知识库的tenant_id
+    def same_name_version_stage_exists(
+        cls,
+        kb_id: str,
+        filename: str,
+        version: str,
+        current_stage_id: str | None = None,
+    ) -> bool:
+        """
+        判断 StagedFile 中是否已经存在：
+
+            相同 kb_id
+            相同原始 filename
+            相同 version
+
+        不关联 Document。
+
+        current_stage_id 用于排除当前正在入库的暂存记录，
+        否则当前记录会把自己判断成重复。
+
+        注意：
+        StagedFile.filename 应一直保留用户上传时的原始文件名，
+        不要在生成 Document 的 (1)、(2) 名称后回写修改。
+        """
+
+        query = (
+            StagedFile
+            .select(StagedFile.id)
+            .where(
+                (StagedFile.kb_id == kb_id)
+                & (StagedFile.filename == filename)
+                & (
+                    fn.COALESCE(
+                        StagedFile.version,
+                        "v1.0",
+                    ) == version
+                )
+                & (
+                    StagedFile.status.in_([
+                        # 已经进入正式处理流程的状态
+                        "approved",
+                        "committing",
+                        "importing",
+
+                        # 已经成功入库的状态
+                        "committed",
+                        "imported",
+                    ])
+                )
+            )
+        )
+
+        if current_stage_id:
+            query = query.where(
+                StagedFile.id != current_stage_id
+            )
+
+        return query.exists()
+    
+    
+    @classmethod
+    @DB.connection_context()
+    def upload_document(
+        cls,
+        kb,
+        file_objs,
+        user_id,
+        src="local",
+        parent_path: str | None = None,
+        version: str | None = None,
+        current_stage_id: str | None = None,
+    ):
+        """
+        上传文件并创建正式文档。
+
+        版本存储规则：
+
+        1. 未传版本或者传 v1.0：
+        MinIO 路径维持原来的规则：
+        - filename
+        - parent_path/filename
+
+        2. 传入其他版本，例如 v2.3：
+        MinIO 路径：
+        - versions/v2.3/filename
+        - parent_path/versions/v2.3/filename
+
+        注意：
+        - Document 不增加 version 字段；
+        - Document.location 保存 MinIO 实际对象路径；
+        - 版本号由 StagedFile.version 保存。
+        """
+
+        # --------------------------------------------------------
+        # 1. 标准化版本
+        # --------------------------------------------------------
+        document_version = normalize_document_version(version)
+
+        # --------------------------------------------------------
+        # 2. 获取知识库 tenant_id
+        # --------------------------------------------------------
         kb_tenant_id = kb.tenant_id
+
+        # 保留你原来的逻辑：
+        # 文件目录以知识库 tenant_id 作为 owner
         user_id = kb_tenant_id
-        # 获取当前用户的根
-        root_folder = self.get_root_folder(user_id)
+
+        # 获取当前用户的根目录
+        root_folder = cls.get_root_folder(user_id)
         pf_id = root_folder["id"]
-        # 已经存在的，知识库全部挂载到.knowladge ; 文件挂载到库名
-        self.init_knowledgebase_docs(pf_id, user_id)
 
-        # 未存在的，新增的 .knowladge
-        kb_root_folder = self.get_kb_folder(user_id)
-        # 库名称号 --> .knowladge
-        kb_folder = self.new_a_file_from_kb(kb.tenant_id, kb.name, kb_root_folder["id"])
+        # 已经存在的知识库全部挂载到 .knowladge；
+        # 文件挂载到知识库名称目录
+        cls.init_knowledgebase_docs(
+            pf_id,
+            user_id,
+        )
 
+        # 获取或创建 .knowladge 目录
+        kb_root_folder = cls.get_kb_folder(user_id)
+
+        # 知识库名称目录 -> .knowladge
+        kb_folder = cls.new_a_file_from_kb(
+            kb.tenant_id,
+            kb.name,
+            kb_root_folder["id"],
+        )
+
+        # 清理父目录路径
         safe_parent_path = sanitize_path(parent_path)
 
-        max_doc_num_per_kb = int(os.environ.get("MAX_DOC_NUM_PER_KB", "100"))
-        if max_doc_num_per_kb > 0 and not AdminUser.query(user_id=user_id):
-            if user_id == settings.REFERENCE_TENANT_ID or user_id in KnowledgebaseService.get_all_group_reference_tenant_ids():
+        # --------------------------------------------------------
+        # 3. 检查知识库文档数量限制
+        # --------------------------------------------------------
+        max_doc_num_per_kb = int(
+            os.environ.get(
+                "MAX_DOC_NUM_PER_KB",
+                "100",
+            )
+        )
+
+        if (
+            max_doc_num_per_kb > 0
+            and not AdminUser.query(user_id=user_id)
+        ):
+            if (
+                user_id == settings.REFERENCE_TENANT_ID
+                or user_id
+                in KnowledgebaseService
+                .get_all_group_reference_tenant_ids()
+            ):
                 pass
             else:
-                user = User.select().where(User.id == user_id).first()
-                if not user or user.email != "1505114161@qq.com":
+                user = (
+                    User.select()
+                    .where(User.id == user_id)
+                    .first()
+                )
+
+                if (
+                    not user
+                    or user.email != "1505114161@qq.com"
+                ):
                     current_doc_count = (
                         Document.select(fn.COUNT(1))
                         .where(
-                            (Document.kb_id == kb.id) & (Document.status == StatusEnum.VALID.value)
+                            (Document.kb_id == kb.id)
+                            & (
+                                Document.status
+                                == StatusEnum.VALID.value
+                            )
                         )
                         .scalar()
                     )
-                    incoming_count = len(file_objs) if hasattr(file_objs, "__len__") else 1
-                    if int(current_doc_count or 0) + int(incoming_count or 0) > max_doc_num_per_kb:
-                        return [f"QUOTA: 非管理员账户每个知识库最多只能上传 {max_doc_num_per_kb} 篇文件。"], []
 
-        err, files = [], []
+                    incoming_count = (
+                        len(file_objs)
+                        if hasattr(file_objs, "__len__")
+                        else 1
+                    )
+
+                    if (
+                        int(current_doc_count or 0)
+                        + int(incoming_count or 0)
+                        > max_doc_num_per_kb
+                    ):
+                        return [
+                            (
+                                "QUOTA: 非管理员账户每个知识库"
+                                f"最多只能上传 {max_doc_num_per_kb} 篇文件。"
+                            )
+                        ], []
+
+        # --------------------------------------------------------
+        # 4. 逐个处理文件
+        # --------------------------------------------------------
+        err = []
+        files = []
+
         for file in file_objs:
+            minio_saved = False
+            location = None
+            thumbnail_location = None
+
             try:
-                DocumentService.check_doc_health(kb.tenant_id, file.filename)
-                from urllib.parse import unquote
-                from urllib.parse import unquote
+                # 检查文件是否合法
+                DocumentService.check_doc_health(
+                    kb.tenant_id,
+                    file.filename,
+                )
 
-                filename = duplicate_name(DocumentService.query, name=file.filename, kb_id=kb.id)
+                # 用户上传时的原始文件名。
+                original_filename = file.filename
 
+                # 通过 StagedFile 判断相同知识库、相同原始文件名、
+                # 相同版本是否已经存在。
+                same_name_same_version = (
+                    cls.same_name_version_stage_exists(
+                        kb_id=kb.id,
+                        filename=original_filename,
+                        version=document_version,
+                        current_stage_id=current_stage_id,
+                    )
+                )
+
+                if same_name_same_version:
+                    # 同名、同版本已经存在：
+                    # 走原来的 Document 文件名防重复逻辑，
+                    # 生成 filename(1).pdf、filename(2).pdf。
+                    filename = duplicate_name(
+                        DocumentService.query,
+                        name=original_filename,
+                        kb_id=kb.id,
+                    )
+                else:
+                    # 当前版本中还没有这个原始文件名：
+                    # 即使其他版本已经存在同名 Document，
+                    # 也直接使用原始文件名。
+                    filename = original_filename
+
+                # 判断文件类型
                 filetype = filename_type(filename)
+
                 if filetype == FileType.OTHER.value:
-                    raise RuntimeError("This type of file has not been supported yet!")
-                # 存储到Minio的位置
-                location = filename if not safe_parent_path else f"{safe_parent_path}/{filename}"
-                while settings.STORAGE_IMPL.obj_exist(kb.id, location):
+                    raise RuntimeError(
+                        "This type of file has not been supported yet!"
+                    )
+
+                # ------------------------------------------------
+                # 5. 根据版本号生成 MinIO 存储路径
+                # ------------------------------------------------
+
+                if document_version == "v1.0":
+                    # 未传版本或明确传 v1.0：
+                    # 完全保持原有路径规则
+                    location = (
+                        filename
+                        if not safe_parent_path
+                        else f"{safe_parent_path}/{filename}"
+                    )
+                else:
+                    # 非 v1.0：
+                    # 增加版本目录
+                    version_directory = (
+                        f"versions/{document_version}"
+                    )
+
+                    location = (
+                        f"{version_directory}/{filename}"
+                        if not safe_parent_path
+                        else (
+                            f"{safe_parent_path}/"
+                            f"{version_directory}/"
+                            f"{filename}"
+                        )
+                    )
+
+                # ------------------------------------------------
+                # 6. 防止 MinIO 对象覆盖
+                # ------------------------------------------------
+
+                while settings.STORAGE_IMPL.obj_exist(
+                    kb.id,
+                    location,
+                ):
                     location += "_"
 
+                # 读取文件二进制
                 blob = file.read()
+
+                # 尝试修复可能损坏的 PDF
                 if filetype == FileType.PDF.value:
                     blob = read_potential_broken_pdf(blob)
-                settings.STORAGE_IMPL.put(kb.id, location, blob)
+
+                # ------------------------------------------------
+                # 7. 存储原始文件到 MinIO
+                #
+                # bucket      = kb.id
+                # object_name = location
+                # ------------------------------------------------
+
+                settings.STORAGE_IMPL.put(
+                    kb.id,
+                    location,
+                    blob,
+                )
+
+                minio_saved = True
+
+                # ------------------------------------------------
+                # 8. 生成正式文档 ID
+                # ------------------------------------------------
 
                 doc_id = get_uuid()
 
-                img = thumbnail_img(filename, blob)
+                # ------------------------------------------------
+                # 9. 生成缩略图
+                # ------------------------------------------------
+
+                img = thumbnail_img(
+                    filename,
+                    blob,
+                )
+
                 thumbnail_location = ""
+
                 if img is not None:
-                    thumbnail_location = f"thumbnail_{doc_id}.png"
-                    settings.STORAGE_IMPL.put(kb.id, thumbnail_location, img)
+                    thumbnail_location = (
+                        f"thumbnail_{doc_id}.png"
+                    )
+
+                    settings.STORAGE_IMPL.put(
+                        kb.id,
+                        thumbnail_location,
+                        img,
+                    )
+
+                # ------------------------------------------------
+                # 10. 创建 Document
+                #
+                # 不在 Document 中保存 version；
+                # location 已经保存了实际 MinIO 路径。
+                # ------------------------------------------------
 
                 doc = {
                     "id": doc_id,
                     "kb_id": kb.id,
-                    "parser_id": self.get_parser(filetype, filename, kb.parser_id),
+                    "parser_id": cls.get_parser(
+                        filetype,
+                        filename,
+                        kb.parser_id,
+                    ),
                     "pipeline_id": kb.pipeline_id,
                     "parser_config": kb.parser_config,
                     "created_by": user_id,
                     "type": filetype,
                     "name": filename,
                     "source_type": src,
-                    "suffix": Path(filename).suffix.lstrip("."),
+                    "suffix": (
+                        Path(filename)
+                        .suffix
+                        .lstrip(".")
+                    ),
                     "location": location,
                     "size": len(blob),
                     "thumbnail": thumbnail_location,
                 }
-                DocumentService.insert(doc) 
-                # 将doc的情况复制一份到file表 位置
-                FileService.add_file_from_kb(doc, kb_folder["id"], kb.tenant_id)
+
+                DocumentService.insert(doc)
+
+                # 将 Document 信息复制一份到 File 表
+                FileService.add_file_from_kb(
+                    doc,
+                    kb_folder["id"],
+                    kb.tenant_id,
+                )
+
+                # 返回创建成功的 Document 和二进制
                 files.append((doc, blob))
+
             except Exception as e:
-                err.append(file.filename + ": " + str(e))
+                err.append(
+                    f"{file.filename}: {str(e)}"
+                )
 
         return err, files
 

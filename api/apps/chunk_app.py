@@ -305,6 +305,7 @@ async def create():
                 d[PAGERANK_FLD] = kb.pagerank
 
             embd_id = DocumentService.get_embd_id(req["doc_id"])
+
             embd_mdl = LLMBundle(tenant_id, LLMType.EMBEDDING.value, embd_id)
 
             v, c = embd_mdl.encode([doc.name, req["content_with_weight"] if not d["question_kwd"] else "\n".join(d["question_kwd"])])
@@ -380,6 +381,13 @@ async def retrieval_test():
         if langs:
             _question = await cross_languages(kb.tenant_id, None, _question, langs)
 
+        
+        from api.db.services.tenant_llm_service import TenantLLMService
+        config = TenantLLMService.get_model_config(kb.tenant_id, LLMType.EMBEDDING.value, kb.embd_id)
+        print("===== DEBUG =====")
+        print(f"tenant_id: {kb.tenant_id}")
+        print(f"embd_id: {kb.embd_id}")
+        print(f"api_key from DB: {config.get('api_key', 'N/A')[:10]}...")
         embd_mdl = LLMBundle(kb.tenant_id, LLMType.EMBEDDING.value, llm_name=kb.embd_id)
 
         rerank_mdl = None
