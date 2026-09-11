@@ -336,6 +336,16 @@ export const useFetchDocumentList = () => {
           knowledge_category: filterValue.knowledge_category,
           knowledge_level: filterValue.knowledge_level,
           knowledge_type: filterValue.knowledge_type,
+
+          // 新增作者
+          author: filterValue.author,
+
+          // 新增学校
+          school: filterValue.school,
+
+          // 新增时间
+          publish_date_start: filterValue.publish_date?.start,
+          publish_date_end: filterValue.publish_date?.end,
         },
       );
 

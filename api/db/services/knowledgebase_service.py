@@ -31,6 +31,20 @@ from api.constants import DATASET_NAME_LIMIT
 from api.utils.api_utils import get_parser_config, get_data_error_result
 import json
 
+import json
+
+from api.db.db_models import (
+    AdminUser,
+    Knowledgebase,
+    Role,
+    RoleUser,
+    SyncPerson,
+    User,
+)
+
+
+
+
 
 class KnowledgebaseService(CommonService):
     """Service class for managing dataset operations.
@@ -418,272 +432,1040 @@ class KnowledgebaseService(CommonService):
 
         return res, count
 
+    # @classmethod
+    # @DB.connection_context()
+    # def get_by_tenant_ids(cls, joined_tenant_ids, user_id,
+    #                       page_number, items_per_page,
+    #                       orderby, desc, keywords,
+    #                       parser_id=None,
+    #                       admin_bypass=False
+    #                       ):
+    #     # Get knowledge bases by tenant IDs with pagination and filtering
+    #     # Args:
+    #     #     joined_tenant_ids: List of tenant IDs
+    #     #     user_id: Current user ID
+    #     #     page_number: Page number for pagination
+    #     #     items_per_page: Number of items per page
+    #     #     orderby: Field to order by
+    #     #     desc: Boolean indicating descending order
+    #     #     keywords: Search keywords
+    #     #     parser_id: Optional parser ID filter
+    #     #     admin_bypass: Bypass permission check if True
+    #     # Returns:
+    #     #     Tuple of (knowledge_base_list, total_count)
+    #     # fields = [
+    #     #     cls.model.id,
+    #     #     cls.model.avatar,
+    #     #     cls.model.name,
+    #     #     cls.model.language,
+    #     #     cls.model.description,
+    #     #     cls.model.tenant_id,
+    #     #     cls.model.permission,
+    #     #     cls.model.doc_num,
+    #     #     cls.model.token_num,
+    #     #     cls.model.chunk_num,
+    #     #     cls.model.parser_id,
+    #     #     cls.model.embd_id,
+    #     #     User.nickname,
+    #     #     User.avatar.alias('tenant_avatar'),
+    #     #     cls.model.update_time
+    #     # ]
+        
+    #     # kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+
+    #     fields = [
+    #     cls.model.id,
+    #     cls.model.avatar,
+    #     cls.model.name,
+    #     cls.model.language,
+    #     cls.model.description,
+    #     cls.model.tenant_id,
+    #     cls.model.permission,
+    #     cls.model.doc_num,
+    #     cls.model.token_num,
+    #     cls.model.chunk_num,
+    #     cls.model.parser_id,
+    #     cls.model.embd_id,
+    #     User.nickname,
+    #     User.avatar.alias('tenant_avatar'),
+    #     cls.model.update_time,
+    #     # 新增字段
+    #     UserGroup.group_id,      # 1. 拿到关联表中的 group_id
+    #     Group.group_name         # 2. 拿到最终目标表中的 group_name
+    # ]
+
+    #     kbs = (cls.model
+    #     .select(*fields)
+    #     # 1. 连接 User 表 (通常用户肯定存在，保持 INNER JOIN 即可，也可以改为 LEFT_OUTER 以防万一)
+    #     .join(User, on=(cls.model.tenant_id == User.id))
+        
+    #     # 2. 连接 UserGroup 表 <--- 修改这里
+    #     # 使用 LEFT_OUTER，这样即使没有组，知识库也能查出来
+    #     .join(UserGroup, JOIN.LEFT_OUTER, on=(cls.model.tenant_id == UserGroup.user_id))
+        
+    #     # 3. 切换回主表上下文
+    #     .switch(cls.model)
+        
+    #     # 4. 连接 Group 表 <--- 修改这里
+    #     # 同样建议用 LEFT_OUTER，防止因为组信息缺失导致数据查不出来
+    #     .join(Group, JOIN.LEFT_OUTER, on=(UserGroup.group_id == Group.group_id))
+    #     )
+
+
+                
+    #     # 如果不是超级管理员
+    #     if not admin_bypass:
+    #         # 拿到全局参考库
+    #         reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
+    #         # 所有的组参考库id
+    #         group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
+    #         # 拿到组参考库
+    #         group_reference_expr = cls.model.tenant_id.in_(group_reference_ids) if group_reference_ids else None
+    #         # Check for level 2 admin 如果是二级管理员
+    #         if AdminUser.query(user_id=user_id, role_level=2):
+    #              # Find current user's group  找出用户当前组
+    #             my_group = UserGroup.select().where(UserGroup.user_id == user_id).first()
+    #             # 有组的
+    #             if my_group:
+    #                 # Find all users in the same group
+    #                 group_members = UserGroup.select(UserGroup.user_id).where(UserGroup.group_id == my_group.group_id)
+    #                 member_ids = [m.user_id for m in group_members]
+                    
+    #                 base_expr = (
+    #                     (cls.model.tenant_id.in_(member_ids)) 
+    #                     | (cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+    #                     | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
+    #                 )
+    #                 if reference_expr is not None:
+    #                     base_expr = base_expr | reference_expr
+    #                 if group_reference_expr is not None:
+    #                     base_expr = base_expr | group_reference_expr
+    #                 kbs = kbs.where(base_expr)
+    #             else:
+    #                 base_expr = (
+    #                         (cls.model.tenant_id.in_(joined_tenant_ids)
+    #                         & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+    #                         | (cls.model.tenant_id == user_id)
+    #                         | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
+    #                 )
+    #                 if reference_expr is not None:
+    #                     base_expr = base_expr | reference_expr
+    #                 if group_reference_expr is not None:
+    #                     base_expr = base_expr | group_reference_expr
+    #                 kbs = kbs.where(base_expr)
+
+    #         else:
+    #             reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
+    #             base_expr = (
+    #                     (cls.model.tenant_id.in_(joined_tenant_ids)
+    #                     & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
+    #                     | (cls.model.tenant_id == user_id)
+    #                     | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
+    #             )
+    #             if reference_expr is not None:
+    #                 base_expr = base_expr | reference_expr
+    #             if group_reference_expr is not None:
+    #                 base_expr = base_expr | group_reference_expr
+    #             kbs = kbs.where(base_expr)
+            
+    #         if not AdminUser.query(user_id=user_id, role_level=1):
+    #             all_group_reference_ids = cls.get_all_group_reference_tenant_ids()
+    #             hidden_group_reference_ids = list(set(all_group_reference_ids) - set(group_reference_ids))
+    #             if settings.REFERENCE_TENANT_ID:
+    #                 hidden_group_reference_ids = [
+    #                     i for i in hidden_group_reference_ids if i != settings.REFERENCE_TENANT_ID
+    #                 ]
+    #             hidden_group_reference_ids = [i for i in hidden_group_reference_ids if i != user_id]
+    #             if hidden_group_reference_ids:
+    #                 kbs = kbs.where(~cls.model.tenant_id.in_(hidden_group_reference_ids))
+
+    #     kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
+
+
+        
+    #     if keywords:
+    #         kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
+            
+    #     if parser_id:
+    #         kbs = kbs.where(cls.model.parser_id == parser_id)
+    #     if desc:
+    #         kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
+    #     else:
+    #         kbs = kbs.order_by(cls.model.getter_by(orderby).asc())
+
+    #     count = kbs.count()
+        
+    #     # # todo先展示参考库了
+    #     # kbs = kbs.order_by(UserGroup.group_id.asc())
+
+    #     # if page_number and items_per_page:
+    #     #     kbs = kbs.paginate(page_number, items_per_page)
+
+    #     cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+    #     reversed_map = {v: k for k, v in cfg_map.items()}
+        
+    #     res = list(kbs.dicts())
+    #     public_id = settings.REFERENCE_TENANT_ID
+
+    #     # 1. 创建三个列表，用于分类存放不同颜色的 kb
+    #     color_3_kbs = [] # 存放颜色为 3 的 kb
+    #     color_2_kbs = [] # 存放颜色为 2 的 kb
+    #     other_kbs = []   # 存放颜色为 1 以及没有 color 属性的 kb
+
+
+    #     for kb in res:
+    #         # 1. 获取租户ID
+    #         tenant_id = kb["tenant_id"]
+    #             # 全局库的id
+    #         # 默认值：普通库
+    #         kb["color"] = 99
+    #         kb.setdefault("group_name", None)
+
+    #         if tenant_id == public_id:
+    #             kb["group_name"] = "全局参考库"
+    #             kb["color"] = 3
+
+    #         if AdminUser.query(user_id=tenant_id, role_level=1):
+    #             kb["color"] = 1
+
+    #         if AdminUser.query(user_id=tenant_id, role_level=2):
+    #             kb["color"] = 2
+
+
+    #         # 2. 检查是否有映射关系
+    #         if tenant_id in reversed_map:
+    #             group_id = reversed_map[tenant_id]
+                
+    #             # 3. 修正：执行查询并获取具体对象
+    #             # 使用 .first() 获取第一条记录，如果找不到返回 None
+    #             group_obj = Group.select(Group.group_name).where(Group.group_id == group_id).first()
+                
+    #             kb["group_id"] = group_id
+    #             # 修正：取出对象里的属性，如果没有查到对象则设为 None
+    #             kb["group_name"] = group_obj.group_name if group_obj else None
+    #             kb["color"] = 3
+
+    #         color = kb.get("color")
+    #         if color == 3:
+    #             color_3_kbs.append(kb)
+    #         elif color == 2:
+    #             color_2_kbs.append(kb)
+    #         else:
+    #             # 这里包含了 color=1 和 color 不存在的所有情况
+    #             other_kbs.append(kb)
+
+    #     # 3. 按照指定顺序合并列表
+    #     res = color_3_kbs + color_2_kbs + other_kbs
+    #     print(res)
+
+    #     if page_number and items_per_page:
+    #         # res = sorted(res, key=lambda x: (1 if x["group_name"] is not None else 0, x["group_name"] or ""))
+
+    #         def custom_sort_key(x):
+    #             name = x["group_name"]
+                
+    #             # 1. 处理 None 值：优先级 0 (最高，排第一)
+    #             if name is None:
+    #                 return (0, "")
+                    
+    #             # 2. 处理 "全局参考库"：优先级 1 (排第二)
+    #             if name == "全局参考库":
+    #                 return (1, "")
+                
+    #             if name == "工艺研究一室":
+    #                 return (2, "")
+                
+    #             if name == "工艺研究二室":
+    #                 return (3, "")
+                
+    #             if name == "工艺研究三室":
+    #                 return (4, "")
+                
+    #             if name == "新品事业部研发部":
+    #                 return (5, "")
+                
+    #             else:
+    #                 return(6, "")
+                
+    #         res = sorted(res, key=custom_sort_key)
+
+    #         # 1. 计算偏移量 (Offset)
+    #         # 公式：(当前页码 - 1) * 每页数量
+    #         # 例如：第1页偏移0，第2页偏移10（假设每页10条）
+    #         offset = (page_number - 1) * items_per_page
+            
+    #         # 2. 使用切片截取列表
+    #         # 语法：列表[起始索引 : 结束索引]
+    #         res = res[offset : offset + items_per_page]
+    #     return res, count
+
     @classmethod
     @DB.connection_context()
-    def get_by_tenant_ids(cls, joined_tenant_ids, user_id,
-                          page_number, items_per_page,
-                          orderby, desc, keywords,
-                          parser_id=None,
-                          admin_bypass=False
-                          ):
-        # Get knowledge bases by tenant IDs with pagination and filtering
-        # Args:
-        #     joined_tenant_ids: List of tenant IDs
-        #     user_id: Current user ID
-        #     page_number: Page number for pagination
-        #     items_per_page: Number of items per page
-        #     orderby: Field to order by
-        #     desc: Boolean indicating descending order
-        #     keywords: Search keywords
-        #     parser_id: Optional parser ID filter
-        #     admin_bypass: Bypass permission check if True
-        # Returns:
-        #     Tuple of (knowledge_base_list, total_count)
-        # fields = [
-        #     cls.model.id,
-        #     cls.model.avatar,
-        #     cls.model.name,
-        #     cls.model.language,
-        #     cls.model.description,
-        #     cls.model.tenant_id,
-        #     cls.model.permission,
-        #     cls.model.doc_num,
-        #     cls.model.token_num,
-        #     cls.model.chunk_num,
-        #     cls.model.parser_id,
-        #     cls.model.embd_id,
-        #     User.nickname,
-        #     User.avatar.alias('tenant_avatar'),
-        #     cls.model.update_time
-        # ]
-        
-        # kbs = cls.model.select(*fields).join(User, on=(cls.model.tenant_id == User.id))
+    def get_by_tenant_ids(
+        cls,
+        joined_tenant_ids,
+        user_id,
+        page_number,
+        items_per_page,
+        orderby,
+        desc,
+        keywords,
+        parser_id=None,
+        admin_bypass=False,
+    ):
+        """
+        根据当前用户角色绑定的部门查询可见知识库。
+
+        可返回：
+            kb["group_id"]
+            kb["group_name"]
+            kb["department_id"]
+            kb["department_name"]
+        """
+
+        import json
+
+        user_id = str(user_id) if user_id else None
+
+        # ------------------------------------------------------------------
+        # 内部辅助方法
+        # ------------------------------------------------------------------
+
+        def parse_id_values(value):
+            if value is None:
+                return []
+
+            if isinstance(value, (list, tuple, set)):
+                return [
+                    str(item).strip()
+                    for item in value
+                    if item is not None and str(item).strip()
+                ]
+
+            value = str(value).strip()
+
+            if not value:
+                return []
+
+            try:
+                parsed = json.loads(value)
+
+                if isinstance(parsed, (list, tuple, set)):
+                    return [
+                        str(item).strip()
+                        for item in parsed
+                        if item is not None and str(item).strip()
+                    ]
+
+                if parsed is not None and str(parsed).strip():
+                    return [str(parsed).strip()]
+
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+
+            return [
+                item.strip()
+                for item in value.split(",")
+                if item.strip()
+            ]
+
+        def is_super_admin(current_user_id):
+            if not current_user_id:
+                return False
+
+            return bool(
+                AdminUser.query(
+                    user_id=current_user_id,
+                    role_level=1,
+                )
+            )
+
+        def get_user_role(current_user_id):
+            if not current_user_id:
+                return None
+
+            return (
+                Role.select(
+                    Role.id,
+                    Role.role_name,
+                    Role.file_permission_level,
+                    Role.operation_permission_mask,
+                    Role.need_approval,
+                    Role.approval_order,
+                    Role.department_id,
+                    Role.is_admin,
+                    Role.cover_child_dept,
+                    Role.enabled,
+                )
+                .join(
+                    RoleUser,
+                    on=(RoleUser.role_id == Role.id),
+                )
+                .where(
+                    (RoleUser.user_id == current_user_id)
+                    & (Role.enabled == True)
+                )
+                .first()
+            )
+
+        def get_role_department_ids(role):
+            if not role:
+                return []
+
+            if not bool(role.enabled):
+                return []
+
+            department_ids = parse_id_values(role.department_id)
+
+            return list(dict.fromkeys(department_ids))
+
+        def get_department_users(department_ids, current_user_id=None):
+            """
+            根据部门 ID 获取部门下的系统用户。
+
+            返回：
+                visible_user_ids:
+                    可见用户 ID 集合。
+
+                user_department_map:
+                    {
+                        "user_id": "department_id"
+                    }
+            """
+            visible_user_ids = set()
+            user_department_map = {}
+
+            if current_user_id:
+                visible_user_ids.add(str(current_user_id))
+
+            department_ids = [
+                str(item).strip()
+                for item in department_ids
+                if item is not None and str(item).strip()
+            ]
+
+            if not department_ids:
+                return visible_user_ids, user_department_map
+
+            persons = list(
+                SyncPerson
+                .select(
+                    SyncPerson.phone,
+                    SyncPerson.organizationCode,
+                )
+                .where(
+                    SyncPerson.organizationCode.in_(department_ids)
+                    & SyncPerson.phone.is_null(False)
+                    & (SyncPerson.phone != "")
+                )
+            )
+
+            phone_department_map = {}
+
+            for person in persons:
+                phone = str(person.phone or "").strip()
+                department_id = str(person.organizationCode or "").strip()
+
+                if not phone or not department_id:
+                    continue
+
+                if phone not in phone_department_map:
+                    phone_department_map[phone] = department_id
+
+            phones = list(phone_department_map.keys())
+
+            if not phones:
+                return visible_user_ids, user_department_map
+
+            users = (
+                User.select(
+                    User.id,
+                    User.email,
+                )
+                .where(
+                    User.email.in_(phones)
+                    & (User.status == "1")
+                )
+            )
+
+            for user in users:
+                if not user.id:
+                    continue
+
+                system_user_id = str(user.id)
+                user_email = str(user.email or "").strip()
+
+                visible_user_ids.add(system_user_id)
+
+                department_id = phone_department_map.get(user_email)
+
+                if department_id:
+                    user_department_map[system_user_id] = department_id
+
+            return visible_user_ids, user_department_map
+
+        def get_reference_scope(department_ids):
+            """
+            获取部门参考库配置。
+
+            返回：
+                current_department_reference_ids:
+                    当前用户角色部门能看的部门参考库 tenant_id 集合。
+
+                all_department_reference_ids:
+                    所有部门参考库 tenant_id 集合。
+
+                reference_department_map:
+                    {
+                        "reference_tenant_id": "department_id"
+                    }
+            """
+            department_reference_map = getattr(
+                settings,
+                "DEPARTMENT_REFERENCE_TENANT_MAP",
+                None,
+            )
+
+            if department_reference_map is None:
+                department_reference_map = getattr(
+                    settings,
+                    "GROUP_REFERENCE_TENANT_MAP",
+                    {},
+                )
+
+            department_reference_map = department_reference_map or {}
+
+            visible_department_ids = {
+                str(item).strip()
+                for item in department_ids
+                if item is not None and str(item).strip()
+            }
+
+            current_department_reference_ids = set()
+            all_department_reference_ids = set()
+            reference_department_map = {}
+
+            for department_id, tenant_value in department_reference_map.items():
+                department_id = str(department_id).strip()
+
+                if not department_id:
+                    continue
+
+                reference_tenant_ids = parse_id_values(tenant_value)
+
+                for reference_tenant_id in reference_tenant_ids:
+                    reference_tenant_id = str(reference_tenant_id).strip()
+
+                    if not reference_tenant_id:
+                        continue
+
+                    all_department_reference_ids.add(reference_tenant_id)
+
+                    reference_department_map.setdefault(
+                        reference_tenant_id,
+                        department_id,
+                    )
+
+                    if department_id in visible_department_ids:
+                        current_department_reference_ids.add(
+                            reference_tenant_id
+                        )
+
+            return (
+                current_department_reference_ids,
+                all_department_reference_ids,
+                reference_department_map,
+            )
+
+        def get_department_name_map(department_ids):
+            """
+            获取部门名称。
+
+            关键修复：
+            1. 优先从 SyncPerson.organizationCode -> SyncPerson.organize 获取。
+            这和你老接口的来源一致。
+            2. 如果 SyncPerson 没查到，再从 Group.group_id -> Group.group_name 兜底。
+            """
+            department_ids = {
+                str(item).strip()
+                for item in department_ids
+                if item is not None and str(item).strip()
+            }
+
+            if not department_ids:
+                return {}
+
+            department_name_map = {}
+
+            # --------------------------------------------------------------
+            # 1. 优先从 SyncPerson 获取部门名称
+            # --------------------------------------------------------------
+            persons = (
+                SyncPerson
+                .select(
+                    SyncPerson.organizationCode,
+                    SyncPerson.organize,
+                )
+                .where(
+                    SyncPerson.organizationCode.in_(list(department_ids))
+                    & SyncPerson.organizationCode.is_null(False)
+                    & SyncPerson.organize.is_null(False)
+                    & (SyncPerson.organize != "")
+                )
+            )
+
+            for person in persons:
+                department_id = str(person.organizationCode or "").strip()
+                department_name = str(person.organize or "").strip()
+
+                if department_id and department_name:
+                    department_name_map.setdefault(
+                        department_id,
+                        department_name,
+                    )
+
+            # --------------------------------------------------------------
+            # 2. SyncPerson 查不到的，再从 Group 兜底
+            # --------------------------------------------------------------
+            missing_department_ids = (
+                department_ids - set(department_name_map.keys())
+            )
+
+            if missing_department_ids:
+                groups = (
+                    Group.select(
+                        Group.group_id,
+                        Group.group_name,
+                    )
+                    .where(
+                        Group.group_id.in_(list(missing_department_ids))
+                    )
+                )
+
+                for group in groups:
+                    group_id = str(group.group_id or "").strip()
+                    group_name = str(group.group_name or "").strip()
+
+                    if group_id and group_name:
+                        department_name_map.setdefault(
+                            group_id,
+                            group_name,
+                        )
+
+            return department_name_map
+
+        # ------------------------------------------------------------------
+        # 查询基础字段
+        # ------------------------------------------------------------------
 
         fields = [
-        cls.model.id,
-        cls.model.avatar,
-        cls.model.name,
-        cls.model.language,
-        cls.model.description,
-        cls.model.tenant_id,
-        cls.model.permission,
-        cls.model.doc_num,
-        cls.model.token_num,
-        cls.model.chunk_num,
-        cls.model.parser_id,
-        cls.model.embd_id,
-        User.nickname,
-        User.avatar.alias('tenant_avatar'),
-        cls.model.update_time,
-        # 新增字段
-        UserGroup.group_id,      # 1. 拿到关联表中的 group_id
-        Group.group_name         # 2. 拿到最终目标表中的 group_name
-    ]
+            cls.model.id,
+            cls.model.avatar,
+            cls.model.name,
+            cls.model.language,
+            cls.model.description,
+            cls.model.tenant_id,
+            cls.model.permission,
+            cls.model.doc_num,
+            cls.model.token_num,
+            cls.model.chunk_num,
+            cls.model.parser_id,
+            cls.model.embd_id,
 
-        kbs = (cls.model
-        .select(*fields)
-        # 1. 连接 User 表 (通常用户肯定存在，保持 INNER JOIN 即可，也可以改为 LEFT_OUTER 以防万一)
-        .join(User, on=(cls.model.tenant_id == User.id))
-        
-        # 2. 连接 UserGroup 表 <--- 修改这里
-        # 使用 LEFT_OUTER，这样即使没有组，知识库也能查出来
-        .join(UserGroup, JOIN.LEFT_OUTER, on=(cls.model.tenant_id == UserGroup.user_id))
-        
-        # 3. 切换回主表上下文
-        .switch(cls.model)
-        
-        # 4. 连接 Group 表 <--- 修改这里
-        # 同样建议用 LEFT_OUTER，防止因为组信息缺失导致数据查不出来
-        .join(Group, JOIN.LEFT_OUTER, on=(UserGroup.group_id == Group.group_id))
+            User.nickname,
+            User.email,
+            User.avatar.alias("tenant_avatar"),
+
+            cls.model.update_time,
+        ]
+
+        kbs = (
+            cls.model
+            .select(*fields)
+            .join(
+                User,
+                JOIN.LEFT_OUTER,
+                on=(cls.model.tenant_id == User.id),
+            )
         )
 
+        # ------------------------------------------------------------------
+        # 获取当前用户权限范围
+        # ------------------------------------------------------------------
 
-                
-        # 如果不是超级管理员
-        if not admin_bypass:
-            # 拿到全局参考库
-            reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
-            # 所有的组参考库id
-            group_reference_ids = cls.get_group_reference_tenant_ids(user_id)
-            # 拿到组参考库
-            group_reference_expr = cls.model.tenant_id.in_(group_reference_ids) if group_reference_ids else None
-            # Check for level 2 admin 如果是二级管理员
-            if AdminUser.query(user_id=user_id, role_level=2):
-                 # Find current user's group  找出用户当前组
-                my_group = UserGroup.select().where(UserGroup.user_id == user_id).first()
-                # 有组的
-                if my_group:
-                    # Find all users in the same group
-                    group_members = UserGroup.select(UserGroup.user_id).where(UserGroup.group_id == my_group.group_id)
-                    member_ids = [m.user_id for m in group_members]
-                    
-                    base_expr = (
-                        (cls.model.tenant_id.in_(member_ids)) 
-                        | (cls.model.tenant_id.in_(joined_tenant_ids) & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
-                        | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
-                    )
-                    if reference_expr is not None:
-                        base_expr = base_expr | reference_expr
-                    if group_reference_expr is not None:
-                        base_expr = base_expr | group_reference_expr
-                    kbs = kbs.where(base_expr)
+        current_role = None
+        current_department_ids = []
+        visible_user_ids = set()
+        user_department_map = {}
+
+        current_department_reference_ids = set()
+        all_department_reference_ids = set()
+        reference_department_map = {}
+
+        global_reference_tenant_id = getattr(
+            settings,
+            "REFERENCE_TENANT_ID",
+            None,
+        )
+
+        if global_reference_tenant_id:
+            global_reference_tenant_id = str(global_reference_tenant_id)
+
+        current_user_is_super_admin = (
+            bool(admin_bypass)
+            or is_super_admin(user_id)
+        )
+
+        # ------------------------------------------------------------------
+        # 非超级管理员权限过滤
+        # ------------------------------------------------------------------
+
+        if not current_user_is_super_admin:
+            current_role = get_user_role(user_id)
+
+            current_department_ids = get_role_department_ids(
+                current_role
+            )
+
+            visible_user_ids, user_department_map = get_department_users(
+                department_ids=current_department_ids,
+                current_user_id=user_id,
+            )
+
+            (
+                current_department_reference_ids,
+                all_department_reference_ids,
+                reference_department_map,
+            ) = get_reference_scope(
+                current_department_ids
+            )
+
+            public_permissions = [
+                TenantPermission.EVERYONE.value,
+                TenantPermission.EVERYONE_VISIBLE.value,
+            ]
+
+            base_expr = None
+
+            def append_permission_expr(expr):
+                nonlocal base_expr
+
+                if expr is None:
+                    return
+
+                if base_expr is None:
+                    base_expr = expr
                 else:
-                    base_expr = (
-                            (cls.model.tenant_id.in_(joined_tenant_ids)
-                            & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
-                            | (cls.model.tenant_id == user_id)
-                            | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
-                    )
-                    if reference_expr is not None:
-                        base_expr = base_expr | reference_expr
-                    if group_reference_expr is not None:
-                        base_expr = base_expr | group_reference_expr
-                    kbs = kbs.where(base_expr)
+                    base_expr = base_expr | expr
 
-            else:
-                reference_expr = (cls.model.tenant_id == settings.REFERENCE_TENANT_ID) if settings.REFERENCE_TENANT_ID else None
-                base_expr = (
-                        (cls.model.tenant_id.in_(joined_tenant_ids)
-                        & (cls.model.permission.in_([TenantPermission.TEAM.value, TenantPermission.TEAM_VISIBLE.value])))
-                        | (cls.model.tenant_id == user_id)
-                        | (cls.model.permission.in_([TenantPermission.EVERYONE.value, TenantPermission.EVERYONE_VISIBLE.value]))
+            # 1. 自己的知识库
+            if user_id:
+                append_permission_expr(
+                    cls.model.tenant_id == user_id
                 )
-                if reference_expr is not None:
-                    base_expr = base_expr | reference_expr
-                if group_reference_expr is not None:
-                    base_expr = base_expr | group_reference_expr
+
+            # 2. 角色部门下所有人的知识库
+            if visible_user_ids:
+                append_permission_expr(
+                    cls.model.tenant_id.in_(
+                        list(visible_user_ids)
+                    )
+                )
+
+            # 3. 所有人公开知识库
+            append_permission_expr(
+                cls.model.permission.in_(
+                    public_permissions
+                )
+            )
+
+            # 4. 全局参考库
+            if global_reference_tenant_id:
+                append_permission_expr(
+                    cls.model.tenant_id == global_reference_tenant_id
+                )
+
+            # 5. 当前部门参考库
+            if current_department_reference_ids:
+                append_permission_expr(
+                    cls.model.tenant_id.in_(
+                        list(current_department_reference_ids)
+                    )
+                )
+
+            if base_expr is None:
+                kbs = kbs.where(
+                    cls.model.id.is_null(True)
+                )
+            else:
                 kbs = kbs.where(base_expr)
-            
-            if not AdminUser.query(user_id=user_id, role_level=1):
-                all_group_reference_ids = cls.get_all_group_reference_tenant_ids()
-                hidden_group_reference_ids = list(set(all_group_reference_ids) - set(group_reference_ids))
-                if settings.REFERENCE_TENANT_ID:
-                    hidden_group_reference_ids = [
-                        i for i in hidden_group_reference_ids if i != settings.REFERENCE_TENANT_ID
-                    ]
-                hidden_group_reference_ids = [i for i in hidden_group_reference_ids if i != user_id]
-                if hidden_group_reference_ids:
-                    kbs = kbs.where(~cls.model.tenant_id.in_(hidden_group_reference_ids))
 
-        kbs = kbs.where(cls.model.status == StatusEnum.VALID.value)
+            # 排除其他部门参考库
+            hidden_department_reference_ids = (
+                all_department_reference_ids
+                - current_department_reference_ids
+            )
 
+            if global_reference_tenant_id:
+                hidden_department_reference_ids.discard(
+                    global_reference_tenant_id
+                )
 
-        
-        if keywords:
-            kbs = kbs.where(fn.LOWER(cls.model.name).contains(keywords.lower()))
-            
-        if parser_id:
-            kbs = kbs.where(cls.model.parser_id == parser_id)
-        if desc:
-            kbs = kbs.order_by(cls.model.getter_by(orderby).desc())
+            if user_id:
+                hidden_department_reference_ids.discard(user_id)
+
+            if hidden_department_reference_ids:
+                kbs = kbs.where(
+                    ~cls.model.tenant_id.in_(
+                        list(hidden_department_reference_ids)
+                    )
+                )
+
         else:
-            kbs = kbs.order_by(cls.model.getter_by(orderby).asc())
+            # 超管需要加载全部部门参考库映射，用于后续展示 group_name
+            (
+                _,
+                all_department_reference_ids,
+                reference_department_map,
+            ) = get_reference_scope([])
+
+        # ------------------------------------------------------------------
+        # 公共过滤条件
+        # ------------------------------------------------------------------
+
+        kbs = kbs.where(
+            cls.model.status == StatusEnum.VALID.value
+        )
+
+        if keywords:
+            keywords = str(keywords).strip()
+
+            if keywords:
+                kbs = kbs.where(
+                    fn.LOWER(cls.model.name).contains(
+                        keywords.lower()
+                    )
+                )
+
+        if parser_id:
+            kbs = kbs.where(
+                cls.model.parser_id == parser_id
+            )
+
+        if orderby:
+            order_field = cls.model.getter_by(orderby)
+        else:
+            order_field = cls.model.update_time
+
+        if desc:
+            kbs = kbs.order_by(order_field.desc())
+        else:
+            kbs = kbs.order_by(order_field.asc())
 
         count = kbs.count()
-        
-        # # todo先展示参考库了
-        # kbs = kbs.order_by(UserGroup.group_id.asc())
 
-        # if page_number and items_per_page:
-        #     kbs = kbs.paginate(page_number, items_per_page)
-
-        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
-        reversed_map = {v: k for k, v in cfg_map.items()}
-        
         res = list(kbs.dicts())
-        public_id = settings.REFERENCE_TENANT_ID
 
-        # 1. 创建三个列表，用于分类存放不同颜色的 kb
-        color_3_kbs = [] # 存放颜色为 3 的 kb
-        color_2_kbs = [] # 存放颜色为 2 的 kb
-        other_kbs = []   # 存放颜色为 1 以及没有 color 属性的 kb
+        # ------------------------------------------------------------------
+        # 补充结果里所有 tenant 用户的部门映射
+        # ------------------------------------------------------------------
 
+        result_tenant_ids = {
+            str(kb.get("tenant_id"))
+            for kb in res
+            if kb.get("tenant_id")
+        }
+
+        unresolved_tenant_ids = (
+            result_tenant_ids
+            - set(user_department_map.keys())
+            - all_department_reference_ids
+        )
+
+        if global_reference_tenant_id:
+            unresolved_tenant_ids.discard(global_reference_tenant_id)
+
+        if unresolved_tenant_ids:
+            result_users = list(
+                User.select(
+                    User.id,
+                    User.email,
+                )
+                .where(
+                    User.id.in_(list(unresolved_tenant_ids))
+                    & User.email.is_null(False)
+                    & (User.email != "")
+                )
+            )
+
+            email_user_map = {
+                str(result_user.email).strip(): str(result_user.id)
+                for result_user in result_users
+                if result_user.email and result_user.id
+            }
+
+            result_emails = list(email_user_map.keys())
+
+            if result_emails:
+                result_persons = (
+                    SyncPerson
+                    .select(
+                        SyncPerson.phone,
+                        SyncPerson.organizationCode,
+                    )
+                    .where(
+                        SyncPerson.phone.in_(result_emails)
+                        & SyncPerson.organizationCode.is_null(False)
+                        & (SyncPerson.organizationCode != "")
+                    )
+                )
+
+                for person in result_persons:
+                    phone = str(person.phone or "").strip()
+                    department_id = str(person.organizationCode or "").strip()
+
+                    result_user_id = email_user_map.get(phone)
+
+                    if (
+                        result_user_id
+                        and department_id
+                        and result_user_id not in user_department_map
+                    ):
+                        user_department_map[result_user_id] = department_id
+
+        # ------------------------------------------------------------------
+        # 收集所有部门 ID，然后查部门名称
+        # ------------------------------------------------------------------
+
+        all_related_department_ids = set()
+
+        all_related_department_ids.update(current_department_ids)
+        all_related_department_ids.update(reference_department_map.values())
+        all_related_department_ids.update(user_department_map.values())
+
+        department_name_map = get_department_name_map(
+            all_related_department_ids
+        )
+
+        # ------------------------------------------------------------------
+        # 处理 color、group_id、group_name、department_id、department_name
+        # ------------------------------------------------------------------
 
         for kb in res:
-            # 1. 获取租户ID
-            tenant_id = kb["tenant_id"]
-                # 全局库的id
-            # 默认值：普通库
+            tenant_id = str(kb.get("tenant_id") or "")
+
             kb["color"] = 99
-            kb.setdefault("group_name", None)
+            kb["kb_type"] = "normal"
 
-            if tenant_id == public_id:
+            kb["group_id"] = None
+            kb["group_name"] = None
+            kb["department_id"] = None
+            kb["department_name"] = None
+
+            # --------------------------------------------------------------
+            # 1. 全局参考库
+            # --------------------------------------------------------------
+            if (
+                global_reference_tenant_id
+                and tenant_id == global_reference_tenant_id
+            ):
+                kb["group_id"] = None
                 kb["group_name"] = "全局参考库"
+                kb["department_id"] = None
+                kb["department_name"] = "全局参考库"
+                kb["kb_type"] = "global_reference"
                 kb["color"] = 3
+                continue
 
-            if AdminUser.query(user_id=tenant_id, role_level=1):
+            # --------------------------------------------------------------
+            # 2. 部门参考库
+            # --------------------------------------------------------------
+            if tenant_id in reference_department_map:
+                department_id = reference_department_map.get(tenant_id)
+                department_name = department_name_map.get(department_id)
+
+                kb["group_id"] = department_id
+                kb["group_name"] = department_name
+                kb["department_id"] = department_id
+                kb["department_name"] = department_name
+                kb["kb_type"] = "department_reference"
+                kb["color"] = 3
+                continue
+
+            # --------------------------------------------------------------
+            # 3. 普通知识库，取知识库创建人所属部门
+            # --------------------------------------------------------------
+            owner_department_id = user_department_map.get(tenant_id)
+
+            if owner_department_id:
+                owner_department_name = department_name_map.get(
+                    owner_department_id
+                )
+
+                kb["group_id"] = owner_department_id
+                kb["group_name"] = owner_department_name
+                kb["department_id"] = owner_department_id
+                kb["department_name"] = owner_department_name
+
+            # --------------------------------------------------------------
+            # 4. 一级超级管理员创建的知识库标记
+            # --------------------------------------------------------------
+            if is_super_admin(tenant_id):
                 kb["color"] = 1
 
-            if AdminUser.query(user_id=tenant_id, role_level=2):
-                kb["color"] = 2
+        # ------------------------------------------------------------------
+        # 排序
+        # ------------------------------------------------------------------
 
+        department_sort_order = {
+            "全局参考库": 0,
+            "工艺研究一室": 1,
+            "工艺研究二室": 2,
+            "工艺研究三室": 3,
+            "新品事业部研发部": 4,
+        }
 
-            # 2. 检查是否有映射关系
-            if tenant_id in reversed_map:
-                group_id = reversed_map[tenant_id]
-                
-                # 3. 修正：执行查询并获取具体对象
-                # 使用 .first() 获取第一条记录，如果找不到返回 None
-                group_obj = Group.select(Group.group_name).where(Group.group_id == group_id).first()
-                
-                kb["group_id"] = group_id
-                # 修正：取出对象里的属性，如果没有查到对象则设为 None
-                kb["group_name"] = group_obj.group_name if group_obj else None
-                kb["color"] = 3
+        def custom_sort_key(item):
+            color = item.get("color")
+            group_name = item.get("group_name")
 
-            color = kb.get("color")
+            if group_name == "全局参考库":
+                return (0, 0)
+
             if color == 3:
-                color_3_kbs.append(kb)
-            elif color == 2:
-                color_2_kbs.append(kb)
-            else:
-                # 这里包含了 color=1 和 color 不存在的所有情况
-                other_kbs.append(kb)
+                return (
+                    1,
+                    department_sort_order.get(group_name, 999),
+                )
 
-        # 3. 按照指定顺序合并列表
-        res = color_3_kbs + color_2_kbs + other_kbs
-        print(res)
+            return (2, 0)
+
+        res = sorted(
+            res,
+            key=custom_sort_key,
+        )
+
+        # ------------------------------------------------------------------
+        # 内存分页
+        # ------------------------------------------------------------------
 
         if page_number and items_per_page:
-            # res = sorted(res, key=lambda x: (1 if x["group_name"] is not None else 0, x["group_name"] or ""))
+            try:
+                page_number = max(int(page_number), 1)
+            except (TypeError, ValueError):
+                page_number = 1
 
-            def custom_sort_key(x):
-                name = x["group_name"]
-                
-                # 1. 处理 None 值：优先级 0 (最高，排第一)
-                if name is None:
-                    return (0, "")
-                    
-                # 2. 处理 "全局参考库"：优先级 1 (排第二)
-                if name == "全局参考库":
-                    return (1, "")
-                
-                if name == "工艺研究一室":
-                    return (2, "")
-                
-                if name == "工艺研究二室":
-                    return (3, "")
-                
-                if name == "工艺研究三室":
-                    return (4, "")
-                
-                if name == "新品事业部研发部":
-                    return (5, "")
-                
-                else:
-                    return(6, "")
-                
-            res = sorted(res, key=custom_sort_key)
+            try:
+                items_per_page = max(int(items_per_page), 1)
+            except (TypeError, ValueError):
+                items_per_page = 20
 
-            # 1. 计算偏移量 (Offset)
-            # 公式：(当前页码 - 1) * 每页数量
-            # 例如：第1页偏移0，第2页偏移10（假设每页10条）
             offset = (page_number - 1) * items_per_page
-            
-            # 2. 使用切片截取列表
-            # 语法：列表[起始索引 : 结束索引]
-            res = res[offset : offset + items_per_page]
+
+            res = res[offset:offset + items_per_page]
+
         return res, count
+    
 
 
     # 1. 解析角色部门

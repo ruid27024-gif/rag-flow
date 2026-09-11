@@ -38,9 +38,14 @@ interface IProps {
   onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
   reasoning: boolean;
   agentMod: boolean;
+  projectCompliance?: boolean;
+  experimentReport?: boolean;
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
+
+  onEnableProjectCompliance?: () => void | Promise<void>;
+  onEnableExperimentReport?: () => void | Promise<void>;
   refreshConversation?: () => Promise<any>;
 }
 
@@ -52,9 +57,13 @@ export function SingleChatBox({
   onOpenReferencePanel,
   reasoning,
   agentMod,
+  projectCompliance,
+  experimentReport,
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
+  onEnableProjectCompliance, // ✅ 补上
+  onEnableExperimentReport, // ✅ 补上
   refreshConversation,
 }: IProps) {
   const {
@@ -82,6 +91,10 @@ export function SingleChatBox({
   const sendDisabled = useSendButtonDisabled(value);
   const navigate = useNavigate();
   const { id } = useParams();
+  const projectComplianceActive =
+    projectCompliance && !reasoning && !agentMod && !experimentReport;
+  const experimentReportActive =
+    experimentReport && !reasoning && !agentMod && !projectCompliance;
 
   // const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
   //   useClickDrawer();
@@ -488,11 +501,17 @@ export function SingleChatBox({
       onUpload={handleUploadFile}
       isUploading={isUploading}
       removeFile={removeFile}
+      // 👇 状态传递
       reasoning={reasoning}
       agentMod={agentMod}
+      projectCompliance={projectCompliance} // ✅ 补上
+      experimentReport={experimentReport} // ✅ 补上
+      // 👇 回调函数传递
       onEnableDeepReasoning={onEnableDeepReasoning}
       onEnableMultiKbReasoning={onEnableMultiKbReasoning}
       onEnableAgent={onEnableAgent}
+      onEnableProjectCompliance={onEnableProjectCompliance} // ✅ 补上
+      onEnableExperimentReport={onEnableExperimentReport} // ✅ 补上
     />
   );
   return (

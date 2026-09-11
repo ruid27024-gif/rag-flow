@@ -45,48 +45,2527 @@ from rag.utils.doc_store_conn import OrderByExpr
 from common.constants import RetCode, PipelineTaskType, StatusEnum, VALID_TASK_STATUS, FileSource, LLMType, PAGERANK_FLD
 from common import settings
 from api.apps import login_required, current_user
-from api.db.db_models import Group
+from api.db.db_models import DB, Group,OAApplicationkb as OAApplication,OAApprovalTaskkb as OAApprovalTask,KnowledgeBaseCreateApply
+
+import time
+import uuid
+
+import json
+import time
+import uuid
+import httpx
+
+from quart import request
+
+from api.db.db_models import (
+    KnowledgeBaseCreateApply,
+    Role,
+    RoleUser,
+    User,
+    SyncPerson,
+)
 
 
-@manager.route('/create', methods=['post'])  # noqa: F821
+OA_CREATE_URL = "http://localhost:9222/v1/kb/oa/approval/create"
+OA_APP_ID = "ragflow"
+
+
+def generate_business_id():
+    return f"kb_create_{uuid.uuid4().hex}"
+
+
+
+@manager.route("/create", methods=["POST"])  # noqa: F821
 @login_required
 @validate_request("name")
 async def create():
-    req = await get_request_json()
-    print('DEBUG: req content follows')
-    print(req)
+    """
+    提交知识库创建申请。
 
-    # 组id --> 全局参考库用户
-    cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
-    # 这个库 所属的组id
-    tids = {tid for gid, tid in cfg_map.items()}
-    public_id = settings.REFERENCE_TENANT_ID
+    流程：
+
+    1. 接收前端建库参数；
+    2. 根据当前登录用户自动获取所属部门；
+    3. 根据当前部门绑定的审批角色自动获取审批人；
+    4. 保存知识库侧申请记录；
+    5. 调用 OA 创建审批单；
+    6. 保存 OA 返回的 oa_request_id；
+    7. 返回 pending 状态。
+
+    当前接口不会真正创建知识库。
+    审批通过后，应在 OA 回调接口中真正创建知识库。
+    """
+
+    logger = logging.getLogger(__name__)
+
+    business_id = None
+
+    # ==============================================================
+    # 内部辅助方法
+    # ==============================================================
+
+    def print_json(title, value):
+        """
+        调试打印 JSON。
+        """
+        print("\n" + "=" * 100)
+        print(title)
+
+        try:
+            print(
+                json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    indent=2,
+                    default=str,
+                )
+            )
+        except Exception:
+            print(str(value))
+
+        print("=" * 100 + "\n")
+
+    
+    def _parse_role_department_ids(value):
+        """
+        解析角色绑定的部门 ID。
+
+        支持：
+
+            "1001"
+            "1001,1002"
+            "1001，1002"
+            ["1001", "1002"]
+            '["1001", "1002"]'
+        """
+
+        if value is None:
+            return set()
+
+        if isinstance(value, (list, tuple, set)):
+            return {
+                str(item).strip()
+                for item in value
+                if item is not None and str(item).strip()
+            }
+
+        value = str(value).strip()
+
+        if not value:
+            return set()
+
+        # JSON 数组
+        if value.startswith("[") and value.endswith("]"):
+            try:
+                data = json.loads(value)
+
+                if isinstance(data, list):
+                    return {
+                        str(item).strip()
+                        for item in data
+                        if item is not None and str(item).strip()
+                    }
+            except Exception:
+                pass
+
+        # 普通分隔字符串
+        value = (
+            value
+            .replace("，", ",")
+            .replace(";", ",")
+            .replace("；", ",")
+        )
+
+        return {
+            item.strip()
+            for item in value.split(",")
+            if item.strip()
+        }
 
 
+    def get_department_approver(
+        department_code,
+        current_user_id=None,
+    ):
+        """
+        查询当前部门下 need_approval=1 角色绑定的审批人员。
 
-    # 如果是管理员或者参考库的用户(只有管理员和公共库可以创建)
-    # if AdminUser.query(user_id=current_user.id) or current_user.id in tids or current_user.id == public_id:
-    e, res = KnowledgebaseService.create_with_name(
-        name = req.pop("name", None),
-        tenant_id = current_user.id,
-        parser_id = req.pop("parser_id", None),
-        **req
-    )
+        查询条件：
 
-    if not e:
-        return res
+            Role.department_id 匹配 department_code
+            Role.enabled = 1
+            Role.need_approval = 1
+            RoleUser.role_id = Role.id
+            RoleUser.user_id = User.id
+            User.status = "1"
+
+        同时排除当前登录用户自己。
+
+        返回：
+
+            {
+                "user_id": "审批人 ID",
+                "user_name": "审批人名称",
+                "role_id": "角色 ID",
+                "role_name": "角色名称",
+            }
+
+        如果没有找到审批人，返回 None。
+        """
+
+        # ----------------------------------------
+        # 1. 校验部门编码
+        # ----------------------------------------
+
+        if department_code is None:
+            return None
+
+        department_code = str(department_code).strip()
+
+        if not department_code:
+            return None
+
+        # ----------------------------------------
+        # 2. 当前登录用户 ID
+        # ----------------------------------------
+
+        current_user_id_str = None
+
+        if current_user_id is not None:
+            current_user_id_str = str(current_user_id).strip()
+
+            if not current_user_id_str:
+                current_user_id_str = None
+
+        # ----------------------------------------
+        # 3. 可选的角色名称配置
+        # ----------------------------------------
+
+        approval_role_names = getattr(
+            settings,
+            "KB_CREATE_APPROVAL_ROLE_NAMES",
+            None,
+        )
+
+        if approval_role_names:
+            if isinstance(approval_role_names, str):
+                approval_role_names = [
+                    approval_role_names,
+                ]
+
+            approval_role_names = {
+                str(item).strip()
+                for item in approval_role_names
+                if item is not None and str(item).strip()
+            }
+
+        # ----------------------------------------
+        # 4. 查询启用且 need_approval=1 的角色
+        # ----------------------------------------
+
+        roles_query = (
+            Role
+            .select(
+                Role.id,
+                Role.role_name,
+                Role.department_id,
+                Role.enabled,
+                Role.need_approval,
+            )
+            .where(
+                (Role.enabled == 1)
+                & (Role.need_approval == 1)
+            )
+            .order_by(
+                Role.id.asc()
+            )
+        )
+
+        # 如果配置了角色名称，则继续按角色名称过滤
+        if approval_role_names:
+            roles_query = roles_query.where(
+                Role.role_name.in_(
+                    list(approval_role_names)
+                )
+            )
+
+        # ----------------------------------------
+        # 5. 按部门编码匹配角色
+        # ----------------------------------------
+
+        matched_roles = []
+
+        for role in roles_query:
+            role_department_ids = _parse_role_department_ids(
+                role.department_id
+            )
+
+            if department_code not in role_department_ids:
+                continue
+
+            # 这里不要使用：
+            #
+            #     role.need_approval is not True
+            #
+            # 因为数据库返回值可能是整数 1。
+            #
+            # 使用 bool 判断即可。
+            if not role.enabled:
+                continue
+
+            if not role.need_approval:
+                continue
+
+            matched_roles.append(role)
+
+        if not matched_roles:
+            print(
+                "[APPROVER] 当前部门没有绑定 need_approval=1 的启用角色：",
+                {
+                    "department_code": department_code,
+                    "approval_role_names": (
+                        list(approval_role_names)
+                        if approval_role_names
+                        else None
+                    ),
+                },
+            )
+
+            return None
+
+        print(
+            "[APPROVER] 匹配到审批角色：",
+            [
+                {
+                    "role_id": role.id,
+                    "role_name": role.role_name,
+                    "department_id": role.department_id,
+                    "enabled": role.enabled,
+                    "need_approval": role.need_approval,
+                }
+                for role in matched_roles
+            ],
+        )
+
+        role_ids = [
+            role.id
+            for role in matched_roles
+            if role.id is not None
+        ]
+
+        if not role_ids:
+            return None
+
+        # ----------------------------------------
+        # 6. 查询审批角色绑定的有效用户
+        # ----------------------------------------
+
+        approver_query = (
+            User
+            .select(
+                User.id,
+                User.nickname,
+                User.email,
+                Role.id.alias("role_id"),
+                Role.role_name.alias("role_name"),
+            )
+            .join(
+                RoleUser,
+                on=(RoleUser.user_id == User.id),
+            )
+            .join(
+                Role,
+                on=(Role.id == RoleUser.role_id),
+            )
+            .where(
+                (Role.id.in_(role_ids))
+                & (Role.enabled == 1)
+                & (Role.need_approval == 1)
+                & (User.status == "1")
+            )
+            .order_by(
+                Role.id.asc(),
+                User.id.asc(),
+            )
+        )
+
+        # ----------------------------------------
+        # 7. 组装审批人，并排除当前登录用户
+        # ----------------------------------------
+
+        for user in approver_query:
+            if user.id is None:
+                continue
+
+            user_id = str(user.id).strip()
+
+            if not user_id:
+                continue
+
+            # 排除当前登录用户自己
+            if (
+                current_user_id_str is not None
+                and user_id == current_user_id_str
+            ):
+                print(
+                    "[APPROVER] 跳过当前登录用户：",
+                    {
+                        "user_id": user_id,
+                        "current_user_id": current_user_id_str,
+                    },
+                )
+
+                continue
+
+            user_name = (
+                getattr(user, "nickname", None)
+                or getattr(user, "email", None)
+                or user_id
+            )
+
+            approver = {
+                "user_id": user_id,
+                "user_name": str(user_name),
+                "role_id": getattr(user, "role_id", None),
+                "role_name": getattr(user, "role_name", None),
+            }
+
+            print(
+                "[APPROVER] 最终审批人：",
+                approver,
+            )
+
+            return approver
+
+        # ----------------------------------------
+        # 8. 没有其他有效审批人
+        # ----------------------------------------
+
+        print(
+            "[APPROVER] need_approval=1 的角色没有绑定其他有效用户：",
+            {
+                "department_code": department_code,
+                "role_ids": role_ids,
+                "current_user_id": current_user_id_str,
+            },
+        )
+
+        return None
+
+    def get_current_user_department(current_user_obj):
+        """
+        根据当前登录用户获取所属部门。
+
+        关联关系：
+
+            User.email == SyncPerson.phone
+
+        返回：
+
+            {
+                "dept_code": "部门编码",
+                "dept_name": "部门名称"
+            }
+        """
+
+        if not current_user_obj:
+            print(
+                "[KB CREATE] 当前登录用户为空，无法获取部门"
+            )
+            return None
+
+        current_user_email = str(
+            getattr(
+                current_user_obj,
+                "email",
+                None,
+            )
+            or ""
+        ).strip()
+
+        current_user_id = str(
+            getattr(
+                current_user_obj,
+                "id",
+                None,
+            )
+            or ""
+        ).strip()
+
+        if not current_user_email:
+            print(
+                "[KB CREATE] 当前登录用户 email 为空：",
+                {
+                    "user_id": current_user_id,
+                    "email": current_user_email,
+                },
+            )
+            return None
+
+        print(
+            "[KB CREATE] 开始查询当前用户所属部门：",
+            {
+                "user_id": current_user_id,
+                "email": current_user_email,
+            },
+        )
+
+        person = (
+            SyncPerson
+            .select(
+                SyncPerson.organizationCode,
+                SyncPerson.organize,
+            )
+            .where(
+                (SyncPerson.phone == current_user_email)
+                & SyncPerson.organizationCode.is_null(False)
+                & (SyncPerson.organizationCode != "")
+            )
+            .first()
+        )
+
+        if not person:
+            print(
+                "[KB CREATE] 没有找到当前用户对应的部门：",
+                {
+                    "user_id": current_user_id,
+                    "email": current_user_email,
+                },
+            )
+            return None
+
+        department_code = str(
+            person.organizationCode or ""
+        ).strip()
+
+        department_name = str(
+            person.organize or ""
+        ).strip()
+
+        if not department_code:
+            print(
+                "[KB CREATE] 当前用户部门编码为空：",
+                {
+                    "user_id": current_user_id,
+                    "email": current_user_email,
+                    "person": getattr(
+                        person,
+                        "__data__",
+                        {},
+                    ),
+                },
+            )
+            return None
+
+        result = {
+            "dept_code": department_code,
+            "dept_name": department_name,
+        }
+
+        print(
+            "[KB CREATE] 当前用户所属部门：",
+            result,
+        )
+
+        return result
+
+    
+    def save_oa_failed(error_message):
+        """
+        保存 OA 推送失败状态。
+        """
+        if not business_id:
+            return
+
+        try:
+            affected_rows = (
+                KnowledgeBaseCreateApply
+                .update(
+                    oa_push_status="failed",
+                    oa_push_error=str(
+                        error_message
+                    ),
+                    updated_time=int(
+                        time.time()
+                    ),
+                )
+                .where(
+                    KnowledgeBaseCreateApply.business_id
+                    == business_id
+                )
+                .execute()
+            )
+
+            print(
+                "[KB CREATE] OA 失败状态已保存：",
+                {
+                    "business_id": business_id,
+                    "affected_rows": affected_rows,
+                    "error": str(error_message),
+                },
+            )
+
+        except Exception as update_error:
+            print(
+                "[KB CREATE] 保存 OA 失败状态时发生异常："
+            )
+            print(
+                {
+                    "business_id": business_id,
+                    "original_error": str(
+                        error_message
+                    ),
+                    "update_error": str(
+                        update_error
+                    ),
+                }
+            )
+            print(traceback.format_exc())
+
+    # ==============================================================
+    # 1. 读取请求参数
+    # ==============================================================
 
     try:
-        if not KnowledgebaseService.save(**res):
-            return get_data_error_result()
-        return get_json_result(data={"kb_id":res["id"]})
+        req = await request.get_json()
+
     except Exception as e:
+        print(
+            "[KB CREATE] 读取请求 JSON 失败："
+        )
+        print(str(e))
+        print(traceback.format_exc())
+
+        return get_json_result(
+            data=False,
+            message=(
+                "Invalid request JSON: "
+                f"{str(e)}"
+            ),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if not req:
+        return get_json_result(
+            data=False,
+            message="Empty request body.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if not isinstance(req, dict):
+        return get_json_result(
+            data=False,
+            message=(
+                "Request body must be a JSON object."
+            ),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    req = dict(req)
+
+    # ==============================================================
+    # 2. 校验知识库名称
+    # ==============================================================
+
+    kb_name = req.get("name")
+
+    if kb_name is None:
+        return get_json_result(
+            data=False,
+            message=(
+                "Knowledge base name is required."
+            ),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    kb_name = str(kb_name).strip()
+
+    if not kb_name:
+        return get_json_result(
+            data=False,
+            message=(
+                "Knowledge base name is required."
+            ),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # ==============================================================
+    # 3. 获取当前用户信息
+    # ==============================================================
+
+    current_user_id = str(
+        getattr(
+            current_user,
+            "id",
+            None,
+        )
+        or ""
+    ).strip()
+
+    current_user_name = (
+        getattr(
+            current_user,
+            "name",
+            None,
+        )
+        or getattr(
+            current_user,
+            "nickname",
+            None,
+        )
+        or getattr(
+            current_user,
+            "email",
+            None,
+        )
+        or ""
+    )
+
+    if not current_user_id:
+        return get_json_result(
+            data=False,
+            message="Current user id is required.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    # ==============================================================
+    # 4. 后端获取当前用户所属部门
+    # ==============================================================
+
+    applicant_dept = get_current_user_department(
+        current_user
+    )
+
+    if not applicant_dept:
+        return get_json_result(
+            data=False,
+            message=(
+                "The current user is not bound "
+                "to any department."
+            ),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # ==============================================================
+    # 5. 后端获取部门审批人
+    # ==============================================================
+
+    approver = get_department_approver(
+        department_code=applicant_dept.get(
+            "dept_code"
+        ),
+        current_user_id=current_user_id,
+    )
+
+    if not approver:
+        return get_json_result(
+            data=False,
+            message=(
+                "No approver is configured for "
+                f"department: "
+                f"{applicant_dept.get('dept_code')}"
+            ),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # ==============================================================
+    # 6. 生成申请业务 ID
+    # ==============================================================
+
+    business_id = generate_business_id()
+    now = int(time.time())
+
+    public_kb = req.get("public_kb") or {}
+
+    # 保存完整原始申请参数。
+    #
+    # 注意：
+    # 不信任前端传来的 applicant_dept、approver，
+    # 使用后端实际查询结果覆盖。
+    original_request = dict(req)
+
+    original_request["tenant_id"] = current_user_id
+
+    original_request["applicant_dept"] = applicant_dept
+
+    original_request["approver"] = {
+        "user_id": approver.get("user_id"),
+        "user_name": approver.get("user_name"),
+    }
+
+    print_json(
+        "[KB CREATE] 当前申请人、部门、审批人",
+        {
+            "user_id": current_user_id,
+            "user_name": current_user_name,
+            "applicant_dept": applicant_dept,
+            "approver": approver,
+        },
+    )
+
+    # ==============================================================
+    # 7. OA 回调地址
+    # ==============================================================
+
+    # 生产环境不要使用 localhost。
+    #
+    # 例如：
+    #
+    # settings.OA_CALLBACK_URL =
+    # http://ragflow-api:9380/v1/kb/oa/approval/callback
+    #
+    oa_callback_url = getattr(
+        settings,
+        "OA_CALLBACK_URL",
+        (
+            "http://localhost:9380"
+            "/v1/kb/oa/approval/callback"
+        ),
+    )
+
+    # ==============================================================
+    # 8. 保存知识库侧申请记录
+    # ==============================================================
+
+    apply_data = {
+        "business_id": business_id,
+        "business_type": "kb_create",
+        "request_data": json.dumps(
+            original_request,
+            ensure_ascii=False,
+            default=str,
+        ),
+        "user_id": current_user_id,
+        "user_name": current_user_name,
+        "kb_name": kb_name,
+        "status": "pending",
+        "create_status": "pending",
+        "oa_push_status": "pending",
+        "created_time": now,
+        "updated_time": now,
+    }
+
+    # 如果 DataBaseModel 中定义了 create_time，
+    # 且数据库表中已经存在 create_time 字段，
+    # 可以显式赋值。
+    #
+    # 你之前的报错说明父类很可能存在该字段。
+    # 如果数据库已经补充 create_time，保留下面这行。
+    apply_data["create_time"] = now
+
+    print_json(
+        "[KB CREATE] 准备保存知识库申请记录",
+        {
+            "business_id": business_id,
+            "apply_data": apply_data,
+        },
+    )
+
+    try:
+        created_apply = (
+            KnowledgeBaseCreateApply.create(
+                **apply_data
+            )
+        )
+
+        print_json(
+            "[KB CREATE] 知识库申请记录保存成功",
+            {
+                "business_id": business_id,
+                "record": getattr(
+                    created_apply,
+                    "__data__",
+                    {},
+                ),
+            },
+        )
+
+    except Exception as e:
+        error_message = (
+            "Save KnowledgeBaseCreateApply failed: "
+            f"{type(e).__name__}: {str(e)}"
+        )
+
+        print(
+            "[KB CREATE] 保存知识库申请记录失败："
+        )
+        print(error_message)
+        print(traceback.format_exc())
+
         return server_error_response(e)
+
+    # ==============================================================
+    # 9. 构造 OA 请求数据
+    # ==============================================================
+
+    oa_data = {
+        "applicant_dept": {
+            "dept_code": applicant_dept.get(
+                "dept_code"
+            ),
+            "dept_name": applicant_dept.get(
+                "dept_name"
+            ),
+        },
+        "kb_name": kb_name,
+    }
+
+    if public_kb:
+        oa_data["public_kb"] = {
+            "kb_id": public_kb.get("kb_id"),
+            "kb_name": public_kb.get("kb_name"),
+        }
+
+    oa_payload = {
+        "app_id": OA_APP_ID,
+        "business_type": "kb_create",
+        "business_id": business_id,
+        "batch_id": business_id,
+        "reason": req.get("reason", ""),
+        "applicant": {
+            "user_id": current_user_id,
+            "user_name": current_user_name,
+        },
+        "approver": {
+            "user_id": approver.get(
+                "user_id"
+            ),
+            "user_name": approver.get(
+                "user_name"
+            ),
+        },
+        "data": oa_data,
+        "callback_url": oa_callback_url,
+        "timestamp": now,
+    }
+
+    print_json(
+        (
+            "[KB CREATE] 准备推送 OA，URL："
+            + str(OA_CREATE_URL)
+        ),
+        oa_payload,
+    )
+
+    # ==============================================================
+    # 10. 调用 OA 创建审批单
+    # ==============================================================
+
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        print(
+            "[KB CREATE] 开始调用 OA：",
+            {
+                "url": OA_CREATE_URL,
+                "business_id": business_id,
+                "headers": headers,
+            },
+        )
+
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                connect=5.0,
+                read=20.0,
+                write=10.0,
+                pool=5.0,
+            )
+        ) as client:
+            response = await client.post(
+                OA_CREATE_URL,
+                json=oa_payload,
+                headers=headers,
+            )
+
+        # ----------------------------------------------------------
+        # 10.1 HTTP 状态码判断
+        #
+        # HTTP 200 和业务 code=0 是两层含义：
+        #
+        # HTTP：
+        #     200 <= status < 300
+        #
+        # 业务：
+        #     code == 0 或 code == 200
+        # ----------------------------------------------------------
+
+        print(
+            "[KB CREATE] OA HTTP 状态码：",
+            response.status_code,
+        )
+
+        print(
+            "[KB CREATE] OA 响应头：",
+            dict(response.headers),
+        )
+
+        print(
+            "[KB CREATE] OA 原始响应：",
+            response.text,
+        )
+
+        if not (
+            200 <= int(response.status_code) < 300
+        ):
+            error_message = (
+                "OA HTTP request failed: "
+                f"status_code={response.status_code}, "
+                f"response={response.text}"
+            )
+
+            print(
+                "[KB CREATE] "
+                + error_message
+            )
+
+            raise RuntimeError(
+                error_message
+            )
+
+        # ----------------------------------------------------------
+        # 10.2 解析 OA JSON
+        # ----------------------------------------------------------
+
+        try:
+            oa_result = response.json()
+
+        except Exception as e:
+            error_message = (
+                "OA response is not valid JSON: "
+                f"status_code={response.status_code}, "
+                f"response={response.text}"
+            )
+
+            print(
+                "[KB CREATE] "
+                + error_message
+            )
+            print(traceback.format_exc())
+
+            raise RuntimeError(
+                error_message
+            ) from e
+
+        print_json(
+            "[KB CREATE] OA JSON 响应",
+            oa_result,
+        )
+
+        # ----------------------------------------------------------
+        # 10.3 判断 OA 业务码
+        # ----------------------------------------------------------
+
+        oa_code = oa_result.get("code")
+        oa_message = oa_result.get("message")
+
+        print(
+            "[KB CREATE] OA business code:",
+            oa_code,
+        )
+
+        print(
+            "[KB CREATE] OA business message:",
+            oa_message,
+        )
+
+        # 你的 OA 返回 code=0，所以必须接受 0。
+        if str(oa_code) not in {
+            "0",
+            "200",
+        }:
+            error_message = (
+                "OA business request failed: "
+                f"code={oa_code}, "
+                f"message={oa_message}, "
+                f"response={json.dumps(oa_result, ensure_ascii=False, default=str)}"
+            )
+
+            print(
+                "[KB CREATE] "
+                + error_message
+            )
+
+            raise RuntimeError(
+                error_message
+            )
+
+        # ----------------------------------------------------------
+        # 10.4 获取 OA 审批单 ID
+        # ----------------------------------------------------------
+
+        oa_result_data = (
+            oa_result.get("data")
+            or {}
+        )
+
+        oa_request_id = (
+            oa_result_data.get(
+                "oa_request_id"
+            )
+            or oa_result_data.get(
+                "request_id"
+            )
+            or oa_result_data.get(
+                "approval_id"
+            )
+            or oa_result_data.get(
+                "instance_id"
+            )
+            or oa_result.get(
+                "oa_request_id"
+            )
+            or oa_result.get(
+                "request_id"
+            )
+            or oa_result.get(
+                "approval_id"
+            )
+        )
+
+        if not oa_request_id:
+            error_message = (
+                "OA returned success, "
+                "but oa_request_id is missing: "
+                f"{json.dumps(oa_result, ensure_ascii=False, default=str)}"
+            )
+
+            print(
+                "[KB CREATE] "
+                + error_message
+            )
+
+            raise RuntimeError(
+                error_message
+            )
+
+        oa_request_id = str(
+            oa_request_id
+        ).strip()
+
+        print(
+            "[KB CREATE] OA 创建审批成功：",
+            {
+                "business_id": business_id,
+                "oa_request_id": oa_request_id,
+                "approver": approver,
+            },
+        )
+
+        # ----------------------------------------------------------
+        # 10.5 更新本地申请记录
+        # ----------------------------------------------------------
+
+        affected_rows = (
+            KnowledgeBaseCreateApply
+            .update(
+                oa_request_id=oa_request_id,
+                oa_push_status="success",
+                oa_push_error=None,
+                updated_time=int(
+                    time.time()
+                ),
+            )
+            .where(
+                KnowledgeBaseCreateApply.business_id
+                == business_id
+            )
+            .execute()
+        )
+
+        print(
+            "[KB CREATE] 本地 OA 信息更新完成：",
+            {
+                "business_id": business_id,
+                "oa_request_id": oa_request_id,
+                "affected_rows": affected_rows,
+            },
+        )
+
+        if not affected_rows:
+            print(
+                "[KB CREATE] 警告：OA 创建成功，"
+                "但本地申请记录没有更新。"
+            )
+
+        # ----------------------------------------------------------
+        # 10.6 返回申请成功
+        # ----------------------------------------------------------
+        #
+        # 这里不能返回真实 kb_id。
+        # 因为审批通过前，知识库还没有创建。
+        # ----------------------------------------------------------
+
+        return get_json_result(
+            data={
+                "business_id": business_id,
+                "oa_request_id": oa_request_id,
+                "status": "pending",
+                "oa_push_status": "success",
+                "created": False,
+                "approved": False,
+                "kb_id": None,
+                "created_kb_id": None,
+                "applicant_dept": applicant_dept,
+                "approver": {
+                    "user_id": approver.get(
+                        "user_id"
+                    ),
+                    "user_name": approver.get(
+                        "user_name"
+                    ),
+                },
+            },
+            message=(
+                "Knowledge base creation request "
+                "submitted and is waiting for approval."
+            ),
+            code=RetCode.SUCCESS,
+        )
+
+    # ==============================================================
+    # 11. OA 请求超时
+    # ==============================================================
+
+    except httpx.TimeoutException as e:
+        error_message = (
+            "OA request timeout: "
+            f"{type(e).__name__}: {str(e)}"
+        )
+
+        print(
+            "[KB CREATE] "
+            + error_message
+        )
+        print(traceback.format_exc())
+
+        logger.exception(
+            "OA request timeout, business_id=%s",
+            business_id,
+        )
+
+        save_oa_failed(error_message)
+
+        return get_json_result(
+            data={
+                "business_id": business_id,
+                "status": "pending",
+                "oa_push_status": "failed",
+                "error_type": "timeout",
+                "message": error_message,
+            },
+            message=(
+                "Application saved, "
+                "but OA request timed out."
+            ),
+            code=RetCode.SERVER_ERROR,
+        )
+
+    # ==============================================================
+    # 12. OA 连接失败
+    # ==============================================================
+
+    except httpx.ConnectError as e:
+        error_message = (
+            "Cannot connect to OA: "
+            f"{type(e).__name__}: {str(e)}"
+        )
+
+        print(
+            "[KB CREATE] "
+            + error_message
+        )
+        print(traceback.format_exc())
+
+        logger.exception(
+            "Cannot connect to OA, business_id=%s",
+            business_id,
+        )
+
+        save_oa_failed(error_message)
+
+        return get_json_result(
+            data={
+                "business_id": business_id,
+                "status": "pending",
+                "oa_push_status": "failed",
+                "error_type": "connect_error",
+                "message": error_message,
+            },
+            message=(
+                "Application saved, "
+                "but OA cannot be reached."
+            ),
+            code=RetCode.SERVER_ERROR,
+        )
+
+    # ==============================================================
+    # 13. 其他 HTTP 网络异常
+    # ==============================================================
+
+    except httpx.RequestError as e:
+        error_message = (
+            "OA network request failed: "
+            f"{type(e).__name__}: {str(e)}"
+        )
+
+        print(
+            "[KB CREATE] "
+            + error_message
+        )
+        print(traceback.format_exc())
+
+        logger.exception(
+            "OA network request failed, business_id=%s",
+            business_id,
+        )
+
+        save_oa_failed(error_message)
+
+        return get_json_result(
+            data={
+                "business_id": business_id,
+                "status": "pending",
+                "oa_push_status": "failed",
+                "error_type": "request_error",
+                "message": error_message,
+            },
+            message=(
+                "Application saved, "
+                "but OA request failed."
+            ),
+            code=RetCode.SERVER_ERROR,
+        )
+
+    # ==============================================================
+    # 14. 其他异常
+    # ==============================================================
+
+    except Exception as e:
+        error_message = (
+            "OA processing failed: "
+            f"{type(e).__name__}: {str(e)}"
+        )
+
+        print(
+            "[KB CREATE] "
+            + error_message
+        )
+        print(traceback.format_exc())
+
+        logger.exception(
+            "OA processing failed, business_id=%s",
+            business_id,
+        )
+
+        save_oa_failed(error_message)
+
+        return get_json_result(
+            data={
+                "business_id": business_id,
+                "status": "pending",
+                "oa_push_status": "failed",
+                "error_type": type(e).__name__,
+                "message": error_message,
+            },
+            message=(
+                "Application saved, "
+                "but OA request failed."
+            ),
+            code=RetCode.SERVER_ERROR,
+        )
+
+def generate_oa_request_id():
+    return f"oa_req_{uuid.uuid4().hex[:16]}"
+
+# 获取OA返回
+@manager.route(
+    "/oa/approval/create",
+    methods=["POST"]
+)
+async def create_approval_request():
+    """
+    模拟 OA 创建审批单。
+
+    当前逻辑：
+    1. 校验 app_id
+    2. 校验参数
+    3. 根据业务 ID 做幂等
+    4. 写入 OA 主表
+    5. 写入一级审批任务
+    6. 返回 oa_request_id
+    """
+
+    import os
+
+    oa_secret = os.environ.get("OA_SECRET", "")
+    expected_app_id = os.environ.get(
+        "OA_APP_ID",
+        "ragflow"
+    )
+
+    data = await request.get_json()
+
+    if not data:
+        return get_json_result(
+            data=False,
+            message="Empty request body.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # app_id 校验
+    if data.get("app_id") != expected_app_id:
+        return get_json_result(
+            data=False,
+            message="Invalid app_id.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    # 签名校验
+    recv_signature = request.headers.get(
+        "X-OA-Signature",
+        ""
+    )
+
+    # if oa_secret:
+    #     expected_signature = make_oa_signature(
+    #         data,
+    #         oa_secret
+    #     )
+
+    #     if recv_signature != expected_signature:
+    #         return get_json_result(
+    #             data=False,
+    #             message="Invalid signature.",
+    #             code=RetCode.AUTHENTICATION_ERROR,
+    #         )
+
+    business_type = data.get("business_type")
+    business_id = data.get("business_id")
+
+    # 兼容当前接口，也可以使用 batch_id
+    batch_id = data.get("batch_id") or business_id
+
+    reason = data.get("reason", "")
+    applicant = data.get("applicant") or {}
+    approver = data.get("approver") or {}
+    business_data = data.get("data") or {}
+    callback_url = data.get("callback_url")
+
+    if business_type != "kb_create":
+        return get_json_result(
+            data=False,
+            message="Unsupported business_type.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if not batch_id:
+        return get_json_result(
+            data=False,
+            message="business_id is required.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if not applicant.get("user_id"):
+        return get_json_result(
+            data=False,
+            message="applicant.user_id is required.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if not business_data.get("kb_name"):
+        return get_json_result(
+            data=False,
+            message="data.kb_name is required.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if not callback_url:
+        return get_json_result(
+            data=False,
+            message="callback_url is required.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # 幂等查询
+    existed = (
+        OAApplication
+        .select()
+        .where(
+            (OAApplication.source_system == "knowledge")
+            & (OAApplication.business_type == business_type)
+            & (OAApplication.business_id == batch_id)
+        )
+        .first()
+    )
+
+    if existed:
+        return get_json_result(
+            data={
+                "oa_request_id": existed.oa_request_id,
+                "business_id": existed.business_id,
+                "status": existed.status,
+            }
+        )
+
+    oa_request_id = generate_oa_request_id()
+    now = int(time.time())
+
+    # try:
+    with DB.atomic():
+        OAApplication.create(
+            oa_request_id=oa_request_id,
+            app_id=data.get("app_id"),
+            source_system="knowledge",
+            business_type=business_type,
+            business_id=batch_id,
+            reason=reason,
+            applicant_user_id=applicant.get("user_id"),
+            applicant_user_name=applicant.get("user_name"),
+            approver_user_id=approver.get("user_id"),
+            approver_user_name=approver.get("user_name"),
+            data=json.dumps(
+                business_data,
+                ensure_ascii=False
+            ),
+            status="pending",
+            callback_url=callback_url,
+            callback_status="pending",
+            created_time=now,
+            updated_time=now,
+        )
+
+        # 创建一级审批任务
+        if approver.get("user_id"):
+            OAApprovalTask.create(
+                oa_request_id=oa_request_id,
+                level=1,
+                approver_user_id=approver.get("user_id"),
+                approver_user_name=approver.get("user_name"),
+                status="pending",
+                created_time=now,
+                updated_time=now,
+            )
+
+    return get_json_result(
+        data={
+            "oa_request_id": oa_request_id,
+            "business_id": batch_id,
+            "status": "pending",
+        }
+    )
+
+    # except Exception as e:
+    #     # 如果是并发请求导致唯一键冲突，可以再次查询并返回已有数据
+    #     existed = (
+    #         OAApplication
+    #         .select()
+    #         .where(
+    #             (OAApplication.source_system == "knowledge")
+    #             & (OAApplication.business_type == business_type)
+    #             & (OAApplication.business_id == batch_id)
+    #         )
+    #         .first()
+    #     )
+
+    #     if existed:
+    #         return get_json_result(
+    #             data={
+    #                 "oa_request_id": existed.oa_request_id,
+    #                 "business_id": existed.business_id,
+    #                 "status": existed.status,
+    #             }
+    #         )
+
+    #     return server_error_response(e)
+
+# 同意
+@manager.route(
+    "/oa/approval/<oa_request_id>/approve",
+    methods=["POST"]
+)
+async def approve_approval_request(oa_request_id):
+    """
+    模拟 OA 审批通过。
+    """
+    data = await request.get_json() or {}
+
+    comment = data.get(
+        "comment",
+        "同意"
+    )
+
+    approver = data.get("approver") or {}
+
+    oa_application = (
+        OAApplication
+        .select()
+        .where(
+            OAApplication.oa_request_id == oa_request_id
+        )
+        .first()
+    )
+
+    if not oa_application:
+        return get_json_result(
+            data=False,
+            message="OA request not found.",
+            code=RetCode.NOT_FOUND,
+        )
+
+    approver_user_id = (
+        approver.get("user_id")
+        or oa_application.approver_user_id
+    )
+
+    approver_user_name = (
+        approver.get("user_name")
+        or oa_application.approver_user_name
+    )
+
+    now = int(time.time())
+
+    # 只允许 pending 被处理
+    updated_count = (
+        OAApplication
+        .update(
+            status="approved",
+            approve_comment=comment,
+            approve_time=now,
+            approver_user_id=approver_user_id,
+            approver_user_name=approver_user_name,
+            updated_time=now,
+        )
+        .where(
+            (OAApplication.oa_request_id == oa_request_id)
+            & (OAApplication.status == "pending")
+        )
+        .execute()
+    )
+
+    # 已经是 approved，视为幂等
+    if updated_count == 0:
+        current = (
+            OAApplication
+            .select()
+            .where(
+                OAApplication.oa_request_id == oa_request_id
+            )
+            .first()
+        )
+
+        if current and current.status == "approved":
+            return get_json_result(
+                data={
+                    "oa_request_id": oa_request_id,
+                    "status": "approved",
+                    "message": "Already approved.",
+                }
+            )
+
+        return get_json_result(
+            data=False,
+            message="Request has already been processed.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # 更新审批任务
+    (
+        OAApprovalTask
+        .update(
+            status="approved",
+            comment=comment,
+            processed_time=now,
+            updated_time=now,
+        )
+        .where(
+            (OAApprovalTask.oa_request_id == oa_request_id)
+            & (OAApprovalTask.status == "pending")
+        )
+        .execute()
+    )
+
+    # 从 OA 主表中取回调信息
+    oa_application = (
+        OAApplication
+        .select()
+        .where(
+            OAApplication.oa_request_id == oa_request_id
+        )
+        .first()
+    )
+
+    callback_payload = {
+        "oa_request_id": oa_application.oa_request_id,
+        "business_type": oa_application.business_type,
+        "business_id": oa_application.business_id,
+        "result": "approved",
+        "comment": comment,
+        "approver": {
+            "user_id": approver_user_id,
+            "user_name": approver_user_name,
+        },
+        "timestamp": now,
+    }
+
+    # 回调知识库
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                oa_application.callback_url,
+                json=callback_payload,
+                headers={
+                    "Content-Type": "application/json",
+                },
+            )
+
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Knowledge callback http error: "
+                f"{response.status_code}"
+            )
+
+        callback_result = response.json()
+
+        if callback_result.get("code") != 200:
+            raise RuntimeError(
+                callback_result.get(
+                    "message",
+                    "Knowledge callback failed"
+                )
+            )
+
+        OAApplication.update(
+            callback_status="success",
+            callback_error=None,
+            callback_time=int(time.time()),
+            updated_time=int(time.time()),
+        ).where(
+            OAApplication.oa_request_id == oa_request_id
+        ).execute()
+
+    except Exception as e:
+        OAApplication.update(
+            callback_status="failed",
+            callback_error=str(e),
+            callback_retry_count=(
+                OAApplication.callback_retry_count + 1
+            ),
+            callback_time=int(time.time()),
+            updated_time=int(time.time()),
+        ).where(
+            OAApplication.oa_request_id == oa_request_id
+        ).execute()
+
+        # 注意：OA 审批已经成功，不能因为回调失败而回滚审批状态
+        return get_json_result(
+            data={
+                "oa_request_id": oa_request_id,
+                "status": "approved",
+                "callback_status": "failed",
+            },
+            message="Approved, but callback failed.",
+            code=RetCode.SERVER_ERROR,
+        )
+
+    return get_json_result(
+        data={
+            "oa_request_id": oa_request_id,
+            "status": "approved",
+            "callback_status": "success",
+        }
+    )
+
+# 拒绝
+@manager.route(
+    "/oa/approval/<oa_request_id>/reject",
+    methods=["POST"]
+)
+async def reject_approval_request(oa_request_id):
+    """
+    模拟 OA 审批拒绝。
+    """
+    data = await request.get_json() or {}
+
+    comment = data.get(
+        "comment",
+        "不同意"
+    )
+
+    approver = data.get("approver") or {}
+
+    oa_application = (
+        OAApplication
+        .select()
+        .where(
+            OAApplication.oa_request_id == oa_request_id
+        )
+        .first()
+    )
+
+    if not oa_application:
+        return get_json_result(
+            data=False,
+            message="OA request not found.",
+            code=RetCode.NOT_FOUND,
+        )
+
+    approver_user_id = (
+        approver.get("user_id")
+        or oa_application.approver_user_id
+    )
+
+    approver_user_name = (
+        approver.get("user_name")
+        or oa_application.approver_user_name
+    )
+
+    now = int(time.time())
+
+    updated_count = (
+        OAApplication
+        .update(
+            status="rejected",
+            approve_comment=comment,
+            approve_time=now,
+            approver_user_id=approver_user_id,
+            approver_user_name=approver_user_name,
+            updated_time=now,
+        )
+        .where(
+            (OAApplication.oa_request_id == oa_request_id)
+            & (OAApplication.status == "pending")
+        )
+        .execute()
+    )
+
+    if updated_count == 0:
+        current = (
+            OAApplication
+            .select()
+            .where(
+                OAApplication.oa_request_id == oa_request_id
+            )
+            .first()
+        )
+
+        if current and current.status == "rejected":
+            return get_json_result(
+                data={
+                    "oa_request_id": oa_request_id,
+                    "status": "rejected",
+                    "message": "Already rejected.",
+                }
+            )
+
+        return get_json_result(
+            data=False,
+            message="Request has already been processed.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    (
+        OAApprovalTask
+        .update(
+            status="rejected",
+            comment=comment,
+            processed_time=now,
+            updated_time=now,
+        )
+        .where(
+            (OAApprovalTask.oa_request_id == oa_request_id)
+            & (OAApprovalTask.status == "pending")
+        )
+        .execute()
+    )
+
+    callback_payload = {
+        "oa_request_id": oa_application.oa_request_id,
+        "business_type": oa_application.business_type,
+        "business_id": oa_application.business_id,
+        "result": "rejected",
+        "comment": comment,
+        "approver": {
+            "user_id": approver_user_id,
+            "user_name": approver_user_name,
+        },
+        "timestamp": now,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                oa_application.callback_url,
+                json=callback_payload,
+                headers={
+                    "Content-Type": "application/json",
+                },
+            )
+
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Knowledge callback http error: "
+                f"{response.status_code}"
+            )
+
+        callback_result = response.json()
+
+        if callback_result.get("code") != 200:
+            raise RuntimeError(
+                callback_result.get(
+                    "message",
+                    "Knowledge callback failed"
+                )
+            )
+
+        OAApplication.update(
+            callback_status="success",
+            callback_error=None,
+            callback_time=int(time.time()),
+            updated_time=int(time.time()),
+        ).where(
+            OAApplication.oa_request_id == oa_request_id
+        ).execute()
+
+    except Exception as e:
+        OAApplication.update(
+            callback_status="failed",
+            callback_error=str(e),
+            callback_retry_count=(
+                OAApplication.callback_retry_count + 1
+            ),
+            callback_time=int(time.time()),
+            updated_time=int(time.time()),
+        ).where(
+            OAApplication.oa_request_id == oa_request_id
+        ).execute()
+
+        return get_json_result(
+            data={
+                "oa_request_id": oa_request_id,
+                "status": "rejected",
+                "callback_status": "failed",
+            },
+            message="Rejected, but callback failed.",
+            code=RetCode.SERVER_ERROR,
+        )
+
+    return get_json_result(
+        data={
+            "oa_request_id": oa_request_id,
+            "status": "rejected",
+            "callback_status": "success",
+        }
+    )
+
+
+def get_oa_application_kb_name(oa_application):
+    """
+    从 OAApplicationkb.data JSON 中获取知识库名称。
+
+    OA 表中保存的数据结构类似：
+
+    {
+        "kb_name": "测试知识库",
+        "applicant_dept": {
+            "dept_code": "dept-001",
+            "dept_name": "工艺研究一室"
+        }
+    }
+    """
+
+    raw_data = getattr(
+        oa_application,
+        "data",
+        None,
+    )
+
+    if not raw_data:
+        return ""
+
+    # 如果 Peewee 已经返回 dict
+    if isinstance(raw_data, dict):
+        business_data = raw_data
+
+    else:
+        try:
+            business_data = json.loads(
+                str(raw_data)
+            )
+
+        except (
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ):
+            print(
+                "[OA TODO] OA application.data "
+                "不是合法 JSON：",
+                {
+                    "oa_request_id": getattr(
+                        oa_application,
+                        "oa_request_id",
+                        None,
+                    ),
+                    "data": raw_data,
+                },
+            )
+            return ""
+
+    if not isinstance(business_data, dict):
+        return ""
+
+    kb_name = (
+        business_data.get("kb_name")
+        or business_data.get("name")
+        or ""
+    )
+
+    return str(kb_name).strip()
+
+# ragflow侧回调
+@manager.route(
+    "/oa/approval/callback",
+    methods=["POST"]
+)
+async def oa_approval_callback():
+    """
+    OA 审批完成后回调知识库。
+
+    approved：
+        更新审批状态
+        真正创建知识库
+
+    rejected：
+        更新审批状态
+        不创建知识库
+    """
+    data = await request.get_json()
+
+    if not data:
+        return get_json_result(
+            data=False,
+            message="Empty request body.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    oa_request_id = data.get("oa_request_id")
+    business_id = data.get("business_id")
+    result = data.get("result")
+    comment = data.get("comment")
+    approver = data.get("approver") or {}
+    timestamp = data.get("timestamp") or int(time.time())
+
+    if not oa_request_id:
+        return get_json_result(
+            data=False,
+            message="oa_request_id is required.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    if result not in ("approved", "rejected"):
+        return get_json_result(
+            data=False,
+            message="Invalid result.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # 可以同时使用 business_id 和 oa_request_id 查询
+    apply_record = (
+        KnowledgeBaseCreateApply
+        .select()
+        .where(
+            KnowledgeBaseCreateApply.oa_request_id
+            == oa_request_id
+        )
+        .first()
+    )
+
+    if not apply_record and business_id:
+        apply_record = (
+            KnowledgeBaseCreateApply
+            .select()
+            .where(
+                KnowledgeBaseCreateApply.business_id
+                == business_id
+            )
+            .first()
+        )
+
+    if not apply_record:
+        return get_json_result(
+            data=False,
+            message="Application not found.",
+            code=RetCode.NOT_FOUND,
+        )
+
+    # 校验 OA 回调中的 business_id
+    if (
+        business_id
+        and apply_record.business_id != business_id
+    ):
+        return get_json_result(
+            data=False,
+            message="business_id does not match.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    now = int(time.time())
+
+    # 已经处理过的相同结果，直接幂等返回成功
+    if apply_record.status == result:
+        return get_json_result(
+            data={
+                "business_id": apply_record.business_id,
+                "oa_request_id": oa_request_id,
+                "status": apply_record.status,
+                "message": "Callback already processed.",
+            }
+        )
+
+    # 防止 approved 和 rejected 相互覆盖
+    if apply_record.status != "pending":
+        return get_json_result(
+            data=False,
+            message=(
+                f"Invalid status transition: "
+                f"{apply_record.status} -> {result}"
+            ),
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # 审批拒绝：只更新申请状态，不创建知识库
+    if result == "rejected":
+        updated_count = (
+            KnowledgeBaseCreateApply
+            .update(
+                status="rejected",
+                approver_id=approver.get("user_id"),
+                approver_name=approver.get("user_name"),
+                approve_comment=comment,
+                approve_time=timestamp,
+                callback_time=now,
+                updated_time=now,
+            )
+            .where(
+                (KnowledgeBaseCreateApply.business_id
+                 == apply_record.business_id)
+                & (KnowledgeBaseCreateApply.status
+                   == "pending")
+            )
+            .execute()
+        )
+
+        if updated_count == 0:
+            return get_json_result(
+                data=False,
+                message="Application has already been processed.",
+                code=RetCode.ARGUMENT_ERROR,
+            )
+
+        return get_json_result(
+            data={
+                "business_id": apply_record.business_id,
+                "oa_request_id": oa_request_id,
+                "status": "rejected",
+            }
+        )
+
+    # 审批通过：
+    # 先抢占创建权，避免 OA 重复回调导致重复建库
+    updated_count = (
+        KnowledgeBaseCreateApply
+        .update(
+            status="approved",
+            create_status="processing",
+            approver_id=approver.get("user_id"),
+            approver_name=approver.get("user_name"),
+            approve_comment=comment,
+            approve_time=timestamp,
+            callback_time=now,
+            updated_time=now,
+        )
+        .where(
+            (KnowledgeBaseCreateApply.business_id
+             == apply_record.business_id)
+            & (KnowledgeBaseCreateApply.status
+               == "pending")
+            & (KnowledgeBaseCreateApply.create_status
+               == "pending")
+        )
+        .execute()
+    )
+
+    if updated_count == 0:
+        # 可能是并发回调，检查当前状态
+        current = (
+            KnowledgeBaseCreateApply
+            .select()
+            .where(
+                KnowledgeBaseCreateApply.business_id
+                == apply_record.business_id
+            )
+            .first()
+        )
+
+        if current and current.create_status in (
+            "processing",
+            "success",
+        ):
+            return get_json_result(
+                data={
+                    "business_id": current.business_id,
+                    "oa_request_id": current.oa_request_id,
+                    "status": current.status,
+                    "create_status": current.create_status,
+                    "created_kb_id": current.created_kb_id,
+                }
+            )
+
+        return get_json_result(
+            data=False,
+            message="Application has already been processed.",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    # 查询最新申请记录，获取原始 request_data
+    apply_record = (
+        KnowledgeBaseCreateApply
+        .select()
+        .where(
+            KnowledgeBaseCreateApply.business_id
+            == apply_record.business_id
+        )
+        .first()
+    )
+
+    try:
+        original_request = json.loads(
+            apply_record.request_data
+        )
+
+        # 不能完全信任原始请求中的 tenant_id。
+        # 如果 tenant_id 应该是当前申请用户，需要由服务端重新赋值。
+        original_request["tenant_id"] = apply_record.user_id
+
+        create_name = original_request.pop(
+            "name",
+            apply_record.kb_name
+        )
+
+        parser_id = original_request.pop(
+            "parser_id",
+            None
+        )
+
+        # 防止客户端提交不应该进入创建逻辑的字段
+        original_request.pop("business_id", None)
+        original_request.pop("oa_request_id", None)
+        original_request.pop("reason", None)
+
+        e, res = KnowledgebaseService.create_with_name(
+            name=create_name,
+            tenant_id=apply_record.user_id,
+            parser_id=parser_id,
+            **original_request
+        )
+
+        if not e:
+            raise RuntimeError(
+                "KnowledgebaseService.create_with_name failed"
+            )
+
+        if not KnowledgebaseService.save(**res):
+            raise RuntimeError(
+                "KnowledgebaseService.save failed"
+            )
+
+        created_kb_id = res["id"]
+
+        KnowledgeBaseCreateApply.update(
+            create_status="success",
+            created_kb_id=created_kb_id,
+            create_error=None,
+            updated_time=int(time.time()),
+        ).where(
+            KnowledgeBaseCreateApply.business_id
+            == apply_record.business_id
+        ).execute()
+
+        return get_json_result(
+            data={
+                "business_id": apply_record.business_id,
+                "oa_request_id": oa_request_id,
+                "status": "approved",
+                "create_status": "success",
+                "kb_id": created_kb_id,
+            }
+        )
+
+    except Exception as e:
+        KnowledgeBaseCreateApply.update(
+            create_status="failed",
+            create_error=str(e),
+            updated_time=int(time.time()),
+        ).where(
+            KnowledgeBaseCreateApply.business_id
+            == apply_record.business_id
+        ).execute()
+
+        # 返回失败后，OA 可以根据 callback_status 进行重试。
+        # 但这里需要注意：如果审批已是 approved，重复回调不能再次创建。
+        return get_json_result(
+            data={
+                "business_id": apply_record.business_id,
+                "oa_request_id": oa_request_id,
+                "status": "approved",
+                "create_status": "failed",
+                "message": str(e),
+            },
+            message="Approval succeeded, but knowledge base creation failed.",
+            code=RetCode.SERVER_ERROR,
+        )
+
+@manager.route(
+    "/oa/approval/tasks/todo",
+    methods=["GET"],
+)
+@login_required
+async def get_oa_todo_tasks():
+    """
+    获取当前用户的 OA 待办审批任务。
+    """
+
+    current_user_id = str(
+        getattr(
+            current_user,
+            "id",
+            None,
+        )
+        or ""
+    ).strip()
+
+    if not current_user_id:
+        return get_json_result(
+            data=False,
+            message="Current user id is required.",
+            code=RetCode.AUTHENTICATION_ERROR,
+        )
+
+    try:
+        tasks = (
+            OAApprovalTask
+            .select(
+                OAApprovalTask,
+                OAApplication,
+            )
+            .join(
+                OAApplication,
+                on=(
+                    OAApprovalTask.oa_request_id
+                    == OAApplication.oa_request_id
+                ),
+            )
+            .where(
+                (
+                    OAApprovalTask.approver_user_id
+                    == current_user_id
+                )
+                & (
+                    OAApprovalTask.status
+                    == "pending"
+                )
+                & (
+                    OAApplication.status
+                    == "pending"
+                )
+            )
+            .order_by(
+                OAApprovalTask.created_time.desc()
+            )
+        )
+
+        result = []
+
+        for task in tasks:
+            oa_application = task.oaapplicationkb
+
+            # 从 data JSON 中读取 kb_name
+            kb_name = get_oa_application_kb_name(
+                oa_application
+            )
+
+            item = {
+                "task_id": getattr(
+                    task,
+                    "id",
+                    None,
+                ),
+                "oa_request_id": getattr(
+                    oa_application,
+                    "oa_request_id",
+                    None,
+                ),
+                "business_id": getattr(
+                    oa_application,
+                    "business_id",
+                    None,
+                ),
+                "business_type": getattr(
+                    oa_application,
+                    "business_type",
+                    None,
+                ),
+                "kb_name": kb_name,
+                "reason": getattr(
+                    oa_application,
+                    "reason",
+                    "",
+                ),
+                "applicant_user_id": getattr(
+                    oa_application,
+                    "applicant_user_id",
+                    None,
+                ),
+                "applicant_user_name": getattr(
+                    oa_application,
+                    "applicant_user_name",
+                    None,
+                ),
+                "approver_user_id": getattr(
+                    oa_application,
+                    "approver_user_id",
+                    None,
+                ),
+                "approver_user_name": getattr(
+                    oa_application,
+                    "approver_user_name",
+                    None,
+                ),
+                "status": getattr(
+                    oa_application,
+                    "status",
+                    None,
+                ),
+                "task_status": getattr(
+                    task,
+                    "status",
+                    None,
+                ),
+                "created_time": getattr(
+                    oa_application,
+                    "created_time",
+                    None,
+                ),
+                "updated_time": getattr(
+                    oa_application,
+                    "updated_time",
+                    None,
+                ),
+            }
+
+            # 读取申请部门
+            raw_data = getattr(
+                oa_application,
+                "data",
+                None,
+            )
+
+            try:
+                if isinstance(raw_data, dict):
+                    business_data = raw_data
+                else:
+                    business_data = json.loads(
+                        str(raw_data or "{}")
+                    )
+
+            except (
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                business_data = {}
+
+            applicant_dept = (
+                business_data.get(
+                    "applicant_dept"
+                )
+                or {}
+            )
+
+            item["applicant_dept"] = {
+                "dept_code": applicant_dept.get(
+                    "dept_code"
+                ),
+                "dept_name": applicant_dept.get(
+                    "dept_name"
+                ),
+            }
+
+            result.append(item)
+
+        return get_json_result(
+            data=result,
+            message="success",
+            code=RetCode.SUCCESS,
+        )
+
+    except Exception as e:
+        print(
+            "[OA TODO] 获取 OA 待办失败：",
+            repr(e),
+        )
+        # print(traceback.format_exc())
+
+        return get_json_result(
+            data=False,
+            message=(
+                "Get OA todo tasks failed: "
+                f"{str(e)}"
+            ),
+            code=RetCode.SERVER_ERROR,
+        )
+# @manager.route('/create', methods=['post'])  # noqa: F821
+# @login_required
+# @validate_request("name")
+# async def create():
+#     req = await get_request_json()
+#     print('DEBUG: req content follows')
+#     print(req)
+
+#     # 组id --> 全局参考库用户
+#     cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+#     # 这个库 所属的组id
+#     tids = {tid for gid, tid in cfg_map.items()}
+#     public_id = settings.REFERENCE_TENANT_ID
+
+
+
+#     # 如果是管理员或者参考库的用户(只有管理员和公共库可以创建)
+#     # if AdminUser.query(user_id=current_user.id) or current_user.id in tids or current_user.id == public_id:
+#     e, res = KnowledgebaseService.create_with_name(
+#         name = req.pop("name", None),
+#         tenant_id = current_user.id,
+#         parser_id = req.pop("parser_id", None),
+#         **req
+#     )
+
+#     if not e:
+#         return res
+
+#     try:
+#         if not KnowledgebaseService.save(**res):
+#             return get_data_error_result()
+#         return get_json_result(data={"kb_id":res["id"]})
+#     except Exception as e:
+#         return server_error_response(e)
         
-    # ---------------- 新增的代码块 ----------------
-    # else:
-    #     print("暂无权限")
-    #     return get_data_error_result(message="抱歉！当前用户暂无权限创建知识库")
+#     # ---------------- 新增的代码块 ----------------
+#     # else:
+#     #     print("暂无权限")
+#     #     return get_data_error_result(message="抱歉！当前用户暂无权限创建知识库")
 
 
 @manager.route('/update', methods=['post'])  # noqa: F821
@@ -257,90 +2736,360 @@ async def update():
 #     except Exception as e:
 #         return server_error_response(e)
 
+# @manager.route('/detail', methods=['GET'])  # noqa: F821
+# @login_required
+# def detail():
+#     kb_id = request.args["kb_id"]
+
+#     try:
+#         # if not KnowledgebaseService.accessible(kb_id, current_user.id):
+#         #     return get_json_result(
+#         #         data=False,
+#         #         message='Only owner of dataset authorized for this operation.',
+#         #         code=RetCode.OPERATING_ERROR,
+#         #     )
+
+#         kb = KnowledgebaseService.get_detail(kb_id)
+#         if not kb:
+#             return get_json_result(
+#                 data=False,
+#                 message='Knowledgebase not found',
+#                 code=RetCode.DATA_NOT_FOUND,
+#             )
+
+#         # 颜色逻辑开始
+#         tenant_id = kb.get("tenant_id")
+
+#         cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
+#         reversed_map = {v: k for k, v in cfg_map.items()}
+
+#         public_id = settings.REFERENCE_TENANT_ID
+
+#         # 默认颜色：一级管理员/普通库
+#         kb["color"] = 99
+
+#         # 全局参考库
+#         if tenant_id == public_id:
+#             kb["group_name"] = "全局参考库"
+#             kb["color"] = 3
+
+#         # 一级管理员创建
+#         if AdminUser.query(user_id=tenant_id, role_level=1):
+#             kb["color"] = 1
+
+#         # 二级管理员创建
+#         if AdminUser.query(user_id=tenant_id, role_level=2):
+#             kb["color"] = 2
+
+#         # 分组参考库
+#         if tenant_id in reversed_map:
+#             group_id = reversed_map[tenant_id]
+
+#             group_obj = Group.select(Group.group_name).where(
+#                 Group.group_id == group_id
+#             ).first()
+
+#             kb["group_id"] = group_id
+#             kb["group_name"] = group_obj.group_name if group_obj else None
+#             kb["color"] = 3
+
+            
+#         # 颜色逻辑结束
+
+#         kb["size"] = DocumentService.get_total_size_by_kb_id(
+#             kb_id=kb["id"],
+#             keywords="",
+#             run_status=[],
+#             types=[],
+#         )
+
+#         kb["connectors"] = Connector2KbService.list_connectors(kb_id)
+#         print(kb['color'])
+
+#         for key in [
+#             "graphrag_task_finish_at",
+#             "raptor_task_finish_at",
+#             "mindmap_task_finish_at",
+#         ]:
+#             if finish_at := kb.get(key):
+#                 kb[key] = finish_at.strftime("%Y-%m-%d %H:%M:%S")
+
+#         if AdminUser.query(user_id=current_user.id):
+#             kb['is_admin'] = True
+
+#         return get_json_result(data=kb)
+
+#     except Exception as e:
+#         return server_error_response(e)
+
+import time
+
+
 @manager.route('/detail', methods=['GET'])  # noqa: F821
 @login_required
 def detail():
-    kb_id = request.args["kb_id"]
+    """
+    获取知识库详情。
+
+    说明：
+    - 全局参考库统一 color=3；
+    - 部门参考库统一 color=3；
+    - 一级管理员创建的库 color=1；
+    - 普通知识库 color=99；
+    - 已移除二级管理员判断；
+    - 尽量减少重复查询；
+    - 增加分段耗时日志，方便定位真正慢的部分。
+    """
+
+    request_start = time.perf_counter()
+
+    kb_id = request.args.get("kb_id")
+
+    if not kb_id:
+        return get_json_result(
+            data=False,
+            message="kb_id is required",
+            code=RetCode.ARGUMENT_ERROR,
+        )
+
+    kb_id = str(kb_id).strip()
 
     try:
-        # if not KnowledgebaseService.accessible(kb_id, current_user.id):
+        # --------------------------------------------------------------
+        # 1. 查询知识库基本信息
+        # --------------------------------------------------------------
+        start = time.perf_counter()
+
+        # 建议恢复权限校验。
+        #
+        # 注意：如果你的 accessible() 还是旧的 UserGroup 权限逻辑，
+        # 需要同步改成新的角色/部门权限逻辑。
+        #
+        # if not KnowledgebaseService.accessible(
+        #     kb_id,
+        #     current_user.id,
+        # ):
         #     return get_json_result(
         #         data=False,
-        #         message='Only owner of dataset authorized for this operation.',
+        #         message="没有查看该知识库的权限",
         #         code=RetCode.OPERATING_ERROR,
         #     )
 
         kb = KnowledgebaseService.get_detail(kb_id)
+
+        detail_cost = time.perf_counter() - start
+
         if not kb:
             return get_json_result(
                 data=False,
-                message='Knowledgebase not found',
+                message="Knowledgebase not found",
                 code=RetCode.DATA_NOT_FOUND,
             )
 
-        # 颜色逻辑开始
-        tenant_id = kb.get("tenant_id")
+        # 防止 Service 返回的对象不是普通 dict。
+        kb = dict(kb)
 
-        cfg_map = getattr(settings, "GROUP_REFERENCE_TENANT_MAP", {}) or {}
-        reversed_map = {v: k for k, v in cfg_map.items()}
+        tenant_id = str(
+            kb.get("tenant_id") or ""
+        ).strip()
 
-        public_id = settings.REFERENCE_TENANT_ID
-
-        # 默认颜色：一级管理员/普通库
         kb["color"] = 99
+        kb["group_id"] = None
+        kb["group_name"] = None
 
-        # 全局参考库
-        if tenant_id == public_id:
+        # --------------------------------------------------------------
+        # 2. 处理全局参考库和部门参考库配置
+        # --------------------------------------------------------------
+        start = time.perf_counter()
+
+        reference_tenant_id = getattr(
+            settings,
+            "REFERENCE_TENANT_ID",
+            None,
+        )
+
+        reference_tenant_id = (
+            str(reference_tenant_id).strip()
+            if reference_tenant_id
+            else None
+        )
+
+        group_reference_map = getattr(
+            settings,
+            "GROUP_REFERENCE_TENANT_MAP",
+            {},
+        ) or {}
+
+        # 配置中的 key/value 统一转成字符串，避免 UUID/string 类型比较失败。
+        reversed_reference_map = {}
+
+        for department_id, reference_id in (
+            group_reference_map.items()
+        ):
+            if reference_id is None:
+                continue
+
+            reference_id = str(
+                reference_id
+            ).strip()
+
+            department_id = str(
+                department_id
+            ).strip()
+
+            if reference_id and department_id:
+                reversed_reference_map[
+                    reference_id
+                ] = department_id
+
+        department_id = reversed_reference_map.get(
+            tenant_id
+        )
+
+        # --------------------------------------------------------------
+        # 3. 处理知识库颜色和部门信息
+        # --------------------------------------------------------------
+        #
+        # 优先级：
+        #   全局参考库 > 部门参考库 > 一级管理员库 > 普通库
+        #
+        # 这样可以避免一个 tenant_id 同时被配置为参考库和管理员库时，
+        # 后面的管理员判断覆盖前面的 color=3。
+        # --------------------------------------------------------------
+        if (
+            reference_tenant_id
+            and tenant_id == reference_tenant_id
+        ):
             kb["group_name"] = "全局参考库"
             kb["color"] = 3
 
-        # 一级管理员创建
-        if AdminUser.query(user_id=tenant_id, role_level=1):
-            kb["color"] = 1
-
-        # 二级管理员创建
-        if AdminUser.query(user_id=tenant_id, role_level=2):
-            kb["color"] = 2
-
-        # 分组参考库
-        if tenant_id in reversed_map:
-            group_id = reversed_map[tenant_id]
-
-            group_obj = Group.select(Group.group_name).where(
-                Group.group_id == group_id
-            ).first()
-
-            kb["group_id"] = group_id
-            kb["group_name"] = group_obj.group_name if group_obj else None
+        elif department_id:
+            kb["group_id"] = department_id
             kb["color"] = 3
 
-            
-        # 颜色逻辑结束
+            # 只有确定是部门参考库时才查询 Group。
+            # 普通知识库不会执行这条 SQL。
+            group_obj = (
+                Group
+                .select(Group.group_name)
+                .where(
+                    Group.group_id == department_id
+                )
+                .first()
+            )
 
-        kb["size"] = DocumentService.get_total_size_by_kb_id(
-            kb_id=kb["id"],
-            keywords="",
-            run_status=[],
-            types=[],
+            if group_obj:
+                kb["group_name"] = (
+                    group_obj.group_name
+                )
+
+        else:
+            # 只保留一级管理员逻辑，移除二级管理员查询。
+            if AdminUser.query(
+                user_id=tenant_id,
+                role_level=1,
+            ):
+                kb["color"] = 1
+
+        color_cost = time.perf_counter() - start
+
+        # --------------------------------------------------------------
+        # 4. 查询文档总大小
+        # --------------------------------------------------------------
+        start = time.perf_counter()
+
+        kb["size"] = (
+            DocumentService
+            .get_total_size_by_kb_id(
+                kb_id=kb.get("id") or kb_id,
+                keywords="",
+                run_status=[],
+                types=[],
+            )
         )
 
-        kb["connectors"] = Connector2KbService.list_connectors(kb_id)
-        print(kb['color'])
+        size_cost = time.perf_counter() - start
 
-        for key in [
+        # --------------------------------------------------------------
+        # 5. 查询连接器
+        # --------------------------------------------------------------
+        start = time.perf_counter()
+
+        kb["connectors"] = (
+            Connector2KbService
+            .list_connectors(kb_id)
+        )
+
+        connector_cost = time.perf_counter() - start
+
+        # --------------------------------------------------------------
+        # 6. 格式化时间字段
+        # --------------------------------------------------------------
+        start = time.perf_counter()
+
+        for key in (
             "graphrag_task_finish_at",
             "raptor_task_finish_at",
             "mindmap_task_finish_at",
-        ]:
-            if finish_at := kb.get(key):
-                kb[key] = finish_at.strftime("%Y-%m-%d %H:%M:%S")
+        ):
+            finish_at = kb.get(key)
 
-        if AdminUser.query(user_id=current_user.id):
-            kb['is_admin'] = True
+            if not finish_at:
+                continue
 
-        return get_json_result(data=kb)
+            if hasattr(finish_at, "strftime"):
+                kb[key] = finish_at.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            else:
+                kb[key] = str(finish_at)
+
+        # 当前登录用户是否是管理员。
+        #
+        # 这里保留原逻辑：AdminUser.query(user_id)
+        # 如果你的业务只认一级超级管理员，建议加 role_level=1。
+        kb["is_admin"] = bool(
+            AdminUser.query(
+                user_id=str(current_user.id),
+                role_level=1,
+            )
+        )
+
+        format_cost = time.perf_counter() - start
+
+        total_cost = (
+            time.perf_counter()
+            - request_start
+        )
+
+        print(
+            "[KB DETAIL] "
+            f"kb_id={kb_id}, "
+            f"basic={detail_cost:.4f}s, "
+            f"color={color_cost:.4f}s, "
+            f"size={size_cost:.4f}s, "
+            f"connectors={connector_cost:.4f}s, "
+            f"format={format_cost:.4f}s, "
+            f"total={total_cost:.4f}s"
+        )
+
+        return get_json_result(
+            data=kb
+        )
 
     except Exception as e:
+        total_cost = (
+            time.perf_counter()
+            - request_start
+        )
+
+        print(
+            "[KB DETAIL] failed "
+            f"kb_id={kb_id}, "
+            f"total={total_cost:.4f}s, "
+            f"error={repr(e)}"
+        )
+
         return server_error_response(e)
 
 
@@ -387,6 +3136,49 @@ async def list_kbs():
         return server_error_response(e)
     
 
+# @manager.route('/list2', methods=['POST'])  # noqa: F821
+# @login_required
+# async def list_kbs2():
+#     args = request.args
+#     keywords = args.get("keywords", "")
+#     page_number = int(args.get("page", 0))
+#     items_per_page = int(args.get("page_size", 0))
+#     parser_id = args.get("parser_id")
+#     orderby = args.get("orderby", "create_time")
+#     if args.get("desc", "true").lower() == "false":
+#         desc = False
+#     else:
+#         desc = True
+
+#     req = await get_request_json()
+#     owner_ids = req.get("owner_ids", [])
+    
+#     is_admin = AdminUser.query(user_id=current_user.id, role_level=1)
+    
+#     try:
+#         if not owner_ids:
+#             from api.db.services.user_group_service import UserGroupService
+#             tenants = UserGroupService.get_team_tenant_ids(current_user.id)
+#             kbs, total = KnowledgebaseService.get_by_tenant_ids3(
+#                 tenants, current_user.id, page_number,
+#                 items_per_page, orderby, desc, keywords, parser_id,
+#                 admin_bypass=bool(is_admin)
+#             )
+#         else:
+#             tenants = owner_ids
+#             kbs, total = KnowledgebaseService.get_by_tenant_ids(
+#                 tenants, current_user.id, 0,
+#                 0, orderby, desc, keywords, parser_id, admin_bypass=bool(is_admin))
+            
+#             kbs = [kb for kb in kbs if kb["tenant_id"] in tenants]
+#             total = len(kbs)
+#             if page_number and items_per_page:
+#                 kbs = kbs[(page_number-1)*items_per_page:page_number*items_per_page]
+#         return get_json_result(data={"kbs": kbs, "total": total})
+#     except Exception as e:
+#         return server_error_response(e)
+
+
 @manager.route('/list2', methods=['POST'])  # noqa: F821
 @login_required
 async def list_kbs2():
@@ -410,7 +3202,7 @@ async def list_kbs2():
         if not owner_ids:
             from api.db.services.user_group_service import UserGroupService
             tenants = UserGroupService.get_team_tenant_ids(current_user.id)
-            kbs, total = KnowledgebaseService.get_by_tenant_ids3(
+            kbs, total = KnowledgebaseService.get_by_tenant_ids(
                 tenants, current_user.id, page_number,
                 items_per_page, orderby, desc, keywords, parser_id,
                 admin_bypass=bool(is_admin)

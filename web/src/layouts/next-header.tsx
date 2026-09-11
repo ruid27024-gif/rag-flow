@@ -18,6 +18,7 @@ import { getAuthorization } from '@/utils/authorization-util';
 import { camelCase } from 'lodash';
 import {
   ChevronDown,
+  ClipboardList,
   File,
   House,
   Library,
@@ -87,6 +88,11 @@ export function Header() {
       // { path: Routes.Agents, name: t('header.flow'), icon: Search },
       // { path: Routes.Memories, name: t('header.Memories'), icon: Search },
       { path: Routes.Files, name: t('header.fileManager'), icon: File },
+      {
+        path: Routes.OA,
+        name: 'OA',
+        icon: ClipboardList,
+      },
     ];
 
     if (is_admin_user || role_level === 2) {
@@ -232,7 +238,9 @@ export function Header() {
     if (pathname.startsWith('/next-search')) {
       return InitSearchAppApiPath;
     }
-
+    if (pathname.startsWith(Routes.OA)) {
+      return Routes.OA;
+    }
     return pathname;
   }, [pathname]);
 

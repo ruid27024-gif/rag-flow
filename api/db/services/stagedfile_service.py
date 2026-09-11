@@ -217,7 +217,8 @@ class StagedFileService(CommonService):
             "filename": staged_file.filename,
             "path": staged_file.path,
             "size": staged_file.size,
-
+            # 版本号
+            "version": staged_file.version or "v1.0",
             "status": staged_file.status,
             "doc_id": staged_file.doc_id,
 
@@ -594,6 +595,90 @@ class StagedFileService(CommonService):
         }
 
 
+    # @classmethod
+    # def list_by_kb(
+    #     cls,
+    #     kb_id,
+    #     tenant_id,
+    #     current_user,
+    #     status=None,
+    #     page=1,
+    #     page_size=20,
+    #     include_deleted=False,
+    # ):
+    #     """
+    #     根据知识库查询暂存文件列表。
+
+    #     管理员：
+    #         看知识库下所有文件。
+
+    #     普通用户：
+    #         只能看自己上传的文件。
+
+    #     同时返回该知识库所属部门的审批人员。
+    #     """
+
+    #     is_admin = cls.is_admin(current_user)
+
+    #     conditions = [
+    #         cls.model.kb_id == kb_id,
+    #         # 如果你的 staged_file.tenant_id 数据完整，建议打开
+    #         # cls.model.tenant_id == tenant_id,
+    #     ]
+
+    #     if not include_deleted:
+    #         conditions.append(cls.model.status != "deleted")
+
+    #     if status:
+    #         conditions.append(cls.model.status == status)
+
+    #     if not is_admin:
+    #         conditions.append(cls.model.user_id == current_user.id)
+
+    #     base_query = (
+    #         cls.model
+    #         .select(*cls.get_cls_model_fields())
+    #         .where(*conditions)
+    #     )
+
+    #     total = base_query.count()
+
+    #     staged_files = list(
+    #         base_query
+    #         .order_by(cls.model.created_at.desc())
+    #         .paginate(page, page_size)
+    #     )
+
+    #     stage_ids = [item.id for item in staged_files]
+
+    #     tag_map = cls.build_tags_map(stage_ids)
+
+    #     user_ids = [item.user_id for item in staged_files if item.user_id]
+
+    #     user_map = cls.build_user_map(user_ids)
+
+    #     items = []
+
+    #     for item in staged_files:
+    #         items.append(
+    #             cls.serialize(
+    #                 item,
+    #                 tags=tag_map.get(item.id, []),
+    #                 user_map=user_map
+    #             )
+    #         )
+
+    #     approvers = cls.get_kb_approvers(kb_id)
+
+    #     return {
+    #         "is_admin": is_admin,
+    #         "total": total,
+    #         "page": page,
+    #         "page_size": page_size,
+    #         "approvers": approvers,
+    #         "items": items,
+    #     }
+
     @classmethod
     def list_by_kb(
         cls,
@@ -608,22 +693,44 @@ class StagedFileService(CommonService):
         """
         根据知识库查询暂存文件列表。
 
-        管理员：
-            看知识库下所有文件。
+        权限规则：
+        1. 系统管理员可以查看知识库下所有文件。
+        2. 当前知识库审批人员可以查看知识库下所有文件。
+        3. 普通用户只能查看自己上传的文件。
 
-        普通用户：
-            只能看自己上传的文件。
-
-        同时返回该知识库所属部门的审批人员。
+        同时返回知识库所属部门及审批人员。
         """
 
+        # 系统管理员
         is_admin = cls.is_admin(current_user)
+
+        # 查询当前知识库的审批人员
+        approver_result = cls.get_kb_approvers(kb_id)
+
+        approvers = approver_result.get("approvers", [])
+        department = approver_result.get("department")
+
+        current_user_id = getattr(current_user, "id", None)
+
+        # 判断当前用户是否是该知识库审批人员
+        is_kb_approver = (
+            current_user_id is not None
+            and any(
+                str(item.get("user_id")) == str(current_user_id)
+                for item in approvers
+                if item.get("user_id") is not None
+            )
+        )
+
+        # 是否可以查看知识库下全部暂存文件
+        can_view_all = is_admin or is_kb_approver
 
         conditions = [
             cls.model.kb_id == kb_id,
-            # 如果你的 staged_file.tenant_id 数据完整，建议打开
-            # cls.model.tenant_id == tenant_id,
         ]
+
+        # 如果 staged_file.tenant_id 数据完整，可以增加租户条件
+        # conditions.append(cls.model.tenant_id == tenant_id)
 
         if not include_deleted:
             conditions.append(cls.model.status != "deleted")
@@ -631,8 +738,9 @@ class StagedFileService(CommonService):
         if status:
             conditions.append(cls.model.status == status)
 
-        if not is_admin:
-            conditions.append(cls.model.user_id == current_user.id)
+        # 既不是系统管理员，也不是知识库审批人，只能看自己的文件
+        if not can_view_all:
+            conditions.append(cls.model.user_id == current_user_id)
 
         base_query = (
             cls.model
@@ -652,28 +760,41 @@ class StagedFileService(CommonService):
 
         tag_map = cls.build_tags_map(stage_ids)
 
-        user_ids = [item.user_id for item in staged_files if item.user_id]
+        user_ids = [
+            item.user_id
+            for item in staged_files
+            if item.user_id
+        ]
 
         user_map = cls.build_user_map(user_ids)
 
-        items = []
-
-        for item in staged_files:
-            items.append(
-                cls.serialize(
-                    item,
-                    tags=tag_map.get(item.id, []),
-                    user_map=user_map
-                )
+        items = [
+            cls.serialize(
+                item,
+                tags=tag_map.get(item.id, []),
+                user_map=user_map,
             )
-
-        approvers = cls.get_kb_approvers(kb_id)
+            for item in staged_files
+        ]
 
         return {
+            # 系统管理员
             "is_admin": is_admin,
+
+            # 当前知识库的审批人员
+            "is_kb_approver": is_kb_approver,
+
+            # 如果业务上把审批人员视作知识库管理员
+            "is_kb_admin": can_view_all,
+
+            # 是否可以查看全部暂存文件
+            "can_view_all": can_view_all,
+
             "total": total,
             "page": page,
             "page_size": page_size,
+
+            "department": department,
             "approvers": approvers,
             "items": items,
         }

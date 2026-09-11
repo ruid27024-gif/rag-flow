@@ -1099,7 +1099,7 @@ async def do_handle_task(task):
     else:
         # Standard chunking methods
         start_ts = timer()
-        # 📄 1. 文档分块 (Chunking)
+        # 📄 1. 解析 + 文档分块 (Chunking)
         chunks = await build_chunks(task, progress_callback)
         logging.info("Build document {}: {:.2f}s".format(task_document_name, timer() - start_ts))
         if not chunks:
@@ -1108,7 +1108,7 @@ async def do_handle_task(task):
         progress_callback(msg="Generate {} chunks".format(len(chunks)))
         start_ts = timer()
         try:
-            # 🔢 2. 向量化 (Embedding)
+            # 🔢 2. 向量化 (Embedding)（可以加上文本提取/公式提取 --> 元数据）
             token_count, vector_size = await embedding(chunks, embedding_model, task_parser_config, progress_callback)
         except Exception as e:
             error_message = "Generate embedding error:{}".format(str(e))

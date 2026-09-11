@@ -46,6 +46,7 @@ from common.token_utils import num_tokens_from_string
 from rag.utils.tavily_conn import Tavily
 from common.string_utils import remove_redundant_spaces
 from common import settings
+import asyncio
 
 
 class DialogService(CommonService):
@@ -278,8 +279,86 @@ def repair_bad_citation_formats(answer: str, kbinfos: dict, idx: set):
 
     return answer, idx
 
+from api.apps import login_required, current_user
+from api.db.db_models import AdminUser
+from api.db.db_models import User, Role, SyncDept,PermissionApplication,RoleUser,StagedFileTag,Document,StagedFile
+class FilePermissionLevel:
+    PUBLIC = 1
+    INTERNAL = 2
+
+
+# 获取普通用户的文件权限等级
+def get_user_file_permission_level(user_id):
+    """
+    获取用户拥有的最高文件权限等级。
+
+    没有角色时，默认只能访问公开文件。
+    """
+    if not user_id:
+        return FilePermissionLevel.PUBLIC
+
+    query = (
+        Role
+        .select(
+            Role.file_permission_level,
+            Role.is_admin,
+        )
+        .join(
+            RoleUser,
+            on=(RoleUser.role_id == Role.id)
+        )
+        .where(
+            RoleUser.user_id == str(user_id),
+            Role.enabled == True,
+        )
+    )
+
+    permission_level = FilePermissionLevel.PUBLIC
+
+    for role in query:
+        # 角色本身是管理员，也可以直接拥有内部文件权限
+        if role.is_admin:
+            return FilePermissionLevel.INTERNAL
+
+        permission_level = max(
+            permission_level,
+            role.file_permission_level or FilePermissionLevel.PUBLIC
+        )
+
+    return permission_level
+
+# 获取知识库中的公开文件 ID
+def get_public_doc_ids_by_kb(kb_id):
+    """
+    获取指定知识库中 knowledge_level=public 的文档 ID。
+    """
+
+    query = (
+        Document
+        .select(Document.id)
+        .join(
+            StagedFile,
+            on=(StagedFile.doc_id == Document.id)
+        )
+        .join(
+            StagedFileTag,
+            on=(StagedFileTag.stage_id == StagedFile.id)
+        )
+        .where(
+            Document.kb_id == str(kb_id),
+            Document.status == "1",
+            StagedFileTag.type_code == "knowledge_level",
+            StagedFileTag.option_code == "public",
+        )
+        .distinct()
+    )
+
+    return [str(row.id) for row in query]
 
 async def async_chat(dialog, messages, stream=True, **kwargs):
+    # 获取当前用户的id
+    user_id = kwargs["user_id"]
+
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
     # # 无kb搜索的情况
     # if not dialog.kb_ids and not dialog.prompt_config.get("tavily_api_key"):
@@ -287,9 +366,9 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     #     async for ans in async_chat_solo(dialog, messages, stream):
     #         yield ans
     #     return
-
     # 统一拷贝 prompt_config，兼容旧数据没有 agent_mod 的情况
     prompt_config = dict(dialog.prompt_config or {})
+
 
     reasoning_enabled = prompt_config.get("reasoning", False)
     agent_mod_enabled = prompt_config.get("agent_mod", False) or kwargs.get("agent_mod", False)
@@ -405,7 +484,30 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         #         "['合同', '法律']": ["doc1"]
         #     }
         # }
+
+        print("00000000000000000...........................................0000000000000")
         metas = DocumentService.get_meta_by_kbs(dialog.kb_ids)
+        meta_data_structure = {}
+        SPECIAL_META_KEYS = {
+            "school",
+            "author",
+            "publish_time",
+        }
+        # for key, values in meta_data.items():
+        #     meta_data_structure[key] = list(values.keys()) if isinstance(values, dict) else values
+        for key, values in metas.items():
+            print(key)
+            if key in SPECIAL_META_KEYS:
+                continue
+    
+            meta_data_structure[key] = (
+                list(values.keys())
+                if isinstance(values, dict)
+                else values
+            )
+        import json
+        metadata_keys=json.dumps(meta_data_structure)
+
         attachments = await apply_meta_data_filter(
             dialog.meta_data_filter,
             metas,
@@ -518,9 +620,45 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             # 向量检索 重排序 TOC 增强 KG 检索 Tavily 搜索
             print("===============================检索的知识库id为===================================")
             print(dialog.kb_ids)
+            selected_kbs = list(kbs)
+            is_super_admin_user = AdminUser.query(user_id=user_id, role_level =1)
+            if is_super_admin_user:
+                user_file_permission_level = FilePermissionLevel.INTERNAL
+            else:
+                user_file_permission_level = await asyncio.to_thread(
+                    get_user_file_permission_level,
+                    user_id
+                )
 
-            import asyncio
+            can_access_internal_files = (
+                is_super_admin_user
+                or user_file_permission_level >= FilePermissionLevel.INTERNAL
+            )
+            
+
+            # import asyncio
             import traceback
+
+            public_doc_ids_by_kb = {}
+
+            if not can_access_internal_files:
+                public_doc_results = await asyncio.gather(
+                    *[
+                        asyncio.to_thread(
+                            get_public_doc_ids_by_kb,
+                            kb.id
+                        )
+                        for kb in selected_kbs
+                    ]
+                )
+
+                public_doc_ids_by_kb = {
+                    str(kb.id): doc_ids
+                    for kb, doc_ids in zip(
+                        selected_kbs,
+                        public_doc_results
+                    )
+                }
 
 
             if embd_mdl:
@@ -537,14 +675,89 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     "doc_aggs": []
                 }
 
-                # 最多同时检索 8 个知识库
+                # current_user_id = str(current_user.id)
+
+                # 1. 判断超级管理员
+                is_super_admin_user = AdminUser.query(user_id=user_id, role_level =1)
+        
+                # 2. 获取普通用户角色权限
+                if is_super_admin_user:
+                    user_file_permission_level = (
+                        FilePermissionLevel.INTERNAL
+                    )
+                else:
+                    user_file_permission_level = await asyncio.to_thread(
+                        get_user_file_permission_level,
+                        user_id
+                    )
+
+                # 3. 判断是否能访问内部文件
+                can_access_internal_files = (
+                    is_super_admin_user
+                    or user_file_permission_level
+                    >= FilePermissionLevel.INTERNAL
+                )
+
+                # 4. 没有内部权限时，查询公开文件
+                public_doc_ids_by_kb = {}
+
+                if not can_access_internal_files:
+                    public_doc_results = await asyncio.gather(
+                        *[
+                            asyncio.to_thread(
+                                get_public_doc_ids_by_kb,
+                                kb.id
+                            )
+                            for kb in selected_kbs
+                        ]
+                    )
+
+                    public_doc_ids_by_kb = {
+                        str(kb.id): doc_ids
+                        for kb, doc_ids in zip(
+                            selected_kbs,
+                            public_doc_results
+                        )
+                    }
+
                 sem = asyncio.Semaphore(8)
 
                 async def retrieve_one_kb(kb):
                     async with sem:
                         kb_tenant_ids = [kb.tenant_id]
+                        kb_id = str(kb.id)
 
                         try:
+                            retrieval_doc_ids = attachments
+
+                            if not can_access_internal_files:
+                                public_doc_ids = set(
+                                    str(doc_id)
+                                    for doc_id in public_doc_ids_by_kb.get(
+                                        kb_id,
+                                        []
+                                    )
+                                )
+
+                                if attachments:
+                                    retrieval_doc_ids = [
+                                        doc_id
+                                        for doc_id in attachments
+                                        if str(doc_id) in public_doc_ids
+                                    ]
+                                else:
+                                    retrieval_doc_ids = list(public_doc_ids)
+                                print("-------------------------------------------------------")
+                                print(retrieval_doc_ids)
+                                if not retrieval_doc_ids:
+                                    return {
+                                        "kb_id": kb.id,
+                                        "total": 0,
+                                        "chunks": [],
+                                        "doc_aggs": [],
+                                        "error": None,
+                                    }
+
                             kb_result = await asyncio.to_thread(
                                 retriever.retrieval,
                                 query,
@@ -555,7 +768,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                                 per_kb_top_n,
                                 dialog.similarity_threshold,
                                 dialog.vector_similarity_weight,
-                                doc_ids=attachments,
+                                doc_ids=retrieval_doc_ids,
                                 top=dialog.top_k,
                                 aggs=False,
                                 rerank_mdl=rerank_mdl,
@@ -571,15 +784,16 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                                     kb_chunks,
                                     kb_tenant_ids,
                                     chat_mdl,
-                                    per_kb_top_n
+                                    per_kb_top_n,
                                 )
+
                                 if cks:
                                     kb_chunks = cks
 
                             kb_chunks = await asyncio.to_thread(
                                 retriever.retrieval_by_children,
                                 kb_chunks,
-                                kb_tenant_ids
+                                kb_tenant_ids,
                             )
 
                             for chunk in kb_chunks:
@@ -588,23 +802,30 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
                             return {
                                 "kb_id": kb.id,
-                                "total": kb_result.get("total", len(kb_chunks)),
+                                "total": kb_result.get(
+                                    "total",
+                                    len(kb_chunks)
+                                ),
                                 "chunks": kb_chunks,
                                 "doc_aggs": kb_result.get("doc_aggs", []),
-                                "error": None
+                                "error": None,
                             }
 
                         except Exception as e:
+                            traceback.print_exc()
+
                             return {
                                 "kb_id": kb.id,
                                 "total": 0,
                                 "chunks": [],
                                 "doc_aggs": [],
-                                "error": e
+                                "error": e,
                             }
 
                 tasks = [
-                    asyncio.create_task(retrieve_one_kb(kb))
+                    asyncio.create_task(
+                        retrieve_one_kb(kb)
+                    )
                     for kb in selected_kbs
                 ]
 
@@ -749,15 +970,33 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             answer = ans[1]
 
         print(questions)
-        suggestion_system_prompt = f"""
-        你是一个智能助手。请根据提供的对话历史，生成 3 个用户可能追问的简短问题。
-        要求：
-        . 问题要有深度或相关性。
-        . 直接返回纯 JSON 数组，不要包含 Markdown 格式（如 ```json），例如：["问题1", "问题2", "问题3"]。
-        用户: {questions[-1]}
-        AI: {answer}
-        """
+        if metadata_keys:
+            suggestion_system_prompt = f"""
+                你是一个智能追问建议生成助手。
 
+                请根据提供的对话历史，生成 3 个用户可能追问的简短问题。
+                用户当前问题：
+                {questions[-1]}
+
+                AI 当前回答：
+                {answer}
+
+                优先围绕这些标签生成追问可用元数据标签和值：
+                {metadata_keys}
+
+                要求：
+                . 问题要有深度或相关性。
+                . 直接返回纯 JSON 数组，不要包含 Markdown 格式（如 ```json），例如：["问题1", "问题2", "问题3"]。
+                """
+        else:
+            suggestion_system_prompt = f"""
+            你是一个智能助手。请根据提供的对话历史，生成 3 个用户可能追问的简短问题。
+            要求：
+            . 问题要有深度或相关性。
+            . 直接返回纯 JSON 数组，不要包含 Markdown 格式（如 ```json），例如：["问题1", "问题2", "问题3"]。
+            用户: {questions[-1]}
+            AI: {answer}
+            """
         suggestions = await chat_mdl.async_chat(suggestion_system_prompt, [])
         print(suggestions)
         import json

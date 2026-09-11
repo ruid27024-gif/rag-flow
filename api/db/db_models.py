@@ -1706,7 +1706,7 @@ class OAApprovalRequest(DataBaseModel):
     status = CharField(max_length=32, default="pending_level_1")
     # pending_level_1 / pending_level_2 / approved / rejected / cancelled
 
-    current_level = IntegerField(default=1)
+    current_level = IntegerField(default=1)  # 当前审批进行到哪一个级别
 
     result = CharField(max_length=32, null=True)
     comment = TextField(null=True)
@@ -1727,7 +1727,7 @@ class OAApprovalRequest(DataBaseModel):
             (("batch_id",), False),
         )
 
-# OA 审批任务表 OAApprovalTask
+# OA 审批任务表 OAApprovalTask 关联到具体的审批人员
 class OAApprovalTask(DataBaseModel):
     id = BigAutoField()
 
@@ -1816,6 +1816,257 @@ class OaApplication(DataBaseModel):
 
     class Meta:
         db_table = "oa_application"
+
+class KnowledgeBaseCreateApply(DataBaseModel):
+    business_id = CharField(
+        max_length=64,
+        primary_key=True,
+        help_text="Knowledge base create application id"
+    )
+
+    business_type = CharField(
+        max_length=64,
+        null=False,
+        default="kb_create",
+        index=True
+    )
+
+    request_data = TextField(
+        null=False,
+        help_text="Original create request JSON"
+    )
+
+    user_id = CharField(
+        max_length=32,
+        null=False,
+        index=True
+    )
+
+    user_name = CharField(
+        max_length=255,
+        null=True
+    )
+
+    kb_name = CharField(
+        max_length=255,
+        null=False
+    )
+
+    status = CharField(
+        max_length=32,
+        null=False,
+        default="pending",
+        index=True
+    )
+
+    create_status = CharField(
+        max_length=32,
+        null=False,
+        default="pending",
+        index=True
+    )
+
+    created_kb_id = CharField(
+        max_length=64,
+        null=True,
+        index=True
+    )
+
+    create_error = TextField(null=True)
+
+    oa_request_id = CharField(
+        max_length=64,
+        null=True,
+        unique=True,
+        index=True
+    )
+
+    oa_push_status = CharField(
+        max_length=32,
+        null=False,
+        default="pending"
+    )
+
+    oa_push_error = TextField(null=True)
+
+    approver_id = CharField(
+        max_length=32,
+        null=True,
+        index=True
+    )
+
+    approver_name = CharField(
+        max_length=255,
+        null=True
+    )
+
+    approve_comment = TextField(null=True)
+
+    approve_time = BigIntegerField(null=True)
+    callback_time = BigIntegerField(null=True)
+
+    # 删除 created_time，使用父类的 create_time
+    # created_time = BigIntegerField(null=True)
+
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        database = DB
+        db_table = "knowledge_base_create_apply"
+        indexes = (
+            (("user_id", "status"), False),
+        )
+
+# OA主表
+class OAApplicationkb(DataBaseModel):
+    oa_request_id = CharField(
+        max_length=64,
+        primary_key=True
+    )
+
+    app_id = CharField(
+        max_length=64,
+        null=False,
+        index=True
+    )
+
+    source_system = CharField(
+        max_length=64,
+        null=False,
+        default="knowledge",
+        index=True
+    )
+
+    business_type = CharField(
+        max_length=64,
+        null=False,
+        index=True
+    )
+
+    # 知识库侧申请单 ID
+    business_id = CharField(
+        max_length=64,
+        null=False,
+        index=True
+    )
+
+    reason = TextField(null=True)
+
+    applicant_user_id = CharField(
+        max_length=32,
+        null=False,
+        index=True
+    )
+
+    applicant_user_name = CharField(
+        max_length=255,
+        null=True
+    )
+
+    approver_user_id = CharField(
+        max_length=32,
+        null=True,
+        index=True
+    )
+
+    approver_user_name = CharField(
+        max_length=255,
+        null=True
+    )
+
+    # 建库申请内容快照
+    data = TextField(
+        null=False,
+        help_text="Business data JSON"
+    )
+
+    # pending/approved/rejected/cancelled
+    status = CharField(
+        max_length=32,
+        null=False,
+        default="pending",
+        index=True
+    )
+
+    approve_comment = TextField(null=True)
+    approve_time = BigIntegerField(null=True)
+
+    callback_url = TextField(
+        null=False
+    )
+
+    callback_status = CharField(
+        max_length=32,
+        null=False,
+        default="pending"
+    )
+
+    callback_retry_count = IntegerField(
+        null=False,
+        default=0
+    )
+
+    callback_error = TextField(null=True)
+    callback_time = BigIntegerField(null=True)
+
+    created_time = BigIntegerField(null=True)
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        database = DB
+        db_table = "oa_application_kb"
+        indexes = (
+            # 保证同一业务申请不会重复创建 OA 单
+            (("source_system", "business_type", "business_id"), True),
+            (("approver_user_id", "status"), False),
+        )
+
+# OA审批任务
+class OAApprovalTaskkb(DataBaseModel):
+    id = AutoField(primary_key=True)
+
+    oa_request_id = CharField(
+        max_length=64,
+        null=False,
+        index=True
+    )
+
+    level = IntegerField(
+        null=False,
+        help_text="Approval level"
+    )
+
+    approver_user_id = CharField(
+        max_length=32,
+        null=False,
+        index=True
+    )
+
+    approver_user_name = CharField(
+        max_length=255,
+        null=True
+    )
+
+    # pending/approved/rejected/cancelled
+    status = CharField(
+        max_length=32,
+        null=False,
+        default="pending",
+        index=True
+    )
+
+    comment = TextField(null=True)
+    processed_time = BigIntegerField(null=True)
+
+    created_time = BigIntegerField(null=True)
+    updated_time = BigIntegerField(null=True)
+
+    class Meta:
+        database = DB
+        db_table = "oa_approval_task_kb"
+        indexes = (
+            (("oa_request_id", "level"), True),
+        )
 
 def migrate_db():
     logging.disable(logging.ERROR)

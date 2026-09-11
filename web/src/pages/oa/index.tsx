@@ -622,8 +622,8 @@ const styles = {
     minHeight: '100vh',
     padding: 24,
     boxSizing: 'border-box',
-    background: '#f5f7fa',
-    color: '#1f2937',
+    background: 'transparent',
+    color: 'hsl(var(--foreground))',
   },
 
   centerPage: {
@@ -631,11 +631,12 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#f5f7fa',
+    background: 'transparent',
+    color: 'hsl(var(--foreground))',
   },
 
   loadingText: {
-    color: '#6b7280',
+    color: 'hsl(var(--muted-foreground))',
     fontSize: 14,
   },
 
@@ -651,18 +652,18 @@ const styles = {
     margin: 0,
     fontSize: 24,
     fontWeight: 600,
-    color: '#111827',
+    color: 'hsl(var(--foreground))',
   },
 
   subtitle: {
     marginTop: 7,
-    color: '#6b7280',
+    color: 'hsl(var(--muted-foreground))',
     fontSize: 13,
   },
 
   userId: {
     marginLeft: 14,
-    color: '#9ca3af',
+    color: 'hsl(var(--muted-foreground))',
   },
 
   layout: {
@@ -672,10 +673,11 @@ const styles = {
     alignItems: 'start',
   },
 
+  // 原布局不变，只去掉面板背景
   panel: {
     minWidth: 0,
-    background: '#ffffff',
-    border: '1px solid #e5e7eb',
+    background: 'transparent',
+    border: '1px solid hsl(var(--border))',
     borderRadius: 8,
     padding: 16,
   },
@@ -691,12 +693,12 @@ const styles = {
     margin: 0,
     fontSize: 16,
     fontWeight: 600,
-    color: '#111827',
+    color: 'hsl(var(--foreground))',
   },
 
   panelHint: {
     marginTop: 4,
-    color: '#9ca3af',
+    color: 'hsl(var(--muted-foreground))',
     fontSize: 12,
   },
 
@@ -708,8 +710,9 @@ const styles = {
     justifyContent: 'center',
     padding: '0 7px',
     borderRadius: 12,
-    background: '#eff6ff',
-    color: '#2563eb',
+    background: 'transparent',
+    border: '1px solid hsl(var(--border))',
+    color: 'hsl(var(--primary))',
     fontSize: 12,
     fontWeight: 600,
   },
@@ -729,57 +732,59 @@ const styles = {
     padding: '10px 9px',
     textAlign: 'left',
     whiteSpace: 'nowrap',
-    color: '#4b5563',
+    color: 'hsl(var(--muted-foreground))',
     fontWeight: 600,
-    borderBottom: '1px solid #e5e7eb',
+    borderBottom: '1px solid hsl(var(--border))',
   },
 
   td: {
     padding: '11px 9px',
     verticalAlign: 'top',
-    borderBottom: '1px solid #f0f1f3',
-    color: '#374151',
+    borderBottom: '1px solid hsl(var(--border))',
+    color: 'hsl(var(--foreground))',
     wordBreak: 'break-word',
   },
 
+  // 选中行不再使用浅色背景
   selectedRow: {
-    background: '#f8fbff',
+    background: 'transparent',
   },
 
   primaryText: {
-    color: '#111827',
+    color: 'hsl(var(--foreground))',
     fontWeight: 500,
   },
 
   secondaryText: {
     marginTop: 4,
-    color: '#9ca3af',
+    color: 'hsl(var(--muted-foreground))',
     fontSize: 12,
   },
 
   emptyCell: {
     padding: 32,
     textAlign: 'center',
-    color: '#9ca3af',
-    borderBottom: '1px solid #f0f1f3',
+    color: 'hsl(var(--muted-foreground))',
+    borderBottom: '1px solid hsl(var(--border))',
   },
 
   emptyDetail: {
     padding: 48,
     textAlign: 'center',
-    border: '1px dashed #d1d5db',
+    border: '1px dashed hsl(var(--border))',
     borderRadius: 8,
+    background: 'transparent',
   },
 
   emptyDetailTitle: {
-    color: '#4b5563',
+    color: 'hsl(var(--foreground))',
     fontSize: 14,
     fontWeight: 500,
   },
 
   emptyDetailText: {
     marginTop: 8,
-    color: '#9ca3af',
+    color: 'hsl(var(--muted-foreground))',
     fontSize: 13,
   },
 
@@ -789,21 +794,22 @@ const styles = {
     gap: 10,
   },
 
+  // 信息块保留边框和布局，去掉背景
   infoItem: {
     padding: 10,
-    border: '1px solid #e5e7eb',
+    border: '1px solid hsl(var(--border))',
     borderRadius: 6,
-    background: '#fafafa',
+    background: 'transparent',
   },
 
   infoLabel: {
     marginBottom: 4,
-    color: '#6b7280',
+    color: 'hsl(var(--muted-foreground))',
     fontSize: 12,
   },
 
   infoValue: {
-    color: '#111827',
+    color: 'hsl(var(--foreground))',
     fontSize: 13,
     wordBreak: 'break-word',
   },
@@ -814,7 +820,7 @@ const styles = {
 
   blockTitle: {
     margin: '0 0 10px',
-    color: '#111827',
+    color: 'hsl(var(--foreground))',
     fontSize: 14,
     fontWeight: 600,
   },
@@ -833,9 +839,11 @@ const styles = {
     padding: 10,
     boxSizing: 'border-box',
     resize: 'vertical',
-    border: '1px solid #d1d5db',
+    border: '1px solid hsl(var(--border))',
     borderRadius: 6,
     outline: 'none',
+    background: 'transparent',
+    color: 'hsl(var(--foreground))',
     fontSize: 14,
   },
 
@@ -848,11 +856,11 @@ const styles = {
 
   approveButton: {
     minWidth: 84,
-    border: 0,
+    border: '1px solid #1677ff',
     borderRadius: 6,
     padding: '9px 18px',
-    background: '#1677ff',
-    color: '#ffffff',
+    background: 'transparent',
+    color: '#1677ff',
     cursor: 'pointer',
   },
 
@@ -861,17 +869,17 @@ const styles = {
     border: '1px solid #dc2626',
     borderRadius: 6,
     padding: '9px 18px',
-    background: '#ffffff',
+    background: 'transparent',
     color: '#dc2626',
     cursor: 'pointer',
   },
 
   secondaryButton: {
-    border: '1px solid #d1d5db',
+    border: '1px solid hsl(var(--border))',
     borderRadius: 6,
     padding: '8px 14px',
-    background: '#ffffff',
-    color: '#374151',
+    background: 'transparent',
+    color: 'hsl(var(--foreground))',
     cursor: 'pointer',
   },
 
@@ -889,7 +897,7 @@ const styles = {
   },
 
   mutedText: {
-    color: '#9ca3af',
+    color: 'hsl(var(--muted-foreground))',
   },
 
   errorBox: {
@@ -901,7 +909,7 @@ const styles = {
     padding: '10px 12px',
     border: '1px solid #fecaca',
     borderRadius: 6,
-    background: '#fef2f2',
+    background: 'transparent',
     color: '#b91c1c',
     fontSize: 13,
   },

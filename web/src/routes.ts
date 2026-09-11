@@ -64,6 +64,11 @@ export enum Routes {
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
   AdminFiles = '/admin-files',
+
+  // OA 相关路由
+  OA = '/oa',
+  OARole = '/oa/role',
+  OAKnowledgeBase = '/oa/kb',
 }
 
 const routes = [
@@ -147,6 +152,17 @@ const routes = [
       },
     ],
   },
+  {
+    path: '/ed',
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: '/ed',
+        component: '@/pages/ed',
+      },
+    ],
+  },
   // {
   //   path: '/operation-log',
   //   layout: false,
@@ -190,17 +206,6 @@ const routes = [
       {
         path: '/person-role',
         component: '@/pages/person-role',
-      },
-    ],
-  },
-  {
-    path: '/oa',
-    layout: false,
-    component: '@/layouts/next',
-    routes: [
-      {
-        path: '/oa',
-        component: '@/pages/oa',
       },
     ],
   },
@@ -249,18 +254,66 @@ const routes = [
     ],
   },
 
+  // {
+  //   path: '/oa_role',
+  //   layout: false,
+  //   component: '@/layouts/next',
+  //   routes: [
+  //     {
+  //       path: '/oa_role',
+  //       component: '@/pages/oa_role',
+  //     },
+  //   ],
+  // },
+  // {
+  //   path: '/oa',
+  //   layout: false,
+  //   component: '@/layouts/next',
+  //   routes: [
+  //     {
+  //       path: '/oa',
+  //       component: '@/pages/oa',
+  //     },
+  //   ],
+  // },
+
+  // {
+  //   path: '/oa-kb',
+  //   layout: false,
+  //   component: '@/layouts/next',
+  //   routes: [
+  //     {
+  //       path: '/oa-kb',
+  //       component: '@/pages/oa_kb',
+  //     },
+  //   ],
+  // },
+
   {
-    path: '/oa_role',
+    path: Routes.OA,
     layout: false,
     component: '@/layouts/next',
     routes: [
       {
-        path: '/oa_role',
-        component: '@/pages/oa_role',
+        path: `${Routes.OA}/`,
+        component: '@/layouts/oa-layout',
+        routes: [
+          {
+            path: `${Routes.OA}/`,
+            component: '@/pages/oa',
+          },
+          {
+            path: Routes.OARole,
+            component: '@/pages/oa_role',
+          },
+          {
+            path: Routes.OAKnowledgeBase,
+            component: '@/pages/oa_kb',
+          },
+        ],
       },
     ],
   },
-
   // {
   //   path: '/role/create',
   //   layout: false,

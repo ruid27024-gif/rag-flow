@@ -1931,3 +1931,207 @@ def stats():
         return get_json_result(data=res)
     except Exception as e:
         return server_error_response(e)
+
+
+import os
+import hashlib
+import jwt
+import httpx
+
+from quart import request, send_file
+
+ONLYOFFICE_JWT_SECRET = os.getenv(
+    "ONLYOFFICE_JWT_SECRET",
+    "3b6167155dfdd4ea76ea9bf9852858af29978e9f862215971d17b4a5b3cb6324"
+)
+
+# OnlyOffice 容器访问你的后端用这个地址
+INTERNAL_API_BASE_URL = "http://host.docker.internal:9380/v1/api"
+
+# 固定测试文件
+TEST_DOCX_PATH = "/home/zyb/onlyoffice-test-docs/test.docx"
+
+
+def get_test_doc_key():
+    if not os.path.exists(TEST_DOCX_PATH):
+        return "test-docx-not-exists"
+
+    mtime = str(os.path.getmtime(TEST_DOCX_PATH))
+    raw = f"test-docx-{mtime}"
+
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+
+@manager.route('/onlyoffice/ping', methods=['GET'])  # noqa: F821
+async def onlyoffice_ping():
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "message": "onlyoffice route ok"
+        }
+    }
+
+
+@manager.route('/onlyoffice/editor-config/test', methods=['GET'])  # noqa: F821
+async def onlyoffice_editor_config_test():
+    """
+    前端请求这个接口，获取 OnlyOffice 编辑器配置。
+
+    真实地址：
+    GET /v1/api/onlyoffice/editor-config/test
+    """
+    try:
+        if not os.path.exists(TEST_DOCX_PATH):
+            return {
+                "code": 404,
+                "message": f"测试文件不存在: {TEST_DOCX_PATH}",
+                "data": None
+            }
+
+        config = {
+            "documentType": "word",
+            "width": "100%",
+            "height": "100%",
+            "document": {
+                "fileType": "docx",
+                "key": get_test_doc_key(),
+                "title": "test.docx",
+                "url": f"{INTERNAL_API_BASE_URL}/onlyoffice/files/test",
+                "permissions": {
+                    "edit": True,
+                    "download": True,
+                    "print": True,
+                    "review": True,
+                    "comment": True
+                }
+            },
+            "editorConfig": {
+                "mode": "edit",
+                "lang": "zh-CN",
+                "callbackUrl": f"{INTERNAL_API_BASE_URL}/onlyoffice/callback/test",
+                "user": {
+                    "id": "user-001",
+                    "name": "测试用户"
+                },
+                "customization": {
+                    "autosave": True,
+                    "forcesave": True
+                }
+            }
+        }
+
+        token = jwt.encode(
+            config,
+            ONLYOFFICE_JWT_SECRET,
+            algorithm="HS256"
+        )
+
+        config["token"] = token
+
+        return {
+            "code": 0,
+            "message": "success",
+            "data": config
+        }
+
+    except Exception as e:
+        return {
+            "code": 500,
+            "message": str(e),
+            "data": None
+        }
+
+
+@manager.route('/onlyoffice/files/test', methods=['GET'])  # noqa: F821
+async def onlyoffice_get_file_test():
+    """
+    OnlyOffice 下载 test.docx。
+
+    真实地址：
+    GET /v1/api/onlyoffice/files/test
+
+    注意：这个接口不要加 login_required。
+    """
+    try:
+        if not os.path.exists(TEST_DOCX_PATH):
+            return {
+                "code": 404,
+                "message": f"文件不存在: {TEST_DOCX_PATH}",
+                "data": None
+            }
+
+        return await send_file(
+            TEST_DOCX_PATH,
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=False
+        )
+
+    except Exception as e:
+        return {
+            "code": 500,
+            "message": str(e),
+            "data": None
+        }
+
+
+@manager.route('/onlyoffice/callback/test', methods=['POST'])  # noqa: F821
+async def onlyoffice_callback_test():
+    """
+    OnlyOffice 保存回调。
+
+    真实地址：
+    POST /v1/api/onlyoffice/callback/test
+
+    注意：这个接口不要加 login_required。
+    OnlyOffice 要求返回 {"error": 0}
+    """
+    try:
+        body = await request.get_json()
+        body = body or {}
+
+        print("OnlyOffice callback body:", body)
+
+        status = body.get("status")
+
+        if status in [2, 6]:
+            download_url = body.get("url")
+
+            if not download_url:
+                print("OnlyOffice callback 没有 url")
+                return {"error": 1}
+
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.get(download_url)
+                response.raise_for_status()
+
+            tmp_path = TEST_DOCX_PATH + ".tmp"
+
+            with open(tmp_path, "wb") as f:
+                f.write(response.content)
+
+            os.replace(tmp_path, TEST_DOCX_PATH)
+
+            print("OnlyOffice 文档已保存:", TEST_DOCX_PATH)
+
+        return {"error": 0}
+
+    except Exception as e:
+        print("OnlyOffice callback error:", e)
+        return {"error": 1}
+
+
+@manager.route('/onlyoffice/download/test', methods=['GET'])  # noqa: F821
+async def onlyoffice_download_test():
+    """
+    浏览器下载编辑后的 DOCX。
+
+    真实地址：
+    GET /v1/api/onlyoffice/download/test
+    """
+    return await send_file(
+        TEST_DOCX_PATH,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True
+    )
+

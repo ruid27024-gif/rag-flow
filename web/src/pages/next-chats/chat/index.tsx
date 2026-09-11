@@ -227,6 +227,8 @@ export default function Chat() {
         parameters: [],
         reasoning: false,
         agent_mod: false,
+        project_compliance: false,
+        experiment_report: false,
         cross_languages: [],
         toc_enhance: false,
       },
@@ -313,16 +315,33 @@ export default function Chat() {
 
   const reasoning = !!form.watch('prompt_config.reasoning');
   const agentMod = !!form.watch('prompt_config.agent_mod');
+  const projectCompliance = !!form.watch('prompt_config.project_compliance');
+  const experimentReport = !!form.watch('prompt_config.experiment_report');
 
-  const setReasoningMode = useCallback(
-    async (nextReasoning: boolean, nextAgentMod: boolean) => {
-      const currentReasoning = !!form.getValues('prompt_config.reasoning');
-      const currentAgentMod = !!form.getValues('prompt_config.agent_mod');
+  const setMode = useCallback(
+    async (
+      nextReasoning: boolean,
+      nextAgentMod: boolean,
+      nextProjectCompliance: boolean,
+      nextExperimentReport: boolean,
+    ) => {
+      const values = form.getValues();
 
-      // 如果已经是当前模式，不重复提交
+      const nextPromptConfig = {
+        ...values.prompt_config,
+        reasoning: nextReasoning,
+        agent_mod: nextAgentMod,
+        project_compliance: nextProjectCompliance,
+        experiment_report: nextExperimentReport,
+      };
+
+      const currentPromptConfig = values.prompt_config;
+
       if (
-        currentReasoning === nextReasoning &&
-        currentAgentMod === nextAgentMod
+        !!currentPromptConfig.reasoning === nextReasoning &&
+        !!currentPromptConfig.agent_mod === nextAgentMod &&
+        !!currentPromptConfig.project_compliance === nextProjectCompliance &&
+        !!currentPromptConfig.experiment_report === nextExperimentReport
       ) {
         return;
       }
@@ -339,36 +358,52 @@ export default function Chat() {
         shouldValidate: true,
       });
 
-      const values = form.getValues();
+      form.setValue('prompt_config.project_compliance', nextProjectCompliance, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
 
-      await onSubmit(
+      form.setValue('prompt_config.experiment_report', nextExperimentReport, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+
+      const success = await onSubmit(
         {
           ...values,
-          prompt_config: {
-            ...values.prompt_config,
-            reasoning: nextReasoning,
-            agent_mod: nextAgentMod,
-          },
+          prompt_config: nextPromptConfig,
         },
         { silent: true },
       );
-      // 手动显示“切换成功”
-      message.success('切换成功');
+
+      if (success) {
+        message.success('切换成功');
+      }
     },
     [form, onSubmit],
   );
 
   const onEnableDeepReasoning = useCallback(() => {
-    return setReasoningMode(true, false);
-  }, [setReasoningMode]);
+    return setMode(true, false, false, false);
+  }, [setMode]);
 
   const onEnableMultiKbReasoning = useCallback(() => {
-    return setReasoningMode(false, false);
-  }, [setReasoningMode]);
+    return setMode(false, false, false, false);
+  }, [setMode]);
 
   const onEnableAgent = useCallback(() => {
-    return setReasoningMode(false, true);
-  }, [setReasoningMode]);
+    return setMode(false, true, false, false);
+  }, [setMode]);
+
+  const onEnableProjectCompliance = useCallback(() => {
+    return setMode(false, false, true, false);
+  }, [setMode]);
+
+  const onEnableExperimentReport = useCallback(() => {
+    return setMode(false, false, false, true);
+  }, [setMode]);
 
   function onInvalid(errors: any) {
     console.log('Form validation failed:', errors);
@@ -598,9 +633,13 @@ export default function Chat() {
                   onOpenReferencePanel={openReferencePanel}
                   reasoning={reasoning}
                   agentMod={agentMod}
+                  projectCompliance={projectCompliance}
+                  experimentReport={experimentReport}
                   onEnableDeepReasoning={onEnableDeepReasoning}
                   onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                   onEnableAgent={onEnableAgent}
+                  onEnableProjectCompliance={onEnableProjectCompliance}
+                  onEnableExperimentReport={onEnableExperimentReport}
                   refreshConversation={refreshCurrentConversation}
                 />
               </div>

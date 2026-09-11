@@ -1611,7 +1611,6 @@ const EditableTagCell: React.FC<EditableTagCellProps> = ({
           visibleValues.map((item, index) => (
             <Tag
               key={`${item}_${index}`}
-              title={item}
               style={{
                 display: 'block',
                 width: 'fit-content',
@@ -1621,9 +1620,10 @@ const EditableTagCell: React.FC<EditableTagCellProps> = ({
                 fontSize: 12,
                 lineHeight: '20px',
                 padding: '0 7px',
-                color: disabled ? TAG_DISABLED_COLOR : TAG_ACTIVE_COLOR,
-                backgroundColor: disabled ? TAG_DISABLED_BG : TAG_ACTIVE_BG,
-                borderColor: disabled ? TAG_DISABLED_BORDER : TAG_ACTIVE_BORDER,
+                // ✅ 始终使用绿色，不依赖 disabled
+                color: TAG_ACTIVE_COLOR,
+                backgroundColor: TAG_ACTIVE_BG,
+                borderColor: TAG_ACTIVE_BORDER,
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -1633,25 +1633,16 @@ const EditableTagCell: React.FC<EditableTagCellProps> = ({
             </Tag>
           ))
         ) : (
+          // 空值占位（灰色）保持不变（也可改为绿色，随你）
           <Tag
-            style={{
-              display: 'block',
-              width: 'fit-content',
-              maxWidth: 100,
-              marginInlineEnd: 0,
-              borderRadius: 4,
-              fontSize: 12,
-              lineHeight: '20px',
-              padding: '0 7px',
-              color: '#6b7280',
-              backgroundColor: '#f3f4f6',
-              borderColor: '#d1d5db',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
+            style={
+              {
+                /* 灰色样式 */
+              }
+            }
           >
-            -
+            {' '}
+            -{' '}
           </Tag>
         )}
       </div>

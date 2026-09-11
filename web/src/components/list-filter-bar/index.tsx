@@ -61,11 +61,42 @@ export default function ListFilterBar({
   icon?: ReactNode;
 }) {
   const filterCount = useMemo(() => {
-    return typeof value === 'object' && value !== null
-      ? Object.values(value).reduce((pre, cur) => {
-          return pre + cur.length;
-        }, 0)
-      : 0;
+    if (!value || typeof value !== 'object') {
+      return 0;
+    }
+
+    let count = 0;
+
+    Object.entries(value).forEach(([key, currentValue]) => {
+      if (Array.isArray(currentValue)) {
+        count += currentValue.length;
+        return;
+      }
+
+      if (typeof currentValue === 'string') {
+        if (currentValue.trim()) {
+          count += 1;
+        }
+        return;
+      }
+
+      if (
+        currentValue &&
+        typeof currentValue === 'object' &&
+        ('start' in currentValue || 'end' in currentValue)
+      ) {
+        const dateRange = currentValue as {
+          start?: string;
+          end?: string;
+        };
+
+        if (dateRange.start || dateRange.end) {
+          count += 1;
+        }
+      }
+    });
+
+    return count;
   }, [value]);
 
   return (

@@ -233,37 +233,322 @@ def extract_agent_events(ans):
     return events
 
 
-def structure_answer(conv, ans, message_id, session_id):
+# def structure_answer(conv, ans, message_id, session_id):
+#     """
+#     统一整理每个流式 ans：
+
+#     1. 格式化 reference
+#     2. 保存工具信息
+#     3. 累积保存 agent_events 到 conv.message
+#     4. 防止 answer="" 覆盖已有正文
+#     5. 返回给 SSE 前端
+#     """
+#     if ans is None:
+#         ans = {}
+
+#     # -----------------------------
+#     # 1. reference 处理
+#     # -----------------------------
+#     reference = ans.get("reference", {})
+
+#     if not isinstance(reference, dict):
+#         reference = {}
+#         ans["reference"] = {}
+
+#     chunk_list = chunks_format(reference)
+#     reference["chunks"] = chunk_list
+
+#     # -----------------------------
+#     # 2. 兼容 Agent 工具信息
+#     # -----------------------------
+#     use_tools = ans.get("use_tools") or []
+#     output_dir = ans.get("output_dir")
+#     tool_logs = ans.get("tool_logs")
+
+#     if use_tools:
+#         reference["use_tools"] = use_tools
+
+#     if output_dir:
+#         reference["output_dir"] = output_dir
+
+#     if tool_logs:
+#         reference["tool_logs"] = tool_logs
+
+#     # -----------------------------
+#     # 3. 基础字段回写给前端
+#     # -----------------------------
+#     ans["id"] = message_id
+#     ans["session_id"] = session_id
+#     ans["reference"] = reference
+
+#     if use_tools:
+#         ans["use_tools"] = use_tools
+
+#     if output_dir:
+#         ans["output_dir"] = output_dir
+
+#     if tool_logs:
+#         ans["tool_logs"] = tool_logs
+
+#     # -----------------------------
+#     # 4. 提取当前 Agent 事件
+#     # -----------------------------
+#     incoming_agent_events = extract_agent_events(ans)
+
+#     # 如果没有 conv，只返回 ans，不做持久化
+#     if not conv:
+#         return ans
+
+#     if not conv.message:
+#         conv.message = []
+
+#     # -----------------------------
+#     # 5. 获取上一条 assistant message
+#     # -----------------------------
+#     prev_assistant_msg = None
+
+#     if conv.message and conv.message[-1].get("role", "") == "assistant":
+#         prev_assistant_msg = conv.message[-1]
+
+#     # -----------------------------
+#     # 6. 读取旧 agent_events 并合并
+#     # -----------------------------
+#     old_agent_events = []
+
+#     if prev_assistant_msg:
+#         old_agent_events = (
+#             prev_assistant_msg.get("agent_events")
+#             or prev_assistant_msg.get("agentEvents")
+#             or []
+#         )
+
+#     merged_agent_events = merge_agent_events(
+#         old_agent_events,
+#         incoming_agent_events
+#     )
+
+#     # -----------------------------
+#     # 7. 防止 answer="" 覆盖已有正文
+#     # -----------------------------
+#     answer_text = ans.get("answer")
+
+#     # Agent 过程事件可能是 {"answer": "", "agent_event": {...}}
+#     # 这种情况下保留旧正文
+#     if (answer_text is None or answer_text == "") and prev_assistant_msg:
+#         answer_text = prev_assistant_msg.get("content", "")
+
+#     if answer_text is None:
+#         answer_text = ""
+
+#     # 如果 ans 没有 answer，也补一个，避免前端读取报错
+#     ans["answer"] = answer_text
+
+#     # -----------------------------
+#     # 8. 构造 assistant message
+#     # -----------------------------
+#     assistant_msg = {
+#         "role": "assistant",
+#         "content": answer_text,
+#         "created_at": (
+#             prev_assistant_msg.get("created_at")
+#             if prev_assistant_msg and prev_assistant_msg.get("created_at")
+#             else time.time()
+#         ),
+#         "id": message_id,
+#         "suggestions": ans.get(
+#             "suggestions",
+#             prev_assistant_msg.get("suggestions", []) if prev_assistant_msg else []
+#         )
+#     }
+
+#     # -----------------------------
+#     # 9. 保存工具信息到 assistant message
+#     # -----------------------------
+#     if use_tools:
+#         assistant_msg["use_tools"] = use_tools
+#     elif prev_assistant_msg and prev_assistant_msg.get("use_tools"):
+#         assistant_msg["use_tools"] = prev_assistant_msg.get("use_tools")
+
+#     if output_dir:
+#         assistant_msg["output_dir"] = output_dir
+#     elif prev_assistant_msg and prev_assistant_msg.get("output_dir"):
+#         assistant_msg["output_dir"] = prev_assistant_msg.get("output_dir")
+
+#     if tool_logs:
+#         assistant_msg["tool_logs"] = tool_logs
+#     elif prev_assistant_msg and prev_assistant_msg.get("tool_logs"):
+#         assistant_msg["tool_logs"] = prev_assistant_msg.get("tool_logs")
+
+#     # -----------------------------
+#     # 10. 保存 Agent 事件到 assistant message
+#     # -----------------------------
+#     if merged_agent_events:
+#         # 数据库中保存下划线字段
+#         assistant_msg["agent_events"] = merged_agent_events
+
+#         # 同时保存驼峰字段，方便前端兼容
+#         assistant_msg["agentEvents"] = merged_agent_events
+
+#         # 当前 SSE 返回也带累计后的 agent_events
+#         ans["agent_events"] = merged_agent_events
+#         ans["agentEvents"] = merged_agent_events
+
+#     # 保留最后一个单事件，方便前端调试或兜底展示
+#     if ans.get("agent_event"):
+#         assistant_msg["agent_event"] = ans.get("agent_event")
+
+#     if ans.get("agentEvent"):
+#         assistant_msg["agentEvent"] = ans.get("agentEvent")
+
+#     # -----------------------------
+#     # 11. 写回 conv.message
+#     # -----------------------------
+#     if not conv.message or conv.message[-1].get("role", "") != "assistant":
+#         conv.message.append(assistant_msg)
+#     else:
+#         conv.message[-1] = assistant_msg
+
+#     # -----------------------------
+#     # 12. 写回 conv.reference
+#     # -----------------------------
+#     if conv.reference:
+#         conv.reference[-1] = reference
+
+#     print(".......................................................................................")
+#     print(reference)
+#     print(".......................................................................................")
+#     print(ans)
+
+#     return ans
+from copy import deepcopy
+def structure_answer(
+    conv,
+    ans,
+    message_id,
+    session_id,
+    reference_index=None,
+):
     """
     统一整理每个流式 ans：
 
-    1. 格式化 reference
+    1. 格式化并累计 reference
     2. 保存工具信息
     3. 累积保存 agent_events 到 conv.message
     4. 防止 answer="" 覆盖已有正文
-    5. 返回给 SSE 前端
+    5. 按 reference_index 更新本次回答对应的溯源
+    6. 返回给 SSE 前端
+
+    Args:
+        conv:
+            当前 Conversation 对象。
+
+        ans:
+            async_chat 返回的单次流式数据。
+
+        message_id:
+            本次回答关联的消息 ID。
+
+        session_id:
+            当前会话 ID。
+
+        reference_index:
+            completion() 中为本次回答创建的 reference 占位位置。
+            重新生成时，通过该位置覆盖对应 reference，
+            防止无条件 append 导致消息和溯源错位。
     """
     if ans is None:
         ans = {}
 
-    # -----------------------------
-    # 1. reference 处理
-    # -----------------------------
-    reference = ans.get("reference", {})
+    # 防止 async_chat 返回的不是字典
+    if not isinstance(ans, dict):
+        ans = {
+            "answer": str(ans),
+        }
+
+    # 如果没有 conv，只能整理返回数据，不进行持久化
+    if not conv:
+        reference = ans.get("reference")
+
+        if not isinstance(reference, dict):
+            reference = {}
+
+        chunk_list = chunks_format(reference)
+        reference["chunks"] = chunk_list
+        reference["message_id"] = message_id
+
+        ans["id"] = message_id
+        ans["session_id"] = session_id
+        ans["reference"] = reference
+        ans["answer"] = ans.get("answer") or ""
+
+        return ans
+
+    if not conv.message:
+        conv.message = []
+
+    if not conv.reference:
+        conv.reference = []
+
+    # --------------------------------------------------
+    # 1. 获取本次回答当前已经保存的 reference
+    # --------------------------------------------------
+    stored_reference = {}
+
+    if (
+        reference_index is not None
+        and 0 <= reference_index < len(conv.reference)
+        and isinstance(conv.reference[reference_index], dict)
+    ):
+        stored_reference = deepcopy(conv.reference[reference_index])
+
+    elif conv.reference and isinstance(conv.reference[-1], dict):
+        # 兼容未传 reference_index 的旧调用方式
+        stored_reference = deepcopy(conv.reference[-1])
+
+    # --------------------------------------------------
+    # 2. 处理本次流式数据携带的 reference
+    # --------------------------------------------------
+    incoming_reference = ans.get("reference")
+
+    if isinstance(incoming_reference, dict) and incoming_reference:
+        # 使用新的 reference，但保留旧 reference 中本次没有返回的字段
+        reference = deepcopy(stored_reference)
+        reference.update(deepcopy(incoming_reference))
+    else:
+        # Agent 过程事件可能不携带 reference，
+        # 此时保留上一轮流式事件已经保存的 reference
+        reference = deepcopy(stored_reference)
 
     if not isinstance(reference, dict):
         reference = {}
-        ans["reference"] = {}
 
+    # reference 必须关联当前消息
+    reference["message_id"] = message_id
+
+    # 格式化 chunks
     chunk_list = chunks_format(reference)
     reference["chunks"] = chunk_list
 
-    # -----------------------------
-    # 2. 兼容 Agent 工具信息
-    # -----------------------------
+    # doc_aggs 不存在时补充为空数组
+    if "doc_aggs" not in reference:
+        reference["doc_aggs"] = []
+
+    # --------------------------------------------------
+    # 3. 兼容 Agent 工具信息
+    # --------------------------------------------------
     use_tools = ans.get("use_tools") or []
     output_dir = ans.get("output_dir")
     tool_logs = ans.get("tool_logs")
+
+    # 当前流式事件没有工具信息时，尝试使用之前保存的信息
+    if not use_tools:
+        use_tools = reference.get("use_tools") or []
+
+    if not output_dir:
+        output_dir = reference.get("output_dir")
+
+    if not tool_logs:
+        tool_logs = reference.get("tool_logs")
 
     if use_tools:
         reference["use_tools"] = use_tools
@@ -274,9 +559,9 @@ def structure_answer(conv, ans, message_id, session_id):
     if tool_logs:
         reference["tool_logs"] = tool_logs
 
-    # -----------------------------
-    # 3. 基础字段回写给前端
-    # -----------------------------
+    # --------------------------------------------------
+    # 4. 基础字段回写给前端
+    # --------------------------------------------------
     ans["id"] = message_id
     ans["session_id"] = session_id
     ans["reference"] = reference
@@ -290,29 +575,26 @@ def structure_answer(conv, ans, message_id, session_id):
     if tool_logs:
         ans["tool_logs"] = tool_logs
 
-    # -----------------------------
-    # 4. 提取当前 Agent 事件
-    # -----------------------------
+    # --------------------------------------------------
+    # 5. 提取当前 Agent 事件
+    # --------------------------------------------------
     incoming_agent_events = extract_agent_events(ans)
 
-    # 如果没有 conv，只返回 ans，不做持久化
-    if not conv:
-        return ans
-
-    if not conv.message:
-        conv.message = []
-
-    # -----------------------------
-    # 5. 获取上一条 assistant message
-    # -----------------------------
+    # --------------------------------------------------
+    # 6. 获取当前正在生成的 assistant message
+    # --------------------------------------------------
     prev_assistant_msg = None
 
-    if conv.message and conv.message[-1].get("role", "") == "assistant":
+    if (
+        conv.message
+        and isinstance(conv.message[-1], dict)
+        and conv.message[-1].get("role", "") == "assistant"
+    ):
         prev_assistant_msg = conv.message[-1]
 
-    # -----------------------------
-    # 6. 读取旧 agent_events 并合并
-    # -----------------------------
+    # --------------------------------------------------
+    # 7. 读取旧 agent_events 并合并
+    # --------------------------------------------------
     old_agent_events = []
 
     if prev_assistant_msg:
@@ -324,46 +606,59 @@ def structure_answer(conv, ans, message_id, session_id):
 
     merged_agent_events = merge_agent_events(
         old_agent_events,
-        incoming_agent_events
+        incoming_agent_events,
     )
 
-    # -----------------------------
-    # 7. 防止 answer="" 覆盖已有正文
-    # -----------------------------
+    # --------------------------------------------------
+    # 8. 防止 answer="" 覆盖已有正文
+    # --------------------------------------------------
     answer_text = ans.get("answer")
 
-    # Agent 过程事件可能是 {"answer": "", "agent_event": {...}}
-    # 这种情况下保留旧正文
+    # Agent 过程事件可能是：
+    #
+    # {
+    #     "answer": "",
+    #     "agent_event": {...}
+    # }
+    #
+    # 这种情况下应该保留当前已生成的正文
     if (answer_text is None or answer_text == "") and prev_assistant_msg:
         answer_text = prev_assistant_msg.get("content", "")
 
     if answer_text is None:
         answer_text = ""
 
-    # 如果 ans 没有 answer，也补一个，避免前端读取报错
+    # 确保前端始终可以读取 answer
     ans["answer"] = answer_text
 
-    # -----------------------------
-    # 8. 构造 assistant message
-    # -----------------------------
+    # --------------------------------------------------
+    # 9. 构造 assistant message
+    # --------------------------------------------------
     assistant_msg = {
         "role": "assistant",
         "content": answer_text,
         "created_at": (
             prev_assistant_msg.get("created_at")
-            if prev_assistant_msg and prev_assistant_msg.get("created_at")
+            if (
+                prev_assistant_msg
+                and prev_assistant_msg.get("created_at")
+            )
             else time.time()
         ),
         "id": message_id,
         "suggestions": ans.get(
             "suggestions",
-            prev_assistant_msg.get("suggestions", []) if prev_assistant_msg else []
-        )
+            (
+                prev_assistant_msg.get("suggestions", [])
+                if prev_assistant_msg
+                else []
+            ),
+        ),
     }
 
-    # -----------------------------
-    # 9. 保存工具信息到 assistant message
-    # -----------------------------
+    # --------------------------------------------------
+    # 10. 保存工具信息到 assistant message
+    # --------------------------------------------------
     if use_tools:
         assistant_msg["use_tools"] = use_tools
     elif prev_assistant_msg and prev_assistant_msg.get("use_tools"):
@@ -379,45 +674,70 @@ def structure_answer(conv, ans, message_id, session_id):
     elif prev_assistant_msg and prev_assistant_msg.get("tool_logs"):
         assistant_msg["tool_logs"] = prev_assistant_msg.get("tool_logs")
 
-    # -----------------------------
-    # 10. 保存 Agent 事件到 assistant message
-    # -----------------------------
+    # --------------------------------------------------
+    # 11. 保存 Agent 事件到 assistant message
+    # --------------------------------------------------
     if merged_agent_events:
-        # 数据库中保存下划线字段
+        # 数据库保存下划线字段
         assistant_msg["agent_events"] = merged_agent_events
 
-        # 同时保存驼峰字段，方便前端兼容
+        # 同时保存驼峰字段，兼容前端
         assistant_msg["agentEvents"] = merged_agent_events
 
-        # 当前 SSE 返回也带累计后的 agent_events
+        # SSE 返回累计后的事件
         ans["agent_events"] = merged_agent_events
         ans["agentEvents"] = merged_agent_events
 
-    # 保留最后一个单事件，方便前端调试或兜底展示
+    # 保留当前最后一个单事件，方便前端调试或兜底展示
     if ans.get("agent_event"):
         assistant_msg["agent_event"] = ans.get("agent_event")
 
     if ans.get("agentEvent"):
         assistant_msg["agentEvent"] = ans.get("agentEvent")
 
-    # -----------------------------
-    # 11. 写回 conv.message
-    # -----------------------------
-    if not conv.message or conv.message[-1].get("role", "") != "assistant":
+    # --------------------------------------------------
+    # 12. 写回 conv.message
+    # --------------------------------------------------
+    if (
+        not conv.message
+        or not isinstance(conv.message[-1], dict)
+        or conv.message[-1].get("role", "") != "assistant"
+    ):
+        # 第一个流式事件：
+        # 请求最后一条通常是 user，因此追加 assistant
         conv.message.append(assistant_msg)
     else:
+        # 后续流式事件：
+        # 替换当前正在生成的 assistant
         conv.message[-1] = assistant_msg
 
-    # -----------------------------
-    # 12. 写回 conv.reference
-    # -----------------------------
-    if conv.reference:
+    # --------------------------------------------------
+    # 13. 写回本次回答对应的 conv.reference
+    # --------------------------------------------------
+    if (
+        reference_index is not None
+        and 0 <= reference_index < len(conv.reference)
+    ):
+        # 推荐方式：
+        # 精确更新 completion() 中创建的 reference 占位
+        conv.reference[reference_index] = reference
+    elif conv.reference:
+        # 兼容旧调用方式
         conv.reference[-1] = reference
+    else:
+        # 理论上 completion() 已经创建过占位，
+        # 这里作为兜底
+        conv.reference.append(reference)
 
-    print(".......................................................................................")
-    print(reference)
-    print(".......................................................................................")
-    print(ans)
+    print(
+        "......................................................................................."
+    )
+    print("reference_index:", reference_index)
+    print("reference:", reference)
+    print(
+        "......................................................................................."
+    )
+    print("ans:", ans)
 
     return ans
 

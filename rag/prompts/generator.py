@@ -223,6 +223,7 @@ REFLECT = load_prompt("reflect")
 SUMMARY4MEMORY = load_prompt("summary4memory")
 RANK_MEMORY = load_prompt("rank_memory")
 META_FILTER = load_prompt("meta_filter")
+SPECIAL_META_FILTER = load_prompt("special_meta_filter")
 ASK_SUMMARY = load_prompt("ask_summary")
 
 PROMPT_JINJA_ENV = jinja2.Environment(autoescape=False, trim_blocks=True, lstrip_blocks=True)
@@ -503,14 +504,32 @@ async def rank_memories_async(chat_mdl, goal:str, sub_goal:str, tool_call_summar
 
 async def gen_meta_filter(chat_mdl, meta_data:dict, query: str) -> dict:
     meta_data_structure = {}
+    SPECIAL_META_KEYS = {
+        "school",
+        "author",
+        "publish_time",
+    }
+    # for key, values in meta_data.items():
+    #     meta_data_structure[key] = list(values.keys()) if isinstance(values, dict) else values
+    
     for key, values in meta_data.items():
-        meta_data_structure[key] = list(values.keys()) if isinstance(values, dict) else values
+        print(key)
+        if key in SPECIAL_META_KEYS:
+            continue
+
+        meta_data_structure[key] = (
+            list(values.keys())
+            if isinstance(values, dict)
+            else values
+        )
 
     sys_prompt = PROMPT_JINJA_ENV.from_string(META_FILTER).render(
         current_date=datetime.datetime.today().strftime('%Y-%m-%d'),
         metadata_keys=json.dumps(meta_data_structure),
         user_question=query
     )
+    print("---------------------------------------------------------------------------------")
+    print(sys_prompt)
     user_prompt = "Generate filters:"
     ans = await chat_mdl.async_chat(sys_prompt, [{"role": "user", "content": user_prompt}])
     ans = re.sub(r"(^.*</think>|```json\n|```\n*$)", "", ans, flags=re.DOTALL)
@@ -518,11 +537,134 @@ async def gen_meta_filter(chat_mdl, meta_data:dict, query: str) -> dict:
         ans = json_repair.loads(ans)
         assert isinstance(ans, dict), ans
         assert "conditions" in ans and isinstance(ans["conditions"], list), ans
+        print(ans)
         return ans
     except Exception:
         logging.exception(f"Loading json failure: {ans}")
 
     return {"conditions": []}
+
+async def gen_ab_group_logic(chat_mdl, question: str, a_filters: dict, b_filters: dict) -> str:
+    if not a_filters.get("conditions") or not b_filters.get("conditions"):
+        return "and"
+
+    prompt = f"""
+        你只需要判断下面两组过滤条件之间是 AND 还是 OR。
+
+        A组：作者、学校、发布时间条件。
+        字段包括 author, school, publish_time。
+
+        B组：业务标签条件。
+        字段包括 applicable_lines, knowledge_category, knowledge_level, knowledge_type。
+
+        规则：
+        - 如果用户表达“同时满足”，输出 {{"logic": "and"}}
+        - 如果用户表达“或者/或/任一”，并且是在 A组 和 B组之间选择，输出 {{"logic": "or"}}
+        - 不确定默认输出 {{"logic": "and"}}
+
+        用户问题：
+        {question}
+
+        A组条件：
+        {json.dumps(a_filters, ensure_ascii=False)}
+
+        B组条件：
+        {json.dumps(b_filters, ensure_ascii=False)}
+
+        只输出 JSON，不要解释。
+        """
+
+    ans = await chat_mdl.async_chat(
+        prompt,
+        [{"role": "user", "content": "Judge logic"}]
+    )
+
+    ans = re.sub(r"(^.*</think>|```json\n|```\n*$)", "", ans, flags=re.DOTALL)
+
+    try:
+        data = json_repair.loads(ans)
+        logic = data.get("logic", "and")
+        print(logic)
+        return logic if logic in ("and", "or") else "and"
+    except Exception:
+        logging.exception(f"Loading logic json failure: {ans}")
+        return "and"
+
+async def gen_special_meta_filter(chat_mdl, query: str) -> dict:
+    sys_prompt = PROMPT_JINJA_ENV.from_string(SPECIAL_META_FILTER).render(
+        current_date=datetime.datetime.today().strftime("%Y-%m-%d"),
+        user_question=query
+    )
+
+    user_prompt = "Generate special metadata filters:"
+
+    ans = await chat_mdl.async_chat(
+        sys_prompt,
+        [{"role": "user", "content": user_prompt}]
+    )
+
+    ans = re.sub(r"(^.*</think>|```json\n|```\n*$)", "", ans, flags=re.DOTALL)
+
+    try:
+        ans = json_repair.loads(ans)
+
+        assert isinstance(ans, dict), ans
+        assert "conditions" in ans and isinstance(ans["conditions"], list), ans
+
+        logic = ans.get("logic", "and")
+        if logic not in ("and", "or"):
+            ans["logic"] = "and"
+
+        valid_keys = {"school", "author", "publish_time"}
+        valid_ops = {
+            "contains",
+            "not contains",
+            "in",
+            "not in",
+            "=",
+            "≠",
+            ">",
+            "<",
+            "≥",
+            "≤",
+        }
+
+        cleaned_conditions = []
+
+        for cond in ans["conditions"]:
+            if not isinstance(cond, dict):
+                continue
+
+            key = cond.get("key")
+            value = cond.get("value")
+            op = cond.get("op")
+
+            if key not in valid_keys:
+                continue
+
+            if op not in valid_ops:
+                continue
+
+            if value is None or str(value).strip() == "":
+                continue
+
+            cleaned_conditions.append({
+                "key": key,
+                "value": str(value).strip(),
+                "op": op
+            })
+
+        ans["conditions"] = cleaned_conditions
+        print(ans)
+        return ans
+
+    except Exception:
+        logging.exception(f"Loading special filter json failure: {ans}")
+
+    return {
+        "logic": "and",
+        "conditions": []
+    }
 
 
 async def gen_json(system_prompt:str, user_prompt:str, chat_mdl, gen_conf = None):

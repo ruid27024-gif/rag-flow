@@ -301,12 +301,15 @@ export const useFetchRelatedQuestions = (
 
   return { data, loading, fetchRelatedQuestions: mutateAsync };
 };
+export type SearchTag = Record<string, string | string[] | undefined>;
 
 export const useSendQuestion = (
   kbIds: string[],
   tenantId?: string,
   searchId: string = '',
   related_search: boolean = false,
+  tag?: SearchTag,
+  mode?: string,
 ) => {
   const { sharedId } = useGetSharedSearchParams();
   const { send, answer, done, stopOutputMessage } = useSendMessageWithSse(
@@ -334,7 +337,14 @@ export const useSendQuestion = (
       setCurrentAnswer({} as IAnswer);
       if (enableAI) {
         setSendingLoading(true);
-        send({ kb_ids: kbIds, question: q, tenantId, search_id: searchId });
+        send({
+          kb_ids: kbIds,
+          question: q,
+          tenantId,
+          search_id: searchId,
+          tag,
+          mode,
+        });
       }
       testChunk({
         kb_id: kbIds,
@@ -343,6 +353,8 @@ export const useSendQuestion = (
         page: 1,
         size: pagination.pageSize,
         search_id: searchId,
+        tag,
+        mode,
       });
 
       if (related_search) {
@@ -391,6 +403,9 @@ export const useSendQuestion = (
         page,
         size,
         search_id: searchId,
+        // 新增
+        tag,
+        mode,
       });
 
       testChunkAll({
@@ -401,6 +416,9 @@ export const useSendQuestion = (
         page,
         size,
         search_id: searchId,
+        // 新增
+        tag,
+        mode,
       });
     },
     [
@@ -471,6 +489,8 @@ export const useSearching = ({
     tenantId as string,
     searchData.id,
     searchData.search_config.related_search,
+    searchData.search_config.tag,
+    searchData.search_config.mode,
   );
 
   const handleSearchStrChange = useCallback(

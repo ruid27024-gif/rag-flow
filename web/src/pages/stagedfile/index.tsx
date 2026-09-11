@@ -1,30 +1,25 @@
 import { getAuthorization } from '@/utils/authorization-util';
 import { DownOutlined } from '@ant-design/icons';
 import {
-  Card,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-  message,
-} from 'antd';
-
-import type { ColumnsType } from 'antd/es/table';
-
-import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+} from '@tanstack/react-table';
+// import { Select, message } from 'antd';
+import { Avatar, Select, message } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
-const { Text } = Typography;
-
-const PEACOCK_GREEN = '#1FA67A';
-
-type CollapsibleApproverListProps = {
-  approvers?: ApproverItem[];
-  defaultCount?: number;
-};
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 type TagOption = {
   option_code: string;
@@ -51,31 +46,22 @@ type ApproverItem = {
   department_name?: string | null;
   role_id?: number | null;
   role_name?: string | null;
+
   approver_user_id?: string;
   approver_name?: string;
+
   id?: string;
   name?: string;
 
-  /**
-   * 兼容老字段。
-   * 新逻辑不再使用 approval_order。
-   */
   approval_order?: number | null;
 };
-
-type DepartmentInfo = {
-  department_id?: string | null;
-  department_name?: string | null;
-  is_reference_kb?: boolean;
-  is_global_reference_kb?: boolean;
-  tenant_id?: string;
-} | null;
 
 type StagedFileItem = {
   id: string;
   batch_id?: string;
   kb_id: string;
   tenant_id?: string;
+  version?: string | null;
 
   user_id: string;
   user_name?: string;
@@ -97,62 +83,47 @@ type StagedFileItem = {
 
   tags?: FileTagItem[];
 
-  /**
-   * 新字段：统一审批人。
-   */
   approvers?: ApproverItem[] | null;
-
-  /**
-   * 如果后端字段叫 approval_users，也兼容。
-   */
   approval_users?: ApproverItem[] | null;
 
-  /**
-   * 老字段兼容。
-   */
   approval_level_1?: ApproverItem[] | null;
   approval_level_2?: ApproverItem[] | null;
 };
 
-type ApproverConfig = {
-  department?: DepartmentInfo;
-
-  /**
-   * 新字段：统一审批人。
-   */
-  approvers?: ApproverItem[];
-
-  /**
-   * 老字段兼容。
-   */
-  level_1?: ApproverItem[];
-  level_2?: ApproverItem[];
+type ListResponseData = {
+  is_admin?: boolean;
+  is_approver?: boolean;
+  total?: number;
+  page?: number;
+  page_size?: number;
+  items?: StagedFileItem[];
 };
 
-type ListResponseData = {
-  is_admin: boolean;
-  is_approver?: boolean;
-  total: number;
-  page: number;
-  page_size: number;
+type ListResponse = {
+  code: number;
+  message?: string;
+  data?: ListResponseData;
+};
 
-  /**
-   * 推荐新结构：
-   * {
-   *   department: {},
-   *   approvers: []
-   * }
-   */
-  department?: DepartmentInfo;
+type StagedFileListPageProps = {
+  kbId?: string;
+};
 
-  /**
-   * 兼容两种：
-   * 1. approvers: []
-   * 2. approvers: { department: {}, approvers: [] }
-   */
-  approvers?: ApproverItem[] | ApproverConfig | null;
+type ProgressStep = {
+  key: number;
+  label: string;
+};
 
-  items: StagedFileItem[];
+type StatusProgressInfo = {
+  currentStep: number;
+  statusText: string;
+  progressText: string;
+};
+
+type CollapsibleTextListProps = {
+  items?: string[];
+  defaultCount?: number;
+  variant?: 'cyan' | 'gray';
 };
 
 const statusOptions = [
@@ -175,7 +146,8 @@ const statusTextMap: Record<string, string> = {
   pending_approval: '审批中',
   pending_level_1: '一级审批中',
   pending_level_2: '二级审批中',
-  approved: '审批通过，准备入库',
+
+  approved: '审批通过',
 
   committing: '入库中',
   importing: '入库中',
@@ -194,91 +166,29 @@ const statusTextMap: Record<string, string> = {
   deleted: '已删除',
 };
 
-const statusColorMap: Record<string, React.CSSProperties> = {
-  pending: {
-    color: '#0f766e',
-    backgroundColor: '#f0fdfa',
-    borderColor: '#99f6e4',
+const PROGRESS_STEPS: ProgressStep[] = [
+  {
+    key: 1,
+    label: '上传',
   },
-  oa_submitted: {
-    color: '#0f766e',
-    backgroundColor: '#f0fdfa',
-    borderColor: '#99f6e4',
+  {
+    key: 2,
+    label: '审批',
   },
-  pending_approval: {
-    color: '#0f766e',
-    backgroundColor: '#f0fdfa',
-    borderColor: '#99f6e4',
+  {
+    key: 3,
+    label: '入库',
   },
-  pending_level_1: {
-    color: '#0f766e',
-    backgroundColor: '#f0fdfa',
-    borderColor: '#99f6e4',
-  },
-  pending_level_2: {
-    color: '#0f766e',
-    backgroundColor: '#f0fdfa',
-    borderColor: '#99f6e4',
-  },
-  approved: {
-    color: '#047857',
-    backgroundColor: '#ecfdf5',
-    borderColor: '#86efac',
-  },
-  committing: {
-    color: '#0f766e',
-    backgroundColor: '#f0fdfa',
-    borderColor: '#99f6e4',
-  },
-  importing: {
-    color: '#0f766e',
-    backgroundColor: '#f0fdfa',
-    borderColor: '#99f6e4',
-  },
-  imported: {
-    color: '#ffffff',
-    backgroundColor: '#16a36f',
-    borderColor: '#16a36f',
-  },
-  partial_imported: {
-    color: '#a16207',
-    backgroundColor: '#fefce8',
-    borderColor: '#fde68a',
-  },
-  rejected: {
-    color: '#b91c1c',
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-  },
-  failed: {
-    color: '#b91c1c',
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-  },
-  import_failed: {
-    color: '#b91c1c',
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-  },
-  callback_failed: {
-    color: '#b91c1c',
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-  },
-  callback_success: {
-    color: '#047857',
-    backgroundColor: '#ecfdf5',
-    borderColor: '#86efac',
-  },
-  deleted: {
-    color: '#6b7280',
-    backgroundColor: '#f9fafb',
-    borderColor: '#d1d5db',
-  },
-};
+];
+
+const ACTIVE_DOT_CLASS = 'bg-cyan-500';
+const ACTIVE_TEXT_CLASS = 'text-cyan-700 dark:text-cyan-300';
+const INACTIVE_DOT_CLASS = 'bg-gray-200 dark:bg-gray-700';
 
 const formatFileSize = (size?: number) => {
-  if (!size) return '0 B';
+  if (!size) {
+    return '0 B';
+  }
 
   if (size < 1024) {
     return `${size} B`;
@@ -295,95 +205,35 @@ const formatFileSize = (size?: number) => {
   return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
 };
 
-const isApproverArray = (value: unknown): value is ApproverItem[] => {
-  return Array.isArray(value);
-};
-
 const uniqueApprovers = (list: ApproverItem[]) => {
   const result: ApproverItem[] = [];
   const added = new Set<string>();
 
   list.forEach((item) => {
-    if (!item) return;
+    if (!item) {
+      return;
+    }
 
-    const key = String(item.user_id || '');
+    const key = String(
+      item.user_id ||
+        item.approver_user_id ||
+        item.id ||
+        item.user_name ||
+        item.name ||
+        '',
+    );
 
-    if (!key) return;
+    if (!key || added.has(key)) {
+      return;
+    }
 
-    if (added.has(key)) return;
-
-    result.push(item);
     added.add(key);
+    result.push(item);
   });
 
   return result;
 };
 
-/**
- * 兼容后端不同返回结构，统一整理成：
- * {
- *   department,
- *   approvers
- * }
- */
-const normalizeApproverConfig = (
-  data?: ListResponseData | null,
-): ApproverConfig | null => {
-  if (!data) {
-    return null;
-  }
-
-  const rawApprovers = data.approvers;
-
-  /**
-   * 新推荐结构：
-   * {
-   *   department: {},
-   *   approvers: []
-   * }
-   */
-  if (Array.isArray(rawApprovers)) {
-    return {
-      department: data.department || null,
-      approvers: uniqueApprovers(rawApprovers),
-    };
-  }
-
-  /**
-   * 老结构或嵌套结构：
-   * {
-   *   approvers: {
-   *     department: {},
-   *     approvers: []
-   *   }
-   * }
-   */
-  if (rawApprovers && typeof rawApprovers === 'object') {
-    const config = rawApprovers as ApproverConfig;
-
-    const list = config.approvers || [
-      ...(config.level_1 || []),
-      ...(config.level_2 || []),
-    ];
-
-    return {
-      department: config.department || data.department || null,
-      approvers: uniqueApprovers(list),
-      level_1: config.level_1,
-      level_2: config.level_2,
-    };
-  }
-
-  return {
-    department: data.department || null,
-    approvers: [],
-  };
-};
-
-/**
- * 获取每一行文件的审批人。
- * 优先使用新字段，兼容老字段。
- */
 const getRowApprovers = (record: StagedFileItem): ApproverItem[] => {
   const list = record.approvers ||
     record.approval_users || [
@@ -394,133 +244,12 @@ const getRowApprovers = (record: StagedFileItem): ApproverItem[] => {
   return uniqueApprovers(list || []);
 };
 
-type CollapsibleTagListProps = {
-  tags?: string[];
-  defaultCount?: number;
-};
-
-const CollapsibleTagList: React.FC<CollapsibleTagListProps> = ({
-  tags = [],
-  defaultCount = 1,
-}) => {
-  const [expanded, setExpanded] = useState(false);
-
-  if (!tags || tags.length === 0) {
-    return <Text type="secondary">-</Text>;
-  }
-
-  const visibleTags = expanded ? tags : tags.slice(0, defaultCount);
-
-  return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        minWidth: 0,
-        boxSizing: 'border-box',
-        paddingRight: tags.length > defaultCount ? 18 : 0,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 4,
-          width: '100%',
-          minWidth: 0,
-          alignItems: 'flex-start',
-        }}
-      >
-        {visibleTags.map((name, index) => (
-          <Tag
-            key={`${name}_${index}`}
-            style={{
-              marginRight: 0,
-              marginBottom: 2,
-              backgroundColor: PEACOCK_GREEN,
-              borderColor: PEACOCK_GREEN,
-              color: '#fff',
-              fontSize: 12,
-              whiteSpace: 'normal',
-              wordBreak: 'break-all',
-              maxWidth: '100%',
-            }}
-          >
-            {name}
-          </Tag>
-        ))}
-      </div>
-
-      {tags.length > defaultCount ? (
-        <span
-          role="button"
-          tabIndex={0}
-          aria-label={expanded ? '收起标签' : '展开标签'}
-          onClick={() => setExpanded((value) => !value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setExpanded((value) => !value);
-            }
-          }}
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            cursor: 'pointer',
-            color: '#9ca3af',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 18,
-            height: 20,
-            borderRadius: 4,
-            transition: 'background-color 180ms ease',
-          }}
-        >
-          <DownOutlined
-            style={{
-              fontSize: 10,
-              color: expanded ? PEACOCK_GREEN : '#9ca3af',
-              transition: 'transform 180ms ease, color 180ms ease',
-              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            }}
-          />
-        </span>
-      ) : null}
-    </div>
-  );
-};
-
-const renderTagValue = (tags?: FileTagItem[] | null, typeCode?: string) => {
-  if (!tags || !tags.length || !typeCode) {
-    return <Text type="secondary">-</Text>;
-  }
-
-  const tagItem = tags.find((item) => item.type_code === typeCode);
-
-  if (!tagItem) {
-    return <Text type="secondary">-</Text>;
-  }
-
-  const optionNames =
-    tagItem.option_names && tagItem.option_names.length > 0
-      ? tagItem.option_names
-      : tagItem.options?.map((item) => item.option_name || item.option_code) ||
-        [];
-
-  if (!optionNames.length) {
-    return <Text type="secondary">-</Text>;
-  }
-
-  return <CollapsibleTagList tags={optionNames} defaultCount={1} />;
-};
-
 const getApproverName = (item: ApproverItem) => {
   return (
     item.user_name ||
     item.approver_name ||
     item.name ||
+    item.mdm_name ||
     item.user_id ||
     item.approver_user_id ||
     item.id ||
@@ -528,14 +257,344 @@ const getApproverName = (item: ApproverItem) => {
   );
 };
 
-const CollapsibleApproverList: React.FC<CollapsibleApproverListProps> = ({
+/**
+ * 将后端状态映射到：
+ * 1：上传阶段
+ * 2：审批阶段
+ * 3：入库阶段
+ */
+const getStatusProgress = (status?: string): StatusProgressInfo => {
+  const normalizedStatus = String(status || '').trim();
+
+  const statusText =
+    statusTextMap[normalizedStatus] || normalizedStatus || '未知状态';
+
+  if (normalizedStatus === 'pending') {
+    return {
+      currentStep: 2,
+      statusText,
+      progressText: '等待提交审批',
+    };
+  }
+
+  if (
+    [
+      'oa_submitted',
+      'pending_approval',
+      'pending_level_1',
+      'pending_level_2',
+    ].includes(normalizedStatus)
+  ) {
+    return {
+      currentStep: 2,
+      statusText,
+      progressText: '正在审批',
+    };
+  }
+
+  if (normalizedStatus === 'approved') {
+    return {
+      currentStep: 2,
+      statusText,
+      progressText: '等待入库',
+    };
+  }
+
+  if (['committing', 'importing'].includes(normalizedStatus)) {
+    return {
+      currentStep: 3,
+      statusText,
+      progressText: '正在入库',
+    };
+  }
+
+  if (
+    ['imported', 'partial_imported', 'callback_success'].includes(
+      normalizedStatus,
+    )
+  ) {
+    return {
+      currentStep: 3,
+      statusText,
+      progressText: '流程已完成',
+    };
+  }
+
+  if (normalizedStatus === 'rejected') {
+    return {
+      currentStep: 2,
+      statusText,
+      progressText: '审批流程终止',
+    };
+  }
+
+  if (['import_failed', 'callback_failed'].includes(normalizedStatus)) {
+    return {
+      currentStep: 3,
+      statusText,
+      progressText: '入库流程终止',
+    };
+  }
+
+  if (normalizedStatus === 'failed') {
+    return {
+      currentStep: 1,
+      statusText,
+      progressText: '上传流程终止',
+    };
+  }
+
+  if (normalizedStatus === 'deleted') {
+    return {
+      currentStep: 1,
+      statusText,
+      progressText: '记录已删除',
+    };
+  }
+
+  return {
+    currentStep: 1,
+    statusText,
+    progressText: '上传记录',
+  };
+};
+
+const getColumnClassName = (columnId: string) => {
+  if (columnId === 'filename') {
+    return 'w-[260px] min-w-[260px] max-w-[260px]';
+  }
+
+  if (columnId === 'user_name') {
+    return 'w-[140px] min-w-[140px] max-w-[140px]';
+  }
+
+  if (columnId === 'status') {
+    return 'w-[210px] min-w-[210px] max-w-[210px]';
+  }
+
+  if (columnId === 'approvers') {
+    return 'w-[170px] min-w-[170px] max-w-[170px]';
+  }
+
+  if (columnId === 'size') {
+    return 'w-[100px] min-w-[100px] max-w-[100px] whitespace-nowrap';
+  }
+
+  if (
+    columnId === 'created_at' ||
+    columnId === 'approved_at' ||
+    columnId === 'committed_at'
+  ) {
+    return 'w-[170px] min-w-[170px] max-w-[170px] whitespace-nowrap';
+  }
+
+  if (columnId.startsWith('tag_')) {
+    return 'w-[150px] min-w-[150px] max-w-[150px]';
+  }
+
+  return 'w-[140px] min-w-[140px] max-w-[140px]';
+};
+
+const StatusProgressCell = ({
+  status,
+  errorMsg,
+}: {
+  status?: string;
+  errorMsg?: string | null;
+}) => {
+  const progress = getStatusProgress(status);
+
+  return (
+    <div className="flex min-w-[185px] items-start gap-2.5">
+      {/* 左侧纵向进度条 */}
+      <div className="flex shrink-0 flex-col items-center pt-0.5">
+        {PROGRESS_STEPS.map((step, index) => {
+          const isReached = step.key <= progress.currentStep;
+          const isCurrent = step.key === progress.currentStep;
+          const isLast = index === PROGRESS_STEPS.length - 1;
+
+          return (
+            <React.Fragment key={step.key}>
+              <span
+                title={step.label}
+                className={`relative flex h-2.5 w-2.5 items-center justify-center rounded-full ${
+                  isReached ? ACTIVE_DOT_CLASS : INACTIVE_DOT_CLASS
+                } ${
+                  isCurrent ? 'ring-2 ring-cyan-100 dark:ring-cyan-900' : ''
+                }`}
+              >
+                {isCurrent ? (
+                  <span className="h-1 w-1 rounded-full bg-white dark:bg-cyan-950" />
+                ) : null}
+              </span>
+
+              {!isLast ? (
+                <span
+                  className={`h-3.5 w-px ${
+                    step.key < progress.currentStep
+                      ? ACTIVE_DOT_CLASS
+                      : INACTIVE_DOT_CLASS
+                  }`}
+                />
+              ) : null}
+            </React.Fragment>
+          );
+        })}
+      </div>
+
+      {/* 右侧状态信息 */}
+      <div className="min-w-0 text-xs leading-4">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 text-gray-400">当前</span>
+
+          <span
+            className={`min-w-0 truncate font-medium ${ACTIVE_TEXT_CLASS}`}
+            title={progress.statusText}
+          >
+            {progress.statusText}
+          </span>
+        </div>
+
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 text-gray-400">进度</span>
+
+          <span
+            className="min-w-0 max-w-[135px] truncate text-gray-500 dark:text-gray-400"
+            title={errorMsg || progress.progressText}
+          >
+            {errorMsg || progress.progressText}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CollapsibleTextList: React.FC<CollapsibleTextListProps> = ({
+  items = [],
+  defaultCount = 1,
+  variant = 'gray',
+}) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!items.length) {
+    return <span className="text-xs text-gray-400">-</span>;
+  }
+
+  const visibleItems = expanded ? items : items.slice(0, defaultCount);
+  const hasMore = items.length > defaultCount;
+
+  const itemClassName =
+    variant === 'cyan'
+      ? [
+          'inline-flex max-w-full items-center rounded border',
+          'border-cyan-200 bg-cyan-50 text-cyan-700',
+          'px-2 py-0.5 text-xs font-medium',
+          'dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-300',
+        ].join(' ')
+      : [
+          'inline-flex max-w-full items-center rounded border',
+          'border-gray-200 bg-gray-50 text-gray-600',
+          'px-2 py-0.5 text-xs',
+          'dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-300',
+        ].join(' ');
+
+  return (
+    <div
+      className="relative w-full min-w-0"
+      style={{
+        paddingRight: hasMore ? 20 : 0,
+      }}
+    >
+      <div
+        className={
+          variant === 'cyan'
+            ? 'flex w-full min-w-0 flex-col items-start gap-1'
+            : 'flex w-full min-w-0 flex-wrap items-start gap-1'
+        }
+      >
+        {visibleItems.map((item, index) => (
+          <span
+            key={`${item}_${index}`}
+            title={item}
+            className={itemClassName}
+            style={{
+              maxWidth: '100%',
+              whiteSpace: 'normal',
+              wordBreak: 'break-all',
+            }}
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+
+      {hasMore ? (
+        <button
+          type="button"
+          aria-label={expanded ? '收起' : '展开'}
+          title={
+            expanded ? '收起' : `展开剩余 ${items.length - defaultCount} 项`
+          }
+          className="absolute right-0 top-0 flex h-5 w-[18px] cursor-pointer items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-cyan-600 dark:hover:bg-gray-800"
+          onClick={(event) => {
+            event.stopPropagation();
+            setExpanded((value) => !value);
+          }}
+        >
+          <DownOutlined
+            style={{
+              fontSize: 10,
+              color: expanded ? '#0891b2' : undefined,
+              transition: 'transform 180ms ease, color 180ms ease',
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}
+          />
+        </button>
+      ) : null}
+    </div>
+  );
+};
+
+const renderTagValue = (tags?: FileTagItem[] | null, typeCode?: string) => {
+  if (!tags?.length || !typeCode) {
+    return <span className="text-xs text-gray-400">-</span>;
+  }
+
+  const tagItem = tags.find((item) => item.type_code === typeCode);
+
+  if (!tagItem) {
+    return <span className="text-xs text-gray-400">-</span>;
+  }
+
+  const optionNames = tagItem.option_names?.length
+    ? tagItem.option_names
+    : tagItem.options?.map(
+        (option) => option.option_name || option.option_code,
+      ) || [];
+
+  if (!optionNames.length) {
+    return <span className="text-xs text-gray-400">-</span>;
+  }
+
+  return (
+    <CollapsibleTextList items={optionNames} defaultCount={1} variant="cyan" />
+  );
+};
+
+type ApproverListProps = {
+  approvers?: ApproverItem[];
+  defaultCount?: number;
+};
+
+const ApproverList: React.FC<ApproverListProps> = ({
   approvers = [],
   defaultCount = 1,
 }) => {
   const [expanded, setExpanded] = useState(false);
 
-  if (!approvers || approvers.length === 0) {
-    return <Text type="secondary">-</Text>;
+  if (!approvers.length) {
+    return <span className="text-xs text-gray-400">-</span>;
   }
 
   const visibleApprovers = expanded
@@ -546,207 +605,87 @@ const CollapsibleApproverList: React.FC<CollapsibleApproverListProps> = ({
 
   return (
     <div
+      className="relative w-full min-w-0"
       style={{
-        position: 'relative',
-        width: '100%',
-        minWidth: 0,
-        boxSizing: 'border-box',
-        paddingRight: hasMore ? 18 : 0,
+        paddingRight: hasMore ? 20 : 0,
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 4,
-          width: '100%',
-          minWidth: 0,
-          alignItems: 'flex-start',
-        }}
-      >
-        {visibleApprovers.map((item, index) => {
-          const name = getApproverName(item);
+      <div className="flex min-w-0 flex-col items-start gap-1.5">
+        {visibleApprovers.map((approver, index) => {
+          const name = getApproverName(approver);
+
           const key =
-            item.user_id ||
-            item.approver_user_id ||
-            item.id ||
+            approver.user_id ||
+            approver.approver_user_id ||
+            approver.id ||
             `${name}_${index}`;
 
           return (
-            <Tag
+            <div
               key={key}
               title={name}
-              style={{
-                marginRight: 0,
-                marginBottom: 2,
-                backgroundColor: '#f3f4f6',
-                borderColor: '#d1d5db',
-                color: '#4b5563',
-                fontSize: 12,
-                lineHeight: '20px',
-                borderRadius: 4,
-                padding: '0 8px',
-                whiteSpace: 'normal',
-                wordBreak: 'break-all',
-                maxWidth: '100%',
-              }}
+              className="flex max-w-full items-center gap-2"
             >
-              {name}
-            </Tag>
+              <Avatar
+                size={24}
+                src={approver.avatar || undefined}
+                className="shrink-0 bg-blue-100 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+              >
+                {name === '-' ? '?' : name.slice(0, 1).toUpperCase()}
+              </Avatar>
+
+              <span className="min-w-0 max-w-[105px] truncate text-xs text-gray-700 dark:text-gray-300">
+                {name}
+              </span>
+            </div>
           );
         })}
       </div>
 
       {hasMore ? (
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={() => setExpanded((value) => !value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              setExpanded((value) => !value);
-            }
-          }}
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 1,
-            cursor: 'pointer',
-            color: '#0f766e',
-            fontSize: 12,
-            lineHeight: '18px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 16,
-            height: 18,
+        <button
+          type="button"
+          aria-label={expanded ? '收起审批人' : '展开审批人'}
+          title={
+            expanded
+              ? '收起审批人'
+              : `展开剩余 ${approvers.length - defaultCount} 位审批人`
+          }
+          className="absolute right-0 top-0 flex h-6 w-[18px] items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-cyan-600 dark:hover:bg-gray-800"
+          onClick={(event) => {
+            event.stopPropagation();
+            setExpanded((value) => !value);
           }}
         >
           <DownOutlined
             style={{
               fontSize: 10,
-              color: expanded ? PEACOCK_GREEN : '#9ca3af',
+              color: expanded ? '#0891b2' : undefined,
               transition: 'transform 180ms ease, color 180ms ease',
               transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
             }}
           />
-        </span>
+        </button>
       ) : null}
     </div>
   );
 };
 
 const renderApproverList = (approvers?: ApproverItem[] | null) => {
-  return (
-    <CollapsibleApproverList approvers={approvers || []} defaultCount={1} />
-  );
-};
-
-const renderApproverConfig = (config?: ApproverConfig | null) => {
-  if (!config) {
-    return null;
-  }
-
-  const department = config.department;
-  const approverList = config.approvers || [];
-
-  return (
-    <Card
-      size="small"
-      style={{ marginBottom: 12 }}
-      bodyStyle={{ padding: 12 }}
-      title={
-        <Space size={8} wrap>
-          <span>审批配置</span>
-
-          {department?.department_name || department?.department_id ? (
-            <Tag color="blue">
-              {department.department_name || department.department_id}
-            </Tag>
-          ) : (
-            <Tag>未匹配部门</Tag>
-          )}
-
-          {department?.is_global_reference_kb ? (
-            <Tag color="red">全局参考库</Tag>
-          ) : department?.is_reference_kb ? (
-            <Tag color="purple">部门参考库</Tag>
-          ) : (
-            <Tag>普通知识库</Tag>
-          )}
-        </Space>
-      }
-    >
-      <Space direction="vertical" size={6} style={{ width: '100%' }}>
-        <div>
-          <Text strong style={{ fontSize: 12 }}>
-            审批人：
-          </Text>{' '}
-          {approverList.length > 0 ? (
-            <Space wrap size={4}>
-              {approverList.map((item, index) => {
-                const displayName =
-                  item.user_name || item.mdm_name || item.user_id || '未知人员';
-
-                const tooltipText = [
-                  item.email,
-                  item.mdm_code ? `MDM：${item.mdm_code}` : '',
-                  item.department_name,
-                  item.role_name,
-                ]
-                  .filter(Boolean)
-                  .join(' / ');
-
-                return (
-                  <Tooltip
-                    key={`config-approver-${item.user_id}-${index}`}
-                    title={tooltipText || item.user_id}
-                  >
-                    <Tag
-                      style={{
-                        marginRight: 0,
-                        marginBottom: 2,
-                        backgroundColor: PEACOCK_GREEN,
-                        borderColor: PEACOCK_GREEN,
-                        color: '#fff',
-                      }}
-                    >
-                      {displayName}
-                    </Tag>
-                  </Tooltip>
-                );
-              })}
-            </Space>
-          ) : (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              暂无
-            </Text>
-          )}
-        </div>
-      </Space>
-    </Card>
-  );
-};
-
-type StagedFileListPageProps = {
-  kbId?: string;
+  return <ApproverList approvers={approvers || []} defaultCount={1} />;
 };
 
 const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
   kbId: propKbId,
 }) => {
-  const [statusSelectOpen, setStatusSelectOpen] = useState(false);
   const params = useParams<{ id: string }>();
   const kbId = propKbId || params.id || '';
 
   const [loading, setLoading] = useState(false);
   const [dataSource, setDataSource] = useState<StagedFileItem[]>([]);
+
   const [isAdmin, setIsAdmin] = useState(false);
   const [isApprover, setIsApprover] = useState(false);
-  const [approverConfig, setApproverConfig] = useState<ApproverConfig | null>(
-    null,
-  );
 
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -766,7 +705,7 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
     try {
       setLoading(true);
 
-      const res = await fetch('/v1/document/staged_file/list', {
+      const response = await fetch('/v1/document/staged_file/list', {
         method: 'POST',
         headers: {
           Authorization: getAuthorization() || '',
@@ -781,26 +720,27 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
         }),
       });
 
-      const result = await res.json();
+      const result = (await response.json()) as ListResponse;
 
       if (result.code !== 0 && result.code !== 200) {
+        setDataSource([]);
+        setTotal(0);
         message.error(result.message || '获取文件列表失败');
         return;
       }
 
-      const data: ListResponseData = result.data || {};
+      const data = result.data;
 
-      const normalizedApproverConfig = normalizeApproverConfig(data);
-
-      setDataSource(data.items || []);
-      setTotal(data.total || 0);
-      setIsAdmin(!!data.is_admin);
-      setIsApprover(!!data.is_approver);
-      setApproverConfig(normalizedApproverConfig);
-      setPage(data.page || nextPage);
-      setPageSize(data.page_size || nextPageSize);
+      setDataSource(data?.items || []);
+      setTotal(data?.total || 0);
+      setIsAdmin(Boolean(data?.is_admin));
+      setIsApprover(Boolean(data?.is_approver));
+      setPage(data?.page || nextPage);
+      setPageSize(data?.page_size || nextPageSize);
     } catch (error) {
       console.error(error);
+      setDataSource([]);
+      setTotal(0);
       message.error('获取文件列表请求失败');
     } finally {
       setLoading(false);
@@ -811,10 +751,11 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
     if (kbId) {
       fetchStagedFiles(1, pageSize, status);
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
-  const tagColumns: ColumnsType<StagedFileItem> = useMemo(() => {
+  const tagColumns = useMemo<ColumnDef<StagedFileItem>[]>(() => {
     const tagTypeMap = new Map<
       string,
       {
@@ -835,158 +776,149 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
     });
 
     return Array.from(tagTypeMap.values()).map((tagType) => ({
-      title: tagType.type_name,
-      dataIndex: 'tags',
-      key: `tag_${tagType.type_code}`,
-      width: 120,
-      render: (tags: FileTagItem[] | null | undefined) =>
-        renderTagValue(tags, tagType.type_code),
-      onCell: () => ({
-        style: {
-          whiteSpace: 'normal',
-          wordBreak: 'break-all',
-          verticalAlign: 'top',
-        },
-      }),
+      id: `tag_${tagType.type_code}`,
+      header: tagType.type_name,
+      cell: ({ row }) => renderTagValue(row.original.tags, tagType.type_code),
     }));
   }, [dataSource]);
 
-  const columns: ColumnsType<StagedFileItem> = [
-    {
-      title: '文件名',
-      dataIndex: 'filename',
-      key: 'filename',
-      // width: 180,
-      render: (text: string) => (
-        <div style={{ whiteSpace: 'normal', wordBreak: 'break-all' }}>
-          <Text style={{ fontSize: 12 }}>{text}</Text>
-        </div>
-      ),
-      onCell: () => ({
-        style: {
-          whiteSpace: 'normal',
-          wordBreak: 'break-all',
-          verticalAlign: 'top',
-        },
-      }),
-    },
-    {
-      title: '上传人',
-      dataIndex: 'user_name',
-      key: 'user_name',
-      width: 110,
-      render: (_value, record) => (
-        <Text style={{ fontSize: 12 }}>
-          {record.user_name || record.user_id || '-'}
-        </Text>
-      ),
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
-        },
-      }),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (value: string | undefined) => {
-        const normalizedStatus = String(value || '').trim();
+  const columns = useMemo<ColumnDef<StagedFileItem>[]>(
+    () => [
+      {
+        accessorKey: 'filename',
+        header: '文件名',
+        cell: ({ row }) => {
+          const filename = row.original.filename || '-';
 
-        return (
-          <Tag
-            style={{
-              ...(statusColorMap[normalizedStatus] || {
-                color: '#6b7280',
-                backgroundColor: '#f9fafb',
-                borderColor: '#d1d5db',
-              }),
-              marginInlineEnd: 0,
-              borderRadius: 4,
-              fontSize: 12,
-              lineHeight: '20px',
-              padding: '0 7px',
-              fontWeight: 500,
-            }}
-          >
-            {statusTextMap[normalizedStatus] || normalizedStatus || '-'}
-          </Tag>
-        );
+          return (
+            <div
+              className="w-full max-w-[235px] truncate text-sm text-gray-700 dark:text-gray-200"
+              title={filename}
+            >
+              {filename}
+            </div>
+          );
+        },
       },
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
-        },
-      }),
-    },
+      {
+        accessorKey: 'version',
+        header: '版本',
+        cell: ({ row }) => {
+          const version = row.original.version?.trim();
 
-    ...tagColumns,
+          if (!version) {
+            return <span className="text-xs text-gray-400">-</span>;
+          }
 
-    {
-      title: '审批人',
-      dataIndex: 'approvers',
-      key: 'approvers',
-      width: 160,
-      render: (_value, record) => renderApproverList(getRowApprovers(record)),
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
+          return (
+            <span className="inline-flex items-center whitespace-nowrap rounded border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700 dark:border-cyan-800 dark:bg-cyan-950 dark:text-cyan-300">
+              {version}
+            </span>
+          );
         },
-      }),
-    },
-    {
-      title: '大小',
-      dataIndex: 'size',
-      key: 'size',
-      render: (value: number | undefined) => (
-        <span className="text-xs text-gray-400">{formatFileSize(value)}</span>
-      ),
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
+      },
+      {
+        accessorKey: 'user_name',
+        header: '上传人',
+        cell: ({ row }) => {
+          const userName =
+            row.original.user_name || row.original.user_id || '-';
+
+          return (
+            <div className="min-w-0">
+              <div
+                className="max-w-[115px] truncate text-sm font-medium text-gray-700 dark:text-gray-200"
+                title={userName}
+              >
+                {userName}
+              </div>
+
+              {row.original.user_email ? (
+                <div
+                  className="mt-0.5 max-w-[115px] truncate text-xs text-gray-500"
+                  title={row.original.user_email}
+                >
+                  {row.original.user_email}
+                </div>
+              ) : null}
+            </div>
+          );
         },
-      }),
+      },
+      {
+        accessorKey: 'status',
+        header: '状态',
+        cell: ({ row }) => (
+          <StatusProgressCell
+            status={row.original.status}
+            errorMsg={row.original.error_msg}
+          />
+        ),
+      },
+
+      ...tagColumns,
+
+      {
+        id: 'approvers',
+        header: '审批人',
+        cell: ({ row }) => (
+          <div className="max-w-[145px]">
+            {renderApproverList(getRowApprovers(row.original))}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'size',
+        header: '大小',
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-xs text-gray-500">
+            {formatFileSize(row.original.size)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'created_at',
+        header: '上传时间',
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-xs text-gray-500">
+            {row.original.created_at || '-'}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'approved_at',
+        header: '审批时间',
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-xs text-gray-500">
+            {row.original.approved_at || '-'}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'committed_at',
+        header: '入库时间',
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-xs text-gray-500">
+            {row.original.committed_at || '-'}
+          </span>
+        ),
+      },
+    ],
+    [tagColumns],
+  );
+
+  const table = useReactTable({
+    data: dataSource,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    state: {
+      pagination: {
+        pageIndex: page - 1,
+        pageSize,
+      },
     },
-    {
-      title: '上传时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (value: string | undefined) => (
-        <span className="text-xs text-gray-400">{value || '-'}</span>
-      ),
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
-        },
-      }),
-    },
-    {
-      title: '审批时间',
-      dataIndex: 'approved_at',
-      key: 'approved_at',
-      render: (value: string | null | undefined) => (
-        <span className="text-xs text-text-secondary">{value || '-'}</span>
-      ),
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
-        },
-      }),
-    },
-    {
-      title: '入库时间',
-      dataIndex: 'committed_at',
-      key: 'committed_at',
-      render: (value: string | null | undefined) => (
-        <span className="text-xs text-text-secondary">{value || '-'}</span>
-      ),
-      onCell: () => ({
-        style: {
-          verticalAlign: 'top',
-        },
-      }),
-    },
-  ];
+  });
 
   const handleStatusChange = (value: string) => {
     setStatus(value);
@@ -994,71 +926,120 @@ const StagedFileListPage: React.FC<StagedFileListPageProps> = ({
     fetchStagedFiles(1, pageSize, value);
   };
 
-  const viewTag = isAdmin ? (
-    <Tag color="gold">管理员视图</Tag>
-  ) : isApprover ? (
-    <Tag color="green">审批人视图</Tag>
-  ) : (
-    <Tag>个人视图</Tag>
-  );
+  const viewText = isAdmin
+    ? '管理员视图'
+    : isApprover
+      ? '审批人视图'
+      : '个人视图';
 
-  // 在 return 中：
   return (
-    <div
-      style={{
-        fontSize: 12,
-        lineHeight: 1.3,
-        display: 'flex',
-        flexDirection: 'column',
-        height: 'calc(100vh - 120px)',
-        minHeight: 0,
-        overflow: 'hidden',
-      }}
-    >
-      {/* 标题 */}
-      <div className="mb-4 flex shrink-0 items-center justify-between">
-        <span className="text-2xl font-semibold">上传日志</span>
-        <Space size={8}>
-          <Select
-            style={{ width: 120 }}
-            size="small"
-            value={status}
-            options={statusOptions}
-            onChange={handleStatusChange}
-          />
-        </Space>
-      </div>
+    <section className="min-w-[880px] p-5">
+      {/* 页面标题和筛选 */}
+      <div className="flex flex-wrap items-end justify-between gap-4 pb-4">
+        <div>
+          <div className="pb-1 text-2xl font-semibold">上传日志</div>
 
-      {/* 表格滚动区域 */}
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <Table
-          size="small"
-          bordered
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={dataSource}
-          tableLayout="auto"
-          pagination={false}
-          style={{ height: '100%' }}
-          scroll={{ x: 'max-content', y: 600 }} // 这里改成具体数值
-        />
-      </div>
+          <div className="text-sm text-text-secondary">
+            查看文件上传、审批和入库记录
+            <span className="ml-2 text-xs text-gray-400">{viewText}</span>
+          </div>
+        </div>
 
-      {/* 分页 */}
-      <div className="mt-2 flex shrink-0 items-center justify-end pb-3 pr-3">
-        <RAGFlowPagination
-          current={page}
-          pageSize={pageSize}
-          total={total}
-          onChange={(nextPage, nextPageSize) => {
-            setPage(nextPage);
-            setPageSize(nextPageSize);
-            fetchStagedFiles(nextPage, nextPageSize, status);
+        <Select
+          style={{
+            width: 140,
           }}
+          size="small"
+          value={status}
+          options={statusOptions}
+          onChange={handleStatusChange}
         />
       </div>
-    </div>
+
+      <div className="flex min-h-[calc(100vh-220px)] flex-col">
+        {/* 无外边框表格 */}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <Table rootClassName="max-h-[calc(100vh-260px)]">
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => {
+                    const columnId = header.column.id;
+
+                    return (
+                      <TableHead
+                        key={header.id}
+                        className={getColumnClassName(columnId)}
+                      >
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                      </TableHead>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableHeader>
+
+            <TableBody className="relative">
+              {!loading && table.getRowModel().rows.length > 0 ? (
+                table.getRowModel().rows.map((row) => (
+                  <TableRow
+                    key={row.original.id}
+                    className="group transition-colors hover:bg-gray-50/70 dark:hover:bg-gray-900/40"
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      const columnId = cell.column.id;
+
+                      return (
+                        <TableCell
+                          key={cell.id}
+                          className={`${getColumnClassName(
+                            columnId,
+                          )} align-top`}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={columns.length}
+                    className="h-24 text-center text-gray-500"
+                  >
+                    {loading ? '正在加载...' : '暂无上传日志'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* 分页 */}
+        <div className="mt-3 flex shrink-0 items-center justify-end pb-3 pr-3">
+          <RAGFlowPagination
+            current={page}
+            pageSize={pageSize}
+            total={total}
+            onChange={(nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+
+              fetchStagedFiles(nextPage, nextPageSize, status);
+            }}
+          />
+        </div>
+      </div>
+    </section>
   );
 };
 

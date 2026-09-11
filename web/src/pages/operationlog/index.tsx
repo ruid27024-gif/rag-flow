@@ -27,14 +27,9 @@ import {
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { getAuthorization } from '@/utils/authorization-util';
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
-import { CircleAlert, Filter, Search } from 'lucide-react';
+import { Filter, Search } from 'lucide-react';
 
 const authHeaders = {
   Authorization: getAuthorization() || '',
@@ -301,10 +296,12 @@ export default function OperationLogIndex() {
 
           return (
             <span
-              className={`inline-flex h-6 items-center whitespace-nowrap rounded border px-2 text-xs font-medium ${getActionStyle(
+              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${getActionStyle(
                 currentAction,
               )}`}
             >
+              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />{' '}
+              {/* 装饰点 */}
               {getActionLabel(currentAction)}
             </span>
           );
@@ -318,84 +315,87 @@ export default function OperationLogIndex() {
 
           return (
             <span
-              className={`inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-xs font-medium ${
+              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
                 success
-                  ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300'
-                  : 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300'
+                  ? 'bg-green-50/80 text-green-700 dark:bg-green-950/50 dark:text-green-300'
+                  : 'bg-red-50/80 text-red-700 dark:bg-red-950/50 dark:text-red-300'
               }`}
             >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${success ? 'bg-green-500' : 'bg-red-500'}`}
+              />
               {statusMap[row.original.status] || row.original.status || '-'}
             </span>
           );
         },
       },
-      {
-        accessorKey: 'message',
-        header: '说明',
-        cell: ({ row }) => {
-          const messageText = row.original.message?.trim() || '';
-          const isSuccess = row.original.status === 'success';
+      // {
+      //   accessorKey: 'message',
+      //   header: '说明',
+      //   cell: ({ row }) => {
+      //     const messageText = row.original.message?.trim() || '';
+      //     const isSuccess = row.original.status === 'success';
 
-          if (!messageText) {
-            return <span className="block w-[210px] pr-8">-</span>;
-          }
+      //     if (!messageText) {
+      //       return <span className="block w-[210px] pr-8">-</span>;
+      //     }
 
-          return (
-            <div className="flex w-[210px] max-w-[210px] items-center gap-3 pr-8">
-              <span className="min-w-0 flex-1 truncate" title={messageText}>
-                {messageText}
-              </span>
+      //     return (
+      //       <div className="flex w-[210px] max-w-[210px] items-center gap-3 pr-8">
+      //         <span className="min-w-0 flex-1 truncate" title={messageText}>
+      //           {messageText}
+      //         </span>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="查看完整说明"
-                    className={`flex size-5 shrink-0 items-center justify-center rounded-full transition-colors focus:outline-none ${
-                      isSuccess
-                        ? 'text-green-500 hover:bg-green-50 hover:text-green-600'
-                        : 'text-red-500 hover:bg-red-50 hover:text-red-600'
-                    }`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                    }}
-                  >
-                    <CircleAlert className="size-4" />
-                  </button>
-                </TooltipTrigger>
+      //         <Tooltip>
+      //           <TooltipTrigger asChild>
+      //             <button
+      //               type="button"
+      //               aria-label="查看完整说明"
+      //               className={`flex size-5 shrink-0 items-center justify-center rounded-full transition-colors focus:outline-none ${
+      //                 isSuccess
+      //                   ? 'text-green-500 hover:bg-green-50 hover:text-green-600'
+      //                   : 'text-red-500 hover:bg-red-50 hover:text-red-600'
+      //               }`}
+      //               onClick={(event) => {
+      //                 event.stopPropagation();
+      //               }}
+      //             >
+      //               <CircleAlert className="size-4" />
+      //             </button>
+      //           </TooltipTrigger>
 
-                <TooltipContent
-                  side="top"
-                  align="end"
-                  sideOffset={8}
-                  className={`z-[100] w-[320px] max-w-[calc(100vw-32px)] rounded-md border p-3 text-xs text-white shadow-xl ${
-                    isSuccess
-                      ? 'border-green-700 bg-green-950'
-                      : 'border-red-700 bg-red-950'
-                  }`}
-                >
-                  <div
-                    className={`mb-1.5 font-medium ${
-                      isSuccess ? 'text-green-300' : 'text-red-300'
-                    }`}
-                  >
-                    说明详情
-                  </div>
+      //           <TooltipContent
+      //             side="top"
+      //             align="end"
+      //             sideOffset={8}
+      //             className={`z-[100] w-[320px] max-w-[calc(100vw-32px)] rounded-md border p-3 text-xs text-white shadow-xl ${
+      //               isSuccess
+      //                 ? 'border-green-700 bg-green-950'
+      //                 : 'border-red-700 bg-red-950'
+      //             }`}
+      //           >
+      //             <div
+      //               className={`mb-1.5 font-medium ${
+      //                 isSuccess ? 'text-green-300' : 'text-red-300'
+      //               }`}
+      //             >
+      //               说明详情
+      //             </div>
 
-                  <div className="whitespace-pre-wrap break-words leading-5 text-white">
-                    {messageText}
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          );
-        },
-      },
+      //             <div className="whitespace-pre-wrap break-words leading-5 text-white">
+      //               {messageText}
+      //             </div>
+      //           </TooltipContent>
+      //         </Tooltip>
+      //       </div>
+      //     );
+      //   },
+      // },
       {
         accessorKey: 'operation_time',
         header: '时间',
         cell: ({ row }) => (
-          <span className="block whitespace-nowrap pl-8">
+          <span className="block whitespace-nowrap">
             {row.original.operation_time || '-'}
           </span>
         ),
@@ -409,7 +409,7 @@ export default function OperationLogIndex() {
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 whitespace-nowrap px-3 text-xs"
+            className="h-9 w-9 rounded-full border-blue-200 bg-gradient-to-b from-blue-50 to-blue-100 p-0 text-xs font-medium text-blue-700 shadow-sm transition-all hover:border-blue-300 hover:from-blue-100 hover:to-blue-200 hover:text-blue-800 hover:shadow-md active:scale-95 dark:border-blue-800 dark:from-blue-950 dark:to-blue-900 dark:text-blue-300 dark:hover:from-blue-900 dark:hover:to-blue-800"
             onClick={(event) => {
               event.stopPropagation();
               setSelectedLog(row.original);

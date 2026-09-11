@@ -115,6 +115,22 @@ class DocumentService(CommonService):
 
     @classmethod
     @DB.connection_context()
+    def get_doc_ids_by_file_name(cls, file_name, kb_ids=None):
+        if not file_name:
+            return []
+
+        query = Document.select(Document.id)
+
+        if kb_ids:
+            query = query.where(Document.kb_id.in_(kb_ids))
+
+        query = query.where(Document.name.contains(file_name.strip()))
+
+        return [doc.id for doc in query]
+
+
+    @classmethod
+    @DB.connection_context()
     def get_list(cls, kb_id, page_number, items_per_page,
                  orderby, desc, keywords, id, name, suffix=None, run = None, doc_ids=None):
         fields = cls.get_cls_model_fields()
@@ -159,53 +175,254 @@ class DocumentService(CommonService):
             raise RuntimeError("Exceed the maximum length of file name!")
         return True
 
+    # @classmethod
+    # @DB.connection_context()
+    # def get_by_kb_id(cls, kb_id, page_number, items_per_page,
+    #                  orderby, desc, keywords, run_status, types, suffix, doc_ids=None):
+    #     fields = cls.get_cls_model_fields()
+    #     if keywords:
+    #         docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
+    #             .join(File2Document, on=(File2Document.document_id == cls.model.id))\
+    #             .join(File, on=(File.id == File2Document.file_id))\
+    #             .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
+    #             .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
+    #             .where(
+    #                 (cls.model.kb_id == kb_id),
+    #                 (fn.LOWER(cls.model.name).contains(keywords.lower()))
+    #             )
+    #     else:
+    #         docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
+    #             .join(File2Document, on=(File2Document.document_id == cls.model.id))\
+    #             .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
+    #             .join(File, on=(File.id == File2Document.file_id))\
+    #             .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
+    #             .where(cls.model.kb_id == kb_id)
+
+    #     if doc_ids:
+    #         docs = docs.where(cls.model.id.in_(doc_ids))
+    #     if run_status:
+    #         docs = docs.where(cls.model.run.in_(run_status))
+    #     if types:
+    #         docs = docs.where(cls.model.type.in_(types))
+    #     if suffix:
+    #         docs = docs.where(cls.model.suffix.in_(suffix))
+
+    #     # 只展示 status 不为 2 的文档
+    #     docs = docs.where(cls.model.status != "2")
+
+
+    #     count = docs.count()
+    #     if desc:
+    #         docs = docs.order_by(cls.model.getter_by(orderby).desc())
+    #     else:
+    #         docs = docs.order_by(cls.model.getter_by(orderby).asc())
+
+
+    #     if page_number and items_per_page:
+    #         docs = docs.paginate(page_number, items_per_page)
+
+    #     return list(docs.dicts()), count
+    
     @classmethod
     @DB.connection_context()
-    def get_by_kb_id(cls, kb_id, page_number, items_per_page,
-                     orderby, desc, keywords, run_status, types, suffix, doc_ids=None):
+    def get_by_kb_id(
+        cls,
+        kb_id,
+        page_number,
+        items_per_page,
+        orderby,
+        desc,
+        keywords,
+        run_status,
+        types,
+        suffix,
+        doc_ids=None,
+    ):
+        """
+        获取知识库文档列表。
+
+        分页规则：
+        - page=0 -> 第1页
+        - page=1 -> 第1页
+        - page=2 -> 第2页
+        - page=3 -> 第3页
+
+        默认：
+        - page=0
+        - page_size=50
+        """
+
+        # ---------------------------------------------------------
+        # 处理分页参数
+        # ---------------------------------------------------------
+        try:
+            page_number = int(page_number or 0)
+        except (TypeError, ValueError):
+            page_number = 0
+
+        try:
+            items_per_page = int(items_per_page or 50)
+        except (TypeError, ValueError):
+            items_per_page = 50
+
+        # page 最小为 0
+        page_number = max(page_number, 0)
+
+        # page_size 最小为 1，最大限制为 100
+        items_per_page = min(
+            max(items_per_page, 1),
+            100,
+        )
+
+        # 你的业务规则：
+        # page=0 和 page=1 都表示第一页
+        #
+        # page=0 -> offset=0
+        # page=1 -> offset=0
+        # page=2 -> offset=page_size
+        # page=3 -> offset=page_size*2
+        offset = max(page_number - 1, 0) * items_per_page
+
+        # ---------------------------------------------------------
+        # 获取字段
+        # ---------------------------------------------------------
         fields = cls.get_cls_model_fields()
+
+        # ---------------------------------------------------------
+        # 构造查询条件
+        # ---------------------------------------------------------
+        conditions = [
+            cls.model.kb_id == kb_id,
+            cls.model.status != "2",
+        ]
+
         if keywords:
-            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
-                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
-                .join(File, on=(File.id == File2Document.file_id))\
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
-                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
-                .where(
-                    (cls.model.kb_id == kb_id),
-                    (fn.LOWER(cls.model.name).contains(keywords.lower()))
+            conditions.append(
+                fn.LOWER(cls.model.name).contains(
+                    keywords.lower()
                 )
-        else:
-            docs = cls.model.select(*[*fields, UserCanvas.title.alias("pipeline_name"), User.nickname])\
-                .join(File2Document, on=(File2Document.document_id == cls.model.id))\
-                .join(UserCanvas, on=(cls.model.pipeline_id == UserCanvas.id), join_type=JOIN.LEFT_OUTER)\
-                .join(File, on=(File.id == File2Document.file_id))\
-                .join(User, on=(cls.model.created_by == User.id), join_type=JOIN.LEFT_OUTER)\
-                .where(cls.model.kb_id == kb_id)
+            )
 
         if doc_ids:
-            docs = docs.where(cls.model.id.in_(doc_ids))
+            conditions.append(
+                cls.model.id.in_(doc_ids)
+            )
+
         if run_status:
-            docs = docs.where(cls.model.run.in_(run_status))
+            conditions.append(
+                cls.model.run.in_(run_status)
+            )
+
         if types:
-            docs = docs.where(cls.model.type.in_(types))
+            conditions.append(
+                cls.model.type.in_(types)
+            )
+
         if suffix:
-            docs = docs.where(cls.model.suffix.in_(suffix))
+            conditions.append(
+                cls.model.suffix.in_(suffix)
+            )
 
-        # 只展示 status 不为 2 的文档
-        docs = docs.where(cls.model.status != "2")
+        # ---------------------------------------------------------
+        # 查询基础文档数据
+        # ---------------------------------------------------------
+        docs = (
+            cls.model
+            .select(
+                *[
+                    *fields,
+                    UserCanvas.title.alias(
+                        "pipeline_name"
+                    ),
+                    User.nickname,
+                ]
+            )
+            # Document -> File2Document
+            .join(
+                File2Document,
+                on=(
+                    File2Document.document_id
+                    == cls.model.id
+                ),
+            )
+            # File2Document -> File
+            .join(
+                File,
+                on=(
+                    File.id
+                    == File2Document.file_id
+                ),
+            )
+            # 回到 Document 表
+            .switch(cls.model)
+            # Document -> UserCanvas
+            .join(
+                UserCanvas,
+                on=(
+                    cls.model.pipeline_id
+                    == UserCanvas.id
+                ),
+                join_type=JOIN.LEFT_OUTER,
+            )
+            # 回到 Document 表
+            .switch(cls.model)
+            # Document -> User
+            .join(
+                User,
+                on=(
+                    cls.model.created_by
+                    == User.id
+                ),
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .where(*conditions)
+        )
 
+        # ---------------------------------------------------------
+        # 查询总数
+        # ---------------------------------------------------------
+        total = docs.count()
 
-        count = docs.count()
+        # ---------------------------------------------------------
+        # 排序
+        # ---------------------------------------------------------
+        order_field = cls.model.getter_by(orderby)
+
         if desc:
-            docs = docs.order_by(cls.model.getter_by(orderby).desc())
+            order_expression = order_field.desc()
         else:
-            docs = docs.order_by(cls.model.getter_by(orderby).asc())
+            order_expression = order_field.asc()
 
+        docs = docs.order_by(order_expression)
 
-        if page_number and items_per_page:
-            docs = docs.paginate(page_number, items_per_page)
+        # ---------------------------------------------------------
+        # 关键：始终执行数据库分页
+        # ---------------------------------------------------------
+        docs = (
+            docs
+            .limit(items_per_page)
+            .offset(offset)
+        )
 
-        return list(docs.dicts()), count
+        # ---------------------------------------------------------
+        # 执行查询
+        # ---------------------------------------------------------
+        result = list(docs.dicts())
+
+        print(
+            "page:",
+            page_number,
+            "page_size:",
+            items_per_page,
+            "offset:",
+            offset,
+            "result_count:",
+            len(result),
+            "total:",
+            total,
+        )
+
+        return result, total
     
     @classmethod
     @DB.connection_context()
@@ -1405,6 +1622,16 @@ class DocumentService(CommonService):
           Example: {"tags": ["foo","bar"]} -> meta["tags"]["['foo', 'bar']"] = [doc_id]
         - Expects meta_fields is a dict.
         Use when existing callers rely on the old list-as-string semantics.
+        {
+            "学校": {
+                "清华大学": ["doc_1", "doc_2"],
+                "北京大学": ["doc_3"],
+            },
+            "类型": {
+                "通知": ["doc_1", "doc_3"],
+                "公告": ["doc_2"],
+            },
+        }
         """
         fields = [
             cls.model.id,
@@ -1420,6 +1647,7 @@ class DocumentService(CommonService):
                 if v not in meta[k]:
                     meta[k][v] = []
                 meta[k][v].append(doc_id)
+
         return meta
 
     @classmethod
@@ -2118,6 +2346,206 @@ class DocumentService(CommonService):
             bucket, name = File2DocumentService.get_storage_address(doc_id=doc["id"])
             queue_tasks(doc, bucket, name, 0)
 
+        # 检索页面过滤逻辑
+
+
+
+
+    @staticmethod
+    def _normalize_meta_value(value):
+        """
+        将 meta 中的值统一转换成字符串集合。
+
+        支持：
+        1. 普通字符串：
+            "公开"
+            -> {"公开"}
+
+        2. 原生列表：
+            ["打浆", "质量检测与控制"]
+            -> {"打浆", "质量检测与控制"}
+
+        3. Python 列表字符串：
+            "['打浆', '质量检测与控制']"
+            -> {"打浆", "质量检测与控制"}
+
+        4. JSON 列表字符串：
+            '["打浆", "质量检测与控制"]'
+            -> {"打浆", "质量检测与控制"}
+        """
+        if value is None:
+            return set()
+
+        if isinstance(value, (list, tuple, set)):
+            return {
+                str(item).strip()
+                for item in value
+                if item is not None and str(item).strip()
+            }
+
+        if not isinstance(value, str):
+            text = str(value).strip()
+            return {text} if text else set()
+
+        text = value.strip()
+
+        if not text:
+            return set()
+
+        # 尝试解析 Python 列表字符串：
+        # "['打浆', '质量检测与控制']"
+        try:
+            import ast
+            import json
+            parsed = ast.literal_eval(text)
+
+            if isinstance(parsed, (list, tuple, set)):
+                return {
+                    str(item).strip()
+                    for item in parsed
+                    if item is not None and str(item).strip()
+                }
+
+            if parsed is not None:
+                parsed_text = str(parsed).strip()
+                return {parsed_text} if parsed_text else set()
+
+        except (ValueError, SyntaxError):
+            pass
+
+        # 尝试解析 JSON 列表字符串：
+        # '["打浆", "质量检测与控制"]'
+        try:
+            parsed = json.loads(text)
+
+            if isinstance(parsed, (list, tuple, set)):
+                return {
+                    str(item).strip()
+                    for item in parsed
+                    if item is not None and str(item).strip()
+                }
+
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+
+        # 普通字符串
+        return {text}
+
+    @staticmethod
+    def _normalize_selected_values(value):
+        """
+        将前端传入的筛选值统一转换为集合。
+
+        例如：
+        "公开" -> {"公开"}
+        ["打浆", "调制"] -> {"打浆", "调制"}
+        "" -> set()
+        [] -> set()
+        """
+        if value is None:
+            return set()
+
+        if isinstance(value, (list, tuple, set)):
+            return {
+                str(item).strip()
+                for item in value
+                if item is not None and str(item).strip()
+            }
+
+        text = str(value).strip()
+
+        if not text:
+            return set()
+
+        return {text}
+
+    @classmethod
+    @DB.connection_context()
+    def get_doc_ids_by_tags(cls, kb_ids, tags):
+        """
+        根据前端选择的标签获取文档 ID。
+
+        匹配规则：
+
+        1. 同一个字段的多个值取并集（OR）
+            knowledge_category=["打浆", "调制"]
+
+            匹配：
+            - 包含“打浆”的文档
+            - 或包含“调制”的文档
+
+        2. 不同字段之间取交集（AND）
+            knowledge_category=["打浆"]
+            knowledge_level="公开"
+
+            必须同时满足：
+            - knowledge_category 包含“打浆”
+            - knowledge_level 等于“公开”
+
+        3. 用户没有选择任何标签
+            返回 None，调用方保持原来的检索逻辑。
+
+        4. 用户选择了标签但没有匹配文档
+            返回 []。
+        """
+        if not isinstance(tags, dict):
+            return None
+
+        # 过滤掉空字符串、空数组、None
+        selected_tags = {}
+
+        for field, value in tags.items():
+            selected_values = cls._normalize_selected_values(value)
+
+            if selected_values:
+                selected_tags[field] = selected_values
+
+        # 所有标签都是空值，保持原来的检索逻辑
+        if not selected_tags:
+            return None
+
+        if isinstance(kb_ids, str):
+            kb_ids = [kb_ids]
+
+        # 获取知识库下所有标签及其对应的文档 ID
+        meta = cls.get_meta_by_kbs(kb_ids)
+
+        final_doc_ids = None
+
+        for field, selected_values in selected_tags.items():
+            # 当前字段匹配到的文档 ID
+            # 同字段多个选项在这里取并集
+            field_doc_ids = set()
+
+            field_meta = meta.get(field, {})
+
+            for stored_value, doc_ids in field_meta.items():
+                # 例如：
+                # stored_value =
+                # "['打浆', '质量检测与控制']"
+                #
+                # 转换成：
+                # {"打浆", "质量检测与控制"}
+                stored_values = cls._normalize_meta_value(stored_value)
+
+                # 同一个字段内：
+                # 只要文档的值和用户选择值存在交集，就匹配
+                if stored_values & selected_values:
+                    field_doc_ids.update(doc_ids)
+
+            # 不同字段之间取交集
+            if final_doc_ids is None:
+                final_doc_ids = field_doc_ids
+            else:
+                final_doc_ids &= field_doc_ids
+
+            # 某个字段已经没有匹配结果，
+            # 后面继续求交集也一定为空
+            if not final_doc_ids:
+                return []
+
+        return list(final_doc_ids or [])
+
 
 def queue_raptor_o_graphrag_tasks(sample_doc_id, ty, priority, fake_doc_id="", doc_ids=[]):
     """
@@ -2306,3 +2734,8 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
             doc_id, kb.id, token_counts[doc_id], chunk_counts[doc_id], 0)
 
     return [d["id"] for d, _ in files]
+
+
+    
+
+

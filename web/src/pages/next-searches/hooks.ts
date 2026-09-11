@@ -151,6 +151,7 @@ export interface IllmSettingProps {
   frequency_penalty?: number;
   presence_penalty?: number;
 }
+export type SearchMode = 'mode1' | 'mode2' | 'mode3';
 interface IllmSettingEnableProps {
   temperatureEnabled?: boolean;
   topPEnabled?: boolean;
@@ -186,9 +187,11 @@ export interface ISearchAppDetailProps {
       method: string;
       manual: { key: string; op: string; value: string }[];
     };
+    mode?: SearchMode;
   };
   tenant_id: string;
   update_time: number;
+  tag: any;
 }
 
 interface SearchDetailResponse {

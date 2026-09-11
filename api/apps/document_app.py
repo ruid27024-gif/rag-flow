@@ -2074,19 +2074,101 @@ def create_parse_author_info_task_if_not_exists(doc_id):
 
     return create_parse_author_info_task(doc_id)
 
+# def get_staged_file_tags_map(stage_id):
+#     """
+#     查询暂存文件标签。
+#     返回结构：
+#     {
+#         type_code: [option_code_1, option_code_2]
+#     }
+#     """
+#     tag_rows = list(
+#         StagedFileTag.select().where(
+#             StagedFileTag.stage_id == stage_id
+#         )
+#     )
+
+#     tags_map = {}
+
+#     for row in tag_rows:
+#         type_code = row.type_code
+#         option_code = row.option_code
+
+#         if not type_code or not option_code:
+#             continue
+
+#         tags_map.setdefault(type_code, [])
+
+#         if option_code not in tags_map[type_code]:
+#             tags_map[type_code].append(option_code)
+
+#     return tags_map
+
 def get_staged_file_tags_map(stage_id):
     """
-    查询暂存文件标签。
+    查询暂存文件标签，并将 option_code 转换为 option_name。
+
     返回结构：
     {
-        type_code: [option_code_1, option_code_2]
+        type_code: [option_name_1, option_name_2]
+    }
+
+    例如：
+    {
+        "document_type": ["通知", "公告"]
     }
     """
+
     tag_rows = list(
-        StagedFileTag.select().where(
+        StagedFileTag
+        .select(
+            StagedFileTag.type_code,
+            StagedFileTag.option_code,
+        )
+        .where(
             StagedFileTag.stage_id == stage_id
         )
     )
+
+    if not tag_rows:
+        return {}
+
+    type_codes = {
+        row.type_code
+        for row in tag_rows
+        if row.type_code
+    }
+
+    option_codes = {
+        row.option_code
+        for row in tag_rows
+        if row.option_code
+    }
+
+    if not type_codes or not option_codes:
+        return {}
+
+    # 批量查询选项，避免每个标签单独查询一次数据库
+    option_rows = list(
+        KnowledgeTagOption
+        .select(
+            KnowledgeTagOption.type_code,
+            KnowledgeTagOption.option_code,
+            KnowledgeTagOption.option_name,
+        )
+        .where(
+            (KnowledgeTagOption.type_code.in_(type_codes))
+            & (KnowledgeTagOption.option_code.in_(option_codes))
+        )
+    )
+
+    option_name_map = {
+        (
+            row.type_code,
+            row.option_code,
+        ): row.option_name
+        for row in option_rows
+    }
 
     tags_map = {}
 
@@ -2097,10 +2179,18 @@ def get_staged_file_tags_map(stage_id):
         if not type_code or not option_code:
             continue
 
+        option_name = option_name_map.get(
+            (type_code, option_code),
+            option_code,
+        )
+
+        # 如果 option_name 为空，则保留 option_code
+        option_name = option_name or option_code
+
         tags_map.setdefault(type_code, [])
 
-        if option_code not in tags_map[type_code]:
-            tags_map[type_code].append(option_code)
+        if option_name not in tags_map[type_code]:
+            tags_map[type_code].append(option_name)
 
     return tags_map
 
@@ -2233,12 +2323,12 @@ def import_staged_files_and_run_by_callback(kb, staged_files, uploader_user_id):
             # 如果你确认 type_code 不会和作者解析字段冲突，可以顶层合并
             meta_fields.update(tags_map)
 
-            # 如果你还想保留来源信息，可以打开这几个字段
-            meta_fields.update({
-                "stage_id": staged.id,
-                "batch_id": staged.batch_id,
-                "source": "oa_upload",
-            })
+            # # 如果你还想保留来源信息，可以打开这几个字段
+            # meta_fields.update({
+            #     "stage_id": staged.id,
+            #     "batch_id": staged.batch_id,
+            #     "source": "oa_upload",
+            # })
 
             DocumentService.update_by_id(
                 doc_id,
@@ -4239,6 +4329,7 @@ def build_document_tag_metadata(doc_ids):
 #     except Exception as e:
 #         return server_error_response(e)
 from api.db.db_models import AdminUser
+
 @manager.route("/list", methods=["POST"])  # noqa: F821
 @login_required
 async def list_docs():
@@ -4607,24 +4698,55 @@ async def list_docs():
 
     metadata_condition = (
     req.get("metadata_condition", {}) or {}
-)
+    )
+
+    # 新增：读取作者、学校、日期
+    author = str(req.get("author", "") or "").strip()
+    school = str(req.get("school", "") or "").strip()
+    print(school)
+
+    publish_date_start = str(
+        req.get("publish_date_start", "") or ""
+    ).strip()
+
+    publish_date_end = str(
+        req.get("publish_date_end", "") or ""
+    ).strip()
+
+    # 兼容 publish_date 对象
+    publish_date = req.get("publish_date") or {}
+
+    if not publish_date_start:
+        publish_date_start = str(
+            publish_date.get("start", "") or ""
+        ).strip()
+
+    if not publish_date_end:
+        publish_date_end = str(
+            publish_date.get("end", "") or ""
+        ).strip()
+
 
 
     def clean_filter_values(values):
-        """
-        清洗前端传来的筛选数组。
-        """
         if not values:
             return []
 
         if not isinstance(values, list):
             values = [values]
 
-        return [
-            str(value).strip()
-            for value in values
-            if str(value).strip()
-        ]
+        result = []
+
+        for value in values:
+            if value is None:
+                continue
+
+            value = str(value).strip()
+
+            if value:
+                result.append(value)
+
+        return result
 
 
     def intersect_doc_ids(current_ids, new_ids):
@@ -4671,12 +4793,224 @@ async def list_docs():
                 "current_user_role": current_user_role,
             }
         )
+    def get_meta_field(meta, field):
+        """
+        从文档 metadata 中获取字段值。
 
+        兼容几种常见结构：
+        1. 直接结构：
+        {"author": "张三"}
+
+        2. meta_fields：
+        {"meta_fields": {"author": "张三"}}
+
+        3. meta_fields_display：
+        {"meta_fields_display": {"author": ["张三"]}}
+        """
+
+        if not isinstance(meta, dict):
+            return None
+
+        # 直接字段
+        if field in meta:
+            return meta.get(field)
+
+        # 常见嵌套字段
+        for container_name in [
+            "meta_fields",
+            "meta_fields_display",
+            "metadata",
+            "meta",
+        ]:
+            container = meta.get(container_name)
+
+            if isinstance(container, dict) and field in container:
+                return container.get(field)
+
+        return None
+
+    def value_to_text(value):
+        """
+        将字符串、列表、数字等统一转成文本。
+        """
+        if value is None:
+            return ""
+
+        if isinstance(value, list):
+            return " ".join(
+                str(item).strip()
+                for item in value
+                if str(item).strip()
+            )
+
+        if isinstance(value, dict):
+            # 兼容标签对象
+            values = []
+
+            for key in [
+                "option_name",
+                "option_code",
+                "name",
+                "label",
+                "value",
+            ]:
+                if value.get(key) is not None:
+                    values.append(str(value.get(key)))
+
+            return " ".join(values)
+
+        return str(value).strip()
+
+
+    def fuzzy_match_meta(meta_value, keyword):
+        """
+        元数据模糊匹配，不区分大小写。
+
+        例如：
+        keyword = "东北林业"
+        meta_value = "东北林业大学"
+        返回 True
+        """
+        keyword = str(keyword or "").strip()
+
+        if not keyword:
+            return True
+
+        if meta_value is None:
+            return False
+
+        if isinstance(meta_value, list):
+            return any(
+                fuzzy_match_meta(item, keyword)
+                for item in meta_value
+            )
+
+        actual_text = value_to_text(meta_value).casefold()
+        keyword_text = keyword.casefold()
+
+        return keyword_text in actual_text
+
+    from datetime import datetime
+    import re
+
+    def normalize_date(value):
+        if value is None or value == "":
+            return None
+
+        text = str(value).strip()
+        if text.lower() == "none":
+            return None
+
+        try:
+            # 2024年1月
+            match = re.fullmatch(r'(\d{4})年(\d{1,2})月', text)
+            if match:
+                year, month = map(int, match.groups())
+                if 1 <= month <= 12:
+                    return datetime(year, month, 1).date()
+                return None
+
+            # 2024年1月2日
+            match = re.fullmatch(r'(\d{4})年(\d{1,2})月(\d{1,2})日', text)
+            if match:
+                year, month, day = map(int, match.groups())
+                return datetime(year, month, day).date()
+
+            # 2024-01 / 2024.01
+            match = re.fullmatch(r'(\d{4})[-.](\d{1,2})', text)
+            if match:
+                year, month = map(int, match.groups())
+                if 1 <= month <= 12:
+                    return datetime(year, month, 1).date()
+                return None
+
+            # 2024-01-01 / 2024.01.01 / 2024/01/01
+            text2 = text.replace("/", "-")[:10]
+            for fmt in ["%Y-%m-%d", "%Y.%m.%d"]:
+                try:
+                    return datetime.strptime(text2, fmt).date()
+                except ValueError:
+                    pass
+
+        except Exception:
+            return None
+
+        return None
+
+    def filter_docs_by_metadata(
+        metas,
+        author="",
+        school="",
+        date_start="",
+        date_end="",
+    ):
+        start_date = normalize_date(date_start)
+        end_date = normalize_date(date_end)
+
+        if not isinstance(metas, dict):
+            return set()
+
+        def match_field(field_name, query):
+            """在某个字段的倒排索引里，找所有匹配 query 的 doc_id"""
+            if not query:
+                return None
+
+            field_map = metas.get(field_name, {})
+            if not isinstance(field_map, dict):
+                return set()
+
+            matched_ids = set()
+            for value, doc_ids in field_map.items():
+                if fuzzy_match_meta(value, query):
+                    matched_ids.update(doc_ids if isinstance(doc_ids, list) else [doc_ids])
+
+            return matched_ids
+
+        result = None  # 用于做交集
+
+        # 作者筛选
+        if author:
+            ids = match_field("author", author)
+            result = ids if result is None else result & ids
+
+        # 学校筛选
+        if school:
+            ids = match_field("school", school)
+            result = ids if result is None else result & ids
+
+        # 时间筛选
+        if start_date or end_date:
+            date_fields = ("publish_date", "publish_time", "create_time", "created_at", "date")
+            matched_ids = set()
+
+            for field_name in date_fields:
+                field_map = metas.get(field_name, {})
+                if not isinstance(field_map, dict):
+                    continue
+
+                for value, doc_ids in field_map.items():
+                    actual_date = normalize_date(value)
+                    if actual_date is None:
+                        continue
+
+                    if start_date and actual_date < start_date:
+                        continue
+                    if end_date and actual_date > end_date:
+                        continue
+
+                    matched_ids.update(doc_ids if isinstance(doc_ids, list) else [doc_ids])
+
+            result = matched_ids if result is None else result & matched_ids
+
+        return result or set()
+
+    
 
     # ---------------------------------------------------------
     # 清洗前端传来的筛选条件
     # ---------------------------------------------------------
-
+    import time
+    start_time = time.time()
     version = clean_filter_values(
         req.get("version", [])
     )
@@ -4700,7 +5034,8 @@ async def list_docs():
     knowledge_type = clean_filter_values(
         req.get("knowledge_type", [])
     )
-
+    end_time = time.time()
+    print("step1:", end_time - start_time)
 
     # ---------------------------------------------------------
     # metadata_condition 校验
@@ -4726,28 +5061,52 @@ async def list_docs():
 
 
     # ---------------------------------------------------------
-    # metadata_condition 过滤
+    # 元数据过滤
     # ---------------------------------------------------------
 
-    if metadata_condition:
+    has_custom_metadata_filter = bool(
+        author
+        or school
+        or publish_date_start
+        or publish_date_end
+    )
+
+    if metadata_condition or has_custom_metadata_filter:
         metas = DocumentService.get_flatted_meta_by_kbs([kb_id])
 
-        metadata_doc_ids = meta_filter(
-            metas,
-            convert_conditions(metadata_condition),
-            metadata_condition.get("logic", "and"),
-        )
+        # 1. 保留原来的 metadata_condition 过滤
+        if metadata_condition:
+            metadata_doc_ids = meta_filter(
+                metas,
+                convert_conditions(metadata_condition),
+                metadata_condition.get("logic", "and"),
+            )
 
-        doc_ids_filter = intersect_doc_ids(
-            doc_ids_filter,
-            metadata_doc_ids,
-        )
+            doc_ids_filter = intersect_doc_ids(
+                doc_ids_filter,
+                metadata_doc_ids,
+            )
 
-        if (
-            metadata_condition.get("conditions")
-            and return_empty_if_no_docs(doc_ids_filter)
-        ):
-            return empty_document_list_result()
+            if return_empty_if_no_docs(doc_ids_filter):
+                return empty_document_list_result()
+
+        # 2. 作者、学校、时间过滤
+        if has_custom_metadata_filter:
+            custom_metadata_doc_ids = filter_docs_by_metadata(
+                metas=metas,
+                author=author,
+                school=school,
+                date_start=publish_date_start,
+                date_end=publish_date_end,
+            )
+
+            doc_ids_filter = intersect_doc_ids(
+                doc_ids_filter,
+                custom_metadata_doc_ids,
+            )
+
+            if return_empty_if_no_docs(doc_ids_filter):
+                return empty_document_list_result()
 
 
     # ---------------------------------------------------------
@@ -4919,6 +5278,7 @@ async def list_docs():
         #     suffix,
         #     doc_ids_filter,
         # )
+        start_time = time.time()
         docs, total = DocumentService.get_by_kb_id(
             kb_id,
             page_number,
@@ -4931,7 +5291,8 @@ async def list_docs():
             suffix,
             list(doc_ids_filter) if doc_ids_filter is not None else None,
         )
-
+        end_time = time.time()
+        print("查询基础表格耗时:", end_time - start_time)
 
         # 当前页文档 ID
         doc_ids = [
@@ -4944,8 +5305,9 @@ async def list_docs():
         # 查询当前页文档对应的解析任务
         # ---------------------------------------------------------
         doc_tasks = defaultdict(list)
-
+        start_time = time.time()
         if doc_ids:
+            pass
             task_rows = (
                 Task.select(
                     Task.doc_id,
@@ -4969,6 +5331,8 @@ async def list_docs():
                     "progress_msg": task.progress_msg,
                     "begin_at": task.begin_at,
                 })
+        end_time = time.time()
+        print("查询解析任务耗时:", end_time - start_time)
 
         # ---------------------------------------------------------
         # 按创建时间再次过滤
@@ -5029,6 +5393,7 @@ async def list_docs():
         # doc_id -> version
         document_version_map = {}
 
+        start_time = time.time()
         if doc_ids:
             # doc_id -> stage_id list
             doc_stage_map = defaultdict(list)
@@ -5278,10 +5643,13 @@ async def list_docs():
                             meta_fields_display
                         ),
                     }
-
+        end_time = time.time()
+        
+        print("获取标签耗费:", end_time - start_time)
         # ---------------------------------------------------------
         # 整理每篇文档的返回数据
         # ---------------------------------------------------------
+        start_time = time.time()
         for doc_item in docs:
             doc_id = str(doc_item["id"])
             # 返回文档版本号
@@ -5406,12 +5774,15 @@ async def list_docs():
                 visibility_level,
                 is_super_admin,
             )
+        end_time = time.time()
+        print("拼接返回结果耗时:", end_time - start_time)
 
         # ---------------------------------------------------------
         # 新增显示本周文件占比
         # ---------------------------------------------------------
+        start_time = time.time()
         now = datetime.now()
-
+        from datetime import datetime, timedelta, time
         this_week_start = datetime.combine(
             now.date() - timedelta(days=now.weekday()),
             time.min,
@@ -5436,7 +5807,9 @@ async def list_docs():
             if total == 0
             else round(this_week_count / total * 100, 2)
         )
-        print(current_user_role)
+        import time
+        end_time = time.time()
+        print("显示本周占比耗时:", end_time - start_time)
 
         return get_json_result(
             data={

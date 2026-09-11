@@ -15,7 +15,17 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
-import { CircleStop, Layers3, Send, Upload, X } from 'lucide-react';
+import {
+  Bot,
+  CircleStop,
+  FileText,
+  Layers3,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Upload,
+  X,
+} from 'lucide-react';
 import * as React from 'react';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
@@ -38,9 +48,13 @@ interface IProps {
   removeFile?(file: File): void;
   reasoning: boolean;
   agentMod: boolean;
+  projectCompliance?: boolean; // ✅ 补上
+  experimentReport?: boolean; // ✅ 补上
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
+  onEnableProjectCompliance?: () => void; // ✅ 补上
+  onEnableExperimentReport?: () => void; // ✅ 补上
 }
 
 export function NextMessageInput({
@@ -57,9 +71,13 @@ export function NextMessageInput({
   removeFile,
   reasoning,
   agentMod,
+  projectCompliance, // ✅ 补上
+  experimentReport, // ✅ 补上
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
+  onEnableProjectCompliance, // ✅ 补上
+  onEnableExperimentReport, // ✅ 补上
 }: IProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
@@ -151,6 +169,22 @@ export function NextMessageInput({
     },
     [inputHeight],
   );
+
+  const isMultiKbMode =
+    !reasoning && !agentMod && !projectCompliance && !experimentReport;
+
+  const isDeepReasoningMode =
+    reasoning && !agentMod && !projectCompliance && !experimentReport;
+
+  const isAgentMode =
+    !reasoning && agentMod && !projectCompliance && !experimentReport;
+
+  const isProjectComplianceMode =
+    !reasoning && !agentMod && projectCompliance && !experimentReport;
+
+  const isExperimentReportMode =
+    !reasoning && !agentMod && !projectCompliance && experimentReport;
+
   return (
     <FileUpload
       value={files}
@@ -262,72 +296,37 @@ export function NextMessageInput({
                 disabled={isUploading || sendLoading || disabled}
                 className={cn(
                   `
-        h-8
-        rounded-full
-        border
-        px-3
-        text-xs
-        font-medium
-        transition-all
-        duration-200
-        shadow-none
-        hover:bg-emerald-50
-        hover:text-emerald-600
-        hover:border-emerald-300
+        h-8 rounded-full border px-3 text-xs font-medium
+        shadow-none transition-all duration-200
+        hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600
         dark:hover:bg-emerald-950/30
       `,
-                  !reasoning && !agentMod
+                  isMultiKbMode
                     ? `
-          border-emerald-300
-          bg-emerald-50
-          text-emerald-600
-          shadow-sm
-          dark:border-emerald-700
-          dark:bg-emerald-950/30
-          dark:text-emerald-400
+          border-emerald-300 bg-emerald-50 text-emerald-600 shadow-sm
+          dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400
         `
                     : `
-          border-gray-200
-          bg-transparent
-          text-gray-500
-          dark:border-gray-700
-          dark:text-gray-400
+          border-gray-200 bg-transparent text-gray-500
+          dark:border-gray-700 dark:text-gray-400
         `,
                 )}
               >
                 <span
                   className={cn(
                     `
-          mr-1.5
-          inline-flex
-          h-5 w-5
-          items-center
-          justify-center
-          rounded-full
-          transition-all
-          duration-200
+          mr-1.5 inline-flex h-5 w-5 items-center justify-center
+          rounded-full transition-all duration-200
         `,
-                    !reasoning && !agentMod
+                    isMultiKbMode
                       ? `
-            scale-105
-            bg-gradient-to-br
-            from-emerald-400
-            to-teal-500
-            text-white
-            shadow-sm
-            shadow-emerald-300/50
-            ring-1
-            ring-emerald-200
-            dark:ring-emerald-700
+            scale-105 bg-gradient-to-br from-emerald-400 to-teal-500
+            text-white shadow-sm shadow-emerald-300/50
+            ring-1 ring-emerald-200 dark:ring-emerald-700
           `
                       : `
-            bg-gray-100
-            text-gray-400
-            ring-1
-            ring-gray-200
-            dark:bg-gray-800
-            dark:text-gray-500
-            dark:ring-gray-700
+            bg-gray-100 text-gray-400 ring-1 ring-gray-200
+            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
           `,
                   )}
                 >
@@ -337,10 +336,10 @@ export function NextMessageInput({
               </Button>
 
               {/* 深度推理 */}
-              {/* <Button
+              <Button
                 type="button"
-                size="sm"
                 title="海量查询，速度慢"
+                size="sm"
                 variant="outline"
                 onClick={(event) => {
                   event.preventDefault();
@@ -350,85 +349,50 @@ export function NextMessageInput({
                 disabled={isUploading || sendLoading || disabled}
                 className={cn(
                   `
-        h-8
-        rounded-full
-        border
-        px-3
-        text-xs
-        font-medium
-        transition-all
-        duration-200
-        shadow-none
-        hover:bg-blue-50
-        hover:text-blue-600
-        hover:border-blue-300
+        h-8 rounded-full border px-3 text-xs font-medium
+        shadow-none transition-all duration-200
+        hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600
         dark:hover:bg-blue-950/30
       `,
-                  reasoning && !agentMod
+                  isDeepReasoningMode
                     ? `
-          border-blue-300
-          bg-blue-50
-          text-blue-600
-          shadow-sm
-          dark:border-blue-700
-          dark:bg-blue-950/30
-          dark:text-blue-400
+          border-blue-300 bg-blue-50 text-blue-600 shadow-sm
+          dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400
         `
                     : `
-          border-gray-200
-          bg-transparent
-          text-gray-500
-          dark:border-gray-700
-          dark:text-gray-400
+          border-gray-200 bg-transparent text-gray-500
+          dark:border-gray-700 dark:text-gray-400
         `,
                 )}
               >
                 <span
                   className={cn(
                     `
-          mr-1.5
-          inline-flex
-          h-5 w-5
-          items-center
-          justify-center
-          rounded-full
-          transition-all
-          duration-200
+          mr-1.5 inline-flex h-5 w-5 items-center justify-center
+          rounded-full transition-all duration-200
         `,
-                    reasoning && !agentMod
+                    isDeepReasoningMode
                       ? `
-            scale-105
-            bg-gradient-to-br
-            from-blue-400
-            to-indigo-500
-            text-white
-            shadow-sm
-            shadow-blue-300/50
-            ring-1
-            ring-blue-200
-            dark:ring-blue-700
+            scale-105 bg-gradient-to-br from-blue-400 to-indigo-500
+            text-white shadow-sm shadow-blue-300/50
+            ring-1 ring-blue-200 dark:ring-blue-700
           `
                       : `
-            bg-gray-100
-            text-gray-400
-            ring-1
-            ring-gray-200
-            dark:bg-gray-800
-            dark:text-gray-500
-            dark:ring-gray-700
+            bg-gray-100 text-gray-400 ring-1 ring-gray-200
+            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
           `,
                   )}
                 >
                   <Sparkles className="h-3 w-3" />
                 </span>
                 深度推理
-              </Button> */}
+              </Button>
 
               {/* Agent */}
-              {/* <Button
+              <Button
                 type="button"
-                size="sm"
                 title="Agent 模式"
+                size="sm"
                 variant="outline"
                 onClick={(event) => {
                   event.preventDefault();
@@ -438,79 +402,152 @@ export function NextMessageInput({
                 disabled={isUploading || sendLoading || disabled}
                 className={cn(
                   `
-        h-8
-        rounded-full
-        border
-        px-3
-        text-xs
-        font-medium
-        transition-all
-        duration-200
-        shadow-none
-        hover:bg-purple-50
-        hover:text-purple-600
-        hover:border-purple-300
+        h-8 rounded-full border px-3 text-xs font-medium
+        shadow-none transition-all duration-200
+        hover:border-purple-300 hover:bg-purple-50 hover:text-purple-600
         dark:hover:bg-purple-950/30
       `,
-                  !reasoning && agentMod
+                  isAgentMode
                     ? `
-          border-purple-300
-          bg-purple-50
-          text-purple-600
-          shadow-sm
-          dark:border-purple-700
-          dark:bg-purple-950/30
-          dark:text-purple-400
+          border-purple-300 bg-purple-50 text-purple-600 shadow-sm
+          dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400
         `
                     : `
-          border-gray-200
-          bg-transparent
-          text-gray-500
-          dark:border-gray-700
-          dark:text-gray-400
+          border-gray-200 bg-transparent text-gray-500
+          dark:border-gray-700 dark:text-gray-400
         `,
                 )}
               >
                 <span
                   className={cn(
                     `
-          mr-1.5
-          inline-flex
-          h-5 w-5
-          items-center
-          justify-center
-          rounded-full
-          transition-all
-          duration-200
+          mr-1.5 inline-flex h-5 w-5 items-center justify-center
+          rounded-full transition-all duration-200
         `,
-                    !reasoning && agentMod
+                    isAgentMode
                       ? `
-            scale-105
-            bg-gradient-to-br
-            from-purple-400
-            to-fuchsia-500
-            text-white
-            shadow-sm
-            shadow-purple-300/50
-            ring-1
-            ring-purple-200
-            dark:ring-purple-700
+            scale-105 bg-gradient-to-br from-purple-400 to-fuchsia-500
+            text-white shadow-sm shadow-purple-300/50
+            ring-1 ring-purple-200 dark:ring-purple-700
           `
                       : `
-            bg-gray-100
-            text-gray-400
-            ring-1
-            ring-gray-200
-            dark:bg-gray-800
-            dark:text-gray-500
-            dark:ring-gray-700
+            bg-gray-100 text-gray-400 ring-1 ring-gray-200
+            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
           `,
                   )}
                 >
                   <Bot className="h-3 w-3" />
                 </span>
                 Agent Skills
-              </Button>  */}
+              </Button>
+
+              {/* 项目申报与合规 */}
+              <Button
+                type="button"
+                title="辅助项目申报与合规审查"
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  console.log('点击了合规申报按钮');
+                  onEnableProjectCompliance?.();
+                }}
+                disabled={isUploading || sendLoading || disabled}
+                className={cn(
+                  `
+        h-8 rounded-full border px-3 text-xs font-medium
+        shadow-none transition-all duration-200
+        hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600
+        dark:hover:bg-orange-950/30
+      `,
+                  isProjectComplianceMode
+                    ? `
+          border-orange-300 bg-orange-50 text-orange-600 shadow-sm
+          dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-400
+        `
+                    : `
+          border-gray-200 bg-transparent text-gray-500
+          dark:border-gray-700 dark:text-gray-400
+        `,
+                )}
+              >
+                <span
+                  className={cn(
+                    `
+          mr-1.5 inline-flex h-5 w-5 items-center justify-center
+          rounded-full transition-all duration-200
+        `,
+                    isProjectComplianceMode
+                      ? `
+            scale-105 bg-gradient-to-br from-orange-400 to-amber-500
+            text-white shadow-sm shadow-orange-300/50
+            ring-1 ring-orange-200 dark:ring-orange-700
+          `
+                      : `
+            bg-gray-100 text-gray-400 ring-1 ring-gray-200
+            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
+          `,
+                  )}
+                >
+                  <ShieldCheck className="h-3 w-3" />
+                </span>
+                合规申报
+              </Button>
+
+              {/* 实验报告 */}
+              <Button
+                type="button"
+                title="自动生成实验报告"
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  console.log('点击了实验报告按钮');
+                  onEnableExperimentReport?.();
+                }}
+                disabled={isUploading || sendLoading || disabled}
+                className={cn(
+                  `
+        h-8 rounded-full border px-3 text-xs font-medium
+        shadow-none transition-all duration-200
+        hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-600
+        dark:hover:bg-cyan-950/30
+      `,
+                  isExperimentReportMode
+                    ? `
+          border-cyan-300 bg-cyan-50 text-cyan-600 shadow-sm
+          dark:border-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400
+        `
+                    : `
+          border-gray-200 bg-transparent text-gray-500
+          dark:border-gray-700 dark:text-gray-400
+        `,
+                )}
+              >
+                <span
+                  className={cn(
+                    `
+          mr-1.5 inline-flex h-5 w-5 items-center justify-center
+          rounded-full transition-all duration-200
+        `,
+                    isExperimentReportMode
+                      ? `
+            scale-105 bg-gradient-to-br from-cyan-400 to-sky-500
+            text-white shadow-sm shadow-cyan-300/50
+            ring-1 ring-cyan-200 dark:ring-cyan-700
+          `
+                      : `
+            bg-gray-100 text-gray-400 ring-1 ring-gray-200
+            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
+          `,
+                  )}
+                >
+                  <FileText className="h-3 w-3" />
+                </span>
+                实验报告
+              </Button>
             </div>
           </div>
 

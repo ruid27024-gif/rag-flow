@@ -40,29 +40,29 @@ __all__ = ["app"]
 
 
 app = Quart(__name__)
-# app = cors(app, allow_origin="*")
-app = cors(
-    app,
-    allow_origin=[
-        "http://139.224.241.243",
-        "http://139.224.241.243:3000",
-        "http://139.224.241.243:9380",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_credentials=True,
-    allow_headers=[
-        "Content-Type",
-        "Authorization",
-    ],
-    allow_methods=[
-        "GET",
-        "POST",
-        "PUT",
-        "DELETE",
-        "OPTIONS",
-    ],
-)
+app = cors(app, allow_origin="*")
+# app = cors(
+#     app,
+#     allow_origin=[
+#         "http://139.224.241.243",
+#         "http://139.224.241.243:3000",
+#         "http://139.224.241.243:9380",
+#         "http://localhost:3000",
+#         "http://127.0.0.1:3000",
+#     ],
+#     allow_credentials=True,
+#     allow_headers=[
+#         "Content-Type",
+#         "Authorization",
+#     ],
+#     allow_methods=[
+#         "GET",
+#         "POST",
+#         "PUT",
+#         "DELETE",
+#         "OPTIONS",
+#     ],
+# )
 
 # Add this at the beginning of your file to configure Swagger UI
 swagger_config = {

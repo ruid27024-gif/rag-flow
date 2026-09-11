@@ -271,7 +271,8 @@ export const useCreateKnowledge = () => {
       const { data = {} } = await kbService.createKb(params);
       if (data.code === 0) {
         message.success(
-          i18n.t(`message.${params?.id ? 'modified' : 'created'}`),
+          // i18n.t(`message.${params?.id ? 'modified' : 'created'}`),
+          '已发起建库请求，请等待审批...',
         );
         queryClient.invalidateQueries({ queryKey: ['fetchKnowledgeList'] });
       }

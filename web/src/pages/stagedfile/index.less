@@ -1,0 +1,39 @@
+/* 让 Ant Design 的表格背景透明，继承容器背景 */
+.ant-table-wrapper .ant-table {
+  background: transparent !important;
+}
+
+/* 表头样式：透明背景，颜色和字体匹配自定义 Table */
+.ant-table-wrapper .ant-table-thead > tr > th {
+  background: transparent !important;
+  color: #6b7280; /* 与项目自定义 Table 表头颜色一致 */
+  font-weight: 500;
+  font-size: 14px;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 10px 16px;
+}
+
+/* 单元格样式 */
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 14px;
+}
+
+/* 行悬停效果 */
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f9fafb;
+}
+
+/* 去掉容器多余边框 */
+.ant-table-wrapper .ant-table-container {
+  border: none !important;
+}
+.ant-table-wrapper .ant-table-content {
+  border: none !important;
+}
+
+/* 最后一行无边框 */
+.ant-table-wrapper .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
