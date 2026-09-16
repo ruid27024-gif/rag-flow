@@ -1921,3 +1921,144 @@ async def get_tree_name_map():
 
     except Exception as e:
         return server_error_response(e)
+import logging
+import mimetypes
+import traceback
+from pathlib import Path
+from urllib.parse import quote
+
+from quart import Response as QuartResponse
+from quart import request as quart_request
+
+
+APPLICATION_TEMPLATE_DIR = Path(
+    "/home/zyb/rag-flow/Application_Template"
+).resolve()
+
+ALLOWED_TEMPLATE_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".txt",
+    ".csv",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".zip",
+    ".rar",
+    ".7z",
+}
+
+
+@manager.route("/template", methods=["GET"])  # noqa: F821
+# @login_required
+async def get_application_template():
+    try:
+        # 这里必须使用 Quart 的 request
+        relative_path = (
+            quart_request.args.get("path") or ""
+        ).strip()
+
+        preview_value = (
+            quart_request.args.get("preview") or "1"
+        ).strip().lower()
+
+        preview = preview_value in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+        preview = 1
+        if not relative_path:
+            return QuartResponse(
+                response="Template file path is required!",
+                status=400,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        # 统一路径分隔符
+        relative_path = relative_path.replace("\\", "/")
+
+        base_dir = APPLICATION_TEMPLATE_DIR
+        file_path = (base_dir / relative_path).resolve()
+
+        # 防止 ../ 等目录穿越
+        try:
+            file_path.relative_to(base_dir)
+        except ValueError:
+            return QuartResponse(
+                response="Invalid template file path!",
+                status=403,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        if not file_path.is_file():
+            return QuartResponse(
+                response="Template file does not exist!",
+                status=404,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        suffix = file_path.suffix.lower()
+
+        if suffix not in ALLOWED_TEMPLATE_EXTENSIONS:
+            return QuartResponse(
+                response="Unsupported template file type!",
+                status=403,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        mimetype, _ = mimetypes.guess_type(file_path.name)
+        mimetype = mimetype or "application/octet-stream"
+
+        # 普通模板文件可以直接读取为 bytes
+        file_content = file_path.read_bytes()
+
+        encoded_filename = quote(
+            file_path.name,
+            safe="",
+        )
+
+        # preview=1 使用 inline；否则使用 attachment
+        disposition = "inline" if preview else "attachment"
+
+        response = QuartResponse(
+            response=file_content,
+            status=200,
+            content_type=mimetype,
+        )
+
+        response.headers["Content-Disposition"] = (
+            f"{disposition}; "
+            f"filename*=UTF-8''{encoded_filename}"
+        )
+        response.headers["Content-Length"] = str(
+            len(file_content)
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cache-Control"] = (
+            "private, no-cache, max-age=0"
+        )
+
+        return response
+
+    except Exception as error:
+        logging.exception(
+            "Get application template failed"
+        )
+
+        # 调试阶段打印完整堆栈
+        traceback.print_exc()
+
+        return QuartResponse(
+            response=f"Get template file failed: {error}",
+            status=500,
+            content_type="text/plain; charset=utf-8",
+        )

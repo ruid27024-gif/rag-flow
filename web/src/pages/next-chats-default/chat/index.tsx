@@ -5,7 +5,6 @@ import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
 import NewDocumentLink from '@/components/new-document-link';
 import PdfSheet from '@/components/pdf-drawer';
 import { useClickDrawer } from '@/components/pdf-drawer/hooks';
-import DocumentPreviewer from '@/components/pdf-previewer';
 import { Button } from '@/components/ui/button';
 import { Form } from '@/components/ui/form';
 import { DatasetMetadata, SharedFrom } from '@/constants/chat';
@@ -27,10 +26,9 @@ import {
 } from '@/utils/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMount } from 'ahooks';
-import { message } from 'antd';
 import { isEmpty, omit } from 'lodash';
 import { LogOut } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'umi';
@@ -45,24 +43,54 @@ import { Sessions } from './sessions';
 import { useAddChatBox } from './use-add-box';
 import { useSwitchDebugMode } from './use-switch-debug-mode';
 
+import DocumentPreviewer from '@/components/pdf-previewer';
+import { message } from 'antd';
+
 export default function Chat() {
+  // 来源列表
   const [referenceVisible, setReferenceVisible] = useState(false);
   const [referenceList, setReferenceList] = useState<ReferenceDocumentItem[]>(
     [],
   );
+
   // 溯源高亮预览右侧栏
   const [sourcePreviewVisible, setSourcePreviewVisible] = useState(false);
   const [sourcePreviewDocumentId, setSourcePreviewDocumentId] = useState('');
   const [sourcePreviewChunk, setSourcePreviewChunk] = useState<any>(null);
 
-  // 打开来源列表
-  const openReferencePanel = useCallback((list: ReferenceDocumentItem[]) => {
-    setReferenceList(list);
-    setReferenceVisible(true);
+  // 聊天设置
+  const { visible: settingVisible, switchVisible: switchSettingVisible } =
+    useSetModalState(false);
 
-    // 打开来源列表时，关闭高亮预览栏
-    setSourcePreviewVisible(false);
-  }, []);
+  // 打开聊天设置时，关闭来源列表和溯源预览
+  useEffect(() => {
+    if (settingVisible) {
+      setReferenceVisible(false);
+
+      setSourcePreviewVisible(false);
+      setSourcePreviewDocumentId('');
+      setSourcePreviewChunk(null);
+    }
+  }, [settingVisible]);
+
+  // 打开来源列表
+  const openReferencePanel = useCallback(
+    (list: ReferenceDocumentItem[]) => {
+      setReferenceList(list);
+      setReferenceVisible(true);
+
+      // 打开来源列表时，关闭高亮预览栏
+      setSourcePreviewVisible(false);
+      setSourcePreviewDocumentId('');
+      setSourcePreviewChunk(null);
+
+      // 打开来源列表时，关闭设置面板
+      if (settingVisible) {
+        switchSettingVisible();
+      }
+    },
+    [settingVisible, switchSettingVisible],
+  );
 
   // 关闭来源列表
   const closeReferencePanel = useCallback(() => {
@@ -76,11 +104,15 @@ export default function Chat() {
       setSourcePreviewChunk(chunk);
       setSourcePreviewVisible(true);
 
-      // 重点：打开高亮预览后关闭来源列表
-      // 这样主内容和预览可以各占一半
+      // 打开高亮预览后关闭来源列表
       setReferenceVisible(false);
+
+      // 打开高亮预览时，关闭设置面板
+      if (settingVisible) {
+        switchSettingVisible();
+      }
     },
-    [],
+    [settingVisible, switchSettingVisible],
   );
 
   // 关闭溯源高亮预览右侧栏
@@ -89,60 +121,92 @@ export default function Chat() {
     setSourcePreviewDocumentId('');
     setSourcePreviewChunk(null);
   }, []);
+  // const [referenceVisible, setReferenceVisible] = useState(false);
+  // const [referenceList, setReferenceList] = useState<ReferenceDocumentItem[]>(
+  //   [],
+  // );
+  // // 溯源高亮预览右侧栏
+  // const [sourcePreviewVisible, setSourcePreviewVisible] = useState(false);
+  // const [sourcePreviewDocumentId, setSourcePreviewDocumentId] = useState('');
+  // const [sourcePreviewChunk, setSourcePreviewChunk] = useState<any>(null);
+
+  // // 打开来源列表
+  // const openReferencePanel = useCallback((list: ReferenceDocumentItem[]) => {
+  //   setReferenceList(list);
+  //   setReferenceVisible(true);
+
+  //   // 打开来源列表时，关闭高亮预览栏
+  //   setSourcePreviewVisible(false);
+  // }, []);
+
+  // // 关闭来源列表
+  // const closeReferencePanel = useCallback(() => {
+  //   setReferenceVisible(false);
+  // }, []);
+
+  // // 打开溯源高亮预览右侧栏
+  // const openSourcePreviewPanel = useCallback(
+  //   (documentId: string, chunk: any) => {
+  //     setSourcePreviewDocumentId(documentId);
+  //     setSourcePreviewChunk(chunk);
+  //     setSourcePreviewVisible(true);
+
+  //     // 重点：打开高亮预览后关闭来源列表
+  //     // 这样主内容和预览可以各占一半
+  //     setReferenceVisible(false);
+  //   },
+  //   [],
+  // );
+
+  // // 关闭溯源高亮预览右侧栏
+  // const closeSourcePreviewPanel = useCallback(() => {
+  //   setSourcePreviewVisible(false);
+  //   setSourcePreviewDocumentId('');
+  //   setSourcePreviewChunk(null);
+  // }, []);
 
   const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
     useClickDrawer();
 
   const { id } = useParams();
   const { navigateToChatList } = useNavigatePage();
-  const { data } = useFetchDialog();
+  const { data, refetch } = useFetchDialog();
+
   const { t } = useTranslation();
   const [currentConversation, setCurrentConversation] =
     useState<IClientConversation>({} as IClientConversation);
 
+  const initializedRef = useRef(false);
+
   const { fetchConversationManually } = useFetchConversationManually();
 
-  // 获取过往的对话
   const { handleConversationCardClick, controller, stopOutputMessage } =
     useHandleClickConversationCard();
-  // 控制弹窗显示/隐藏
-  const { visible: settingVisible, switchVisible: switchSettingVisible } =
-    useSetModalState(false);
 
-  // 控制是否开启调试模式
   const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
 
-  // 左侧的栏个数
   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
     useAddChatBox(isDebugMode);
 
-  // 嵌入代码模态框显示
   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
     useShowEmbedModal();
 
-  // 从 URL 搜索参数中解析出 conversationId 和 isNew（是否新会话）
   const { conversationId, isNew } = useGetChatSearchParams();
 
-  // 获取对话列表数据
   const { data: dialogList } = useFetchConversationList();
 
   const currentConversationName = useMemo(() => {
     return dialogList.find((x) => x.id === conversationId)?.name;
   }, [conversationId, dialogList]);
 
-  // Form logic moved from ChatSettings
-  // 获取聊天呢设置的校验规则
   const formSchema = useChatSettingSchema();
-  // 获取保存对话框配置的函数
+
   const { setDialog, loading } = useSetDialog();
 
-  // 定义一个数组状态 用来存储子组件session中传回的数组
   const [kbIds, setKbIds] = useState<string[]>([]);
 
-  // 根据 Schema 推断出表单数据的 TypeScript 类型
   type FormSchemaType = z.infer<typeof formSchema>;
 
-  // 初始化表单
   const form = useForm<FormSchemaType>({
     resolver: zodResolver(formSchema),
     shouldUnregister: false,
@@ -158,9 +222,13 @@ export default function Chat() {
         use_kg: false,
         refine_multiturn: true,
         system: '',
+        prologue: '',
+        empty_response: '',
         parameters: [],
         reasoning: false,
         agent_mod: false,
+        project_compliance: false,
+        experiment_report: false,
         cross_languages: [],
         toc_enhance: false,
       },
@@ -175,51 +243,105 @@ export default function Chat() {
     },
   });
 
-  // // 表单values的提交逻辑
+  const closeAfterSubmitRef = useRef(false);
+
   // async function onSubmit(values: FormSchemaType) {
-  //   // 移除llm_setting
   //   const nextValues: Record<string, any> = removeUselessFieldsFromValues(
   //     values,
   //     'llm_setting.',
   //   );
 
-  //   // 调用 Hook 中的 setDialog 保存数据
-  //   setDialog({
-  //     ...omit(data, 'operator_permission'), // 保留原数据但剔除权限字段
-  //     ...nextValues, // 合并新修改的值
-  //     dialog_id: id, // 确保带上 ID
+  //   const result = await setDialog({
+  //     ...omit(data, 'operator_permission'),
+  //     ...nextValues,
+  //     dialog_id: id,
   //   });
+
+  //   if (result !== 0) return;
+
+  //   const { data: latestData } = await refetch();
+
+  //   if (latestData && !isEmpty(latestData)) {
+  //     const llmSettingEnabledValues = setLLMSettingEnabledValues(
+  //       latestData.llm_setting,
+  //     );
+
+  //     form.reset({
+  //       ...latestData,
+  //       ...llmSettingEnabledValues,
+  //     } as FormSchemaType);
+
+  //     // setCurrentConversation(latestData as IClientConversation);
+  //   }
+
+  //   // 提交完成后关闭设置面板
+  //   if (settingVisible) {
+  //     switchSettingVisible();
+  //   }
   // }
-  // 在 Chat 组件中
   async function onSubmit(
     values: FormSchemaType,
     options?: { silent?: boolean; successMessage?: string },
   ) {
     const nextValues = removeUselessFieldsFromValues(values, 'llm_setting.');
 
-    // 调用 setDialog 时传入 options
-    await setDialog(
+    const result = await setDialog(
       {
         ...omit(data, 'operator_permission'),
         ...nextValues,
         dialog_id: id,
       },
-      options, // 透传
+      options, // 透传给 setDialog
     );
+
+    if (result !== 0) return;
+
+    const { data: latestData } = await refetch();
+    if (latestData && !isEmpty(latestData)) {
+      const llmSettingEnabledValues = setLLMSettingEnabledValues(
+        latestData.llm_setting,
+      );
+      form.reset({
+        ...latestData,
+        ...llmSettingEnabledValues,
+      } as FormSchemaType);
+    }
+
+    // 提交完成后关闭设置面板（仅当设置面板打开时）
+    if (settingVisible) {
+      switchSettingVisible();
+    }
   }
 
   const reasoning = !!form.watch('prompt_config.reasoning');
   const agentMod = !!form.watch('prompt_config.agent_mod');
+  const projectCompliance = !!form.watch('prompt_config.project_compliance');
+  const experimentReport = !!form.watch('prompt_config.experiment_report');
 
-  const setReasoningMode = useCallback(
-    async (nextReasoning: boolean, nextAgentMod: boolean) => {
-      const currentReasoning = !!form.getValues('prompt_config.reasoning');
-      const currentAgentMod = !!form.getValues('prompt_config.agent_mod');
+  const setMode = useCallback(
+    async (
+      nextReasoning: boolean,
+      nextAgentMod: boolean,
+      nextProjectCompliance: boolean,
+      nextExperimentReport: boolean,
+    ) => {
+      const values = form.getValues();
 
-      // 如果已经是当前模式，不重复提交
+      const nextPromptConfig = {
+        ...values.prompt_config,
+        reasoning: nextReasoning,
+        agent_mod: nextAgentMod,
+        project_compliance: nextProjectCompliance,
+        experiment_report: nextExperimentReport,
+      };
+
+      const currentPromptConfig = values.prompt_config;
+
       if (
-        currentReasoning === nextReasoning &&
-        currentAgentMod === nextAgentMod
+        !!currentPromptConfig.reasoning === nextReasoning &&
+        !!currentPromptConfig.agent_mod === nextAgentMod &&
+        !!currentPromptConfig.project_compliance === nextProjectCompliance &&
+        !!currentPromptConfig.experiment_report === nextExperimentReport
       ) {
         return;
       }
@@ -236,42 +358,69 @@ export default function Chat() {
         shouldValidate: true,
       });
 
-      const values = form.getValues();
+      form.setValue('prompt_config.project_compliance', nextProjectCompliance, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
 
-      await onSubmit(
+      form.setValue('prompt_config.experiment_report', nextExperimentReport, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+
+      const success = await onSubmit(
         {
           ...values,
-          prompt_config: {
-            ...values.prompt_config,
-            reasoning: nextReasoning,
-            agent_mod: nextAgentMod,
-          },
+          prompt_config: nextPromptConfig,
         },
         { silent: true },
       );
-      message.success('切换成功');
+
+      if (success) {
+        message.success('切换成功');
+      }
     },
     [form, onSubmit],
   );
 
   const onEnableDeepReasoning = useCallback(() => {
-    return setReasoningMode(true, false);
-  }, [setReasoningMode]);
+    return setMode(true, false, false, false);
+  }, [setMode]);
 
   const onEnableMultiKbReasoning = useCallback(() => {
-    return setReasoningMode(false, false);
-  }, [setReasoningMode]);
+    return setMode(false, false, false, false);
+  }, [setMode]);
 
   const onEnableAgent = useCallback(() => {
-    return setReasoningMode(false, true);
-  }, [setReasoningMode]);
+    return setMode(false, true, false, false);
+  }, [setMode]);
+
+  const onEnableProjectCompliance = useCallback(() => {
+    return setMode(false, false, true, false);
+  }, [setMode]);
+
+  const onEnableExperimentReport = useCallback(() => {
+    return setMode(false, false, false, true);
+  }, [setMode]);
 
   function onInvalid(errors: any) {
     console.log('Form validation failed:', errors);
   }
 
-  // 表单回显
+  // 切换会话时允许重新初始化表单
   useEffect(() => {
+    initializedRef.current = false;
+  }, [id, conversationId]);
+
+  // 表单回显：只用于首次加载/切换会话
+  useEffect(() => {
+    if (!data || isEmpty(data)) return;
+    if (initializedRef.current) return;
+
+    initializedRef.current = true;
+
     const llmSettingEnabledValues = setLLMSettingEnabledValues(
       data.llm_setting,
     );
@@ -280,51 +429,79 @@ export default function Chat() {
       ...data,
       ...llmSettingEnabledValues,
     };
-    // 将合并后的数据填入表单
+
     form.reset(nextData as FormSchemaType);
+    // setCurrentConversation(data as IClientConversation);
   }, [data, form]);
 
-  // 封装了获取对话详情的逻辑
   const fetchConversation: typeof handleConversationCardClick = useCallback(
     async (conversationId, isNew) => {
-      // 只有当有 ID 且不是新会话时才去拉取
       if (conversationId && !isNew) {
         const conversation = await fetchConversationManually(conversationId);
+
         if (!isEmpty(conversation)) {
-          setCurrentConversation(conversation); // 更新本地状态
+          setCurrentConversation(conversation);
         }
       }
     },
     [fetchConversationManually],
   );
+  const refreshCurrentConversation = useCallback(
+    async (targetConversationId?: string) => {
+      const id = targetConversationId || conversationId;
 
-  // 传递给子组件用于切换会话的
+      if (!id) return null;
+
+      const conversation = await fetchConversationManually(id);
+
+      if (!isEmpty(conversation)) {
+        setCurrentConversation(conversation);
+        return conversation;
+      }
+
+      return null;
+    },
+    [conversationId, fetchConversationManually],
+  );
+
   const handleSessionClick: typeof handleConversationCardClick = useCallback(
     (conversationId, isNew) => {
-      handleConversationCardClick(conversationId, isNew); // 1. 执行通用逻辑（如跳转）
-      // 2. 执行特定逻辑（如刷新数据）
+      handleConversationCardClick(conversationId, isNew);
       fetchConversation(conversationId, isNew);
     },
     [fetchConversation, handleConversationCardClick],
   );
 
-  useMount(() => {
-    // 第一次加载立即获取对话数据
-    fetchConversation(conversationId, isNew === 'true');
-  });
-
-  const refreshCurrentConversation = useCallback(async () => {
-    if (!conversationId) return null;
-
-    const conversation = await fetchConversationManually(conversationId);
-
-    if (!isEmpty(conversation)) {
-      setCurrentConversation(conversation);
-      return conversation;
+  const openChatSettings = useCallback(async () => {
+    if (settingVisible) {
+      switchSettingVisible();
+      return;
     }
 
-    return null;
-  }, [conversationId, fetchConversationManually]);
+    const { data: latestData } = await refetch();
+
+    if (latestData && !isEmpty(latestData)) {
+      const llmSettingEnabledValues = setLLMSettingEnabledValues(
+        latestData.llm_setting,
+      );
+
+      form.reset({
+        ...latestData,
+        ...llmSettingEnabledValues,
+      } as FormSchemaType);
+
+      // 不要在这里覆盖 currentConversation
+      // setCurrentConversation(latestData as IClientConversation);
+
+      initializedRef.current = true;
+    }
+
+    switchSettingVisible();
+  }, [settingVisible, switchSettingVisible, refetch, form]);
+
+  useMount(() => {
+    fetchConversation(conversationId, isNew === 'true');
+  });
 
   if (isDebugMode) {
     return (
@@ -337,6 +514,7 @@ export default function Chat() {
             {t('chat.exit')} <LogOut />
           </Button>
         </div>
+
         <MultipleChatBox
           chatBoxIds={chatBoxIds}
           controller={controller}
@@ -344,14 +522,11 @@ export default function Chat() {
           addChatBox={addChatBox}
           stopOutputMessage={stopOutputMessage}
           conversation={currentConversation}
-        ></MultipleChatBox>
+        />
       </section>
     );
   }
 
-  // 保存后端 -> 强制刷新 -> 重新拉取全量数据”
-  // 先获取currentConversation, setting和kb_ids是通过表单保存后端 -> 强制刷新 -> 重新拉取全量数据再次调用fetchConversation更新currentConversation
-  // 然后是通过currentConversation 传入对话模型的
   return (
     <Form {...form}>
       <form
@@ -359,82 +534,67 @@ export default function Chat() {
         className="h-full flex flex-col pr-5"
       >
         {/* <div className="flex flex-1 min-h-0 pb-1">
-
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
-            switchSettingVisible={switchSettingVisible}
-          ></Sessions> */}
-
-        {/* <div className="flex flex-1 min-h-0 pb-1 overflow-hidden"> */}
-        <div
-          className="
-    flex flex-1 min-h-0 pb-1 overflow-hidden
-    bg-[#F3FAF7]
-    dark:bg-transparent
-  "
-        >
-          {/* 左侧会话列表：自己内部滚动 */}
-          <Sessions
-            hasSingleChatBox={hasSingleChatBox}
-            handleConversationCardClick={handleSessionClick}
-            switchSettingVisible={switchSettingVisible}
+            switchSettingVisible={openChatSettings}
           />
 
-          {/* 右侧整体区域 */}
-          {/* <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+          <Card className="flex-1 min-w-0 bg-transparent border h-full">
 
-            <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <div
-                  className={cn('flex items-center gap-1', {
-                    hidden: settingVisible,
-                  })}
-                >
-                  <div className="w-auto">
-                    <KnowledgeBaseFormField hideLabel />
-                  </div>
+            <CardContent className="flex p-0 h-full">
+              <Card className="flex flex-col flex-1 bg-transparent min-w-0">
+                <CardHeader className={cn('py-2 px-5')}>
+                  <CardTitle className="flex justify-between items-center text-base">
+                    <div className="flex items-center gap- flex-1 min-w-0 ml-[-8px]">
+                      <div
+                        className={cn('flex items-center gap-1', {
+                          hidden: settingVisible,
+                        })}
+                      >
+                        <div className="w-auto">
+                          <KnowledgeBaseFormField hideLabel />
+                        </div>
 
-                  <SavingButton
-                    loading={loading}
-                    className="bg-white text-black hover:bg-gray-100 border"
+                        <SavingButton
+                          loading={loading}
+                          className="bg-white text-black hover:bg-gray-100 border"
+                        />
+                      </div>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="flex-1 p-0 min-h-0">
+
+                  <SingleChatBox
+                    controller={controller}
+                    stopOutputMessage={stopOutputMessage}
+                    conversation={currentConversation}
                   />
-                </div>
-              </div>
-            </div>
-
-
-            <div className="flex flex-1 min-h-0 overflow-hidden">
-
-              <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
-                <SingleChatBox
-                  controller={controller}
-                  stopOutputMessage={stopOutputMessage}
-                  conversation={currentConversation}
-                />
-              </div>
-
+                </CardContent>
+              </Card>
 
               <ChatSettings
-                className={cn('shrink-0', {
-                  hidden: !settingVisible,
-                })}
+                className={cn({ hidden: !settingVisible })}
                 switchSettingVisible={switchSettingVisible}
                 onSubmit={form.handleSubmit(onSubmit, onInvalid)}
                 loading={loading}
               />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div> */}
 
+        {/* <div className="flex flex-1 min-h-0 pb-1 overflow-hidden"> */}
+        <div className="flex flex-1 min-h-0 pb-1 overflow-hidden bg-[radial-gradient(circle_at_0%_20%,rgba(214,240,252,0.38)_0%,rgba(232,246,252,0.26)_20%,rgba(249,252,253,0)_48%),linear-gradient(90deg,rgba(247,251,253,1)_0%,rgba(249,252,253,1)_38%,rgba(246,250,252,1)_100%)] dark:bg-none dark:bg-transparent">
+          {/* 左侧会话列表：自己内部滚动 */}
+          <Sessions
+            hasSingleChatBox={hasSingleChatBox}
+            handleConversationCardClick={handleSessionClick}
+            switchSettingVisible={openChatSettings}
+          />
+
           <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
-            {/* <div
-  className="
-    flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden
-    bg-[#E3F5F1]
-    dark:bg-[#071A16]
-  "
-> */}
             <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div
@@ -473,9 +633,13 @@ export default function Chat() {
                   onOpenReferencePanel={openReferencePanel}
                   reasoning={reasoning}
                   agentMod={agentMod}
+                  projectCompliance={projectCompliance}
+                  experimentReport={experimentReport}
                   onEnableDeepReasoning={onEnableDeepReasoning}
                   onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                   onEnableAgent={onEnableAgent}
+                  onEnableProjectCompliance={onEnableProjectCompliance}
+                  onEnableExperimentReport={onEnableExperimentReport}
                   refreshConversation={refreshCurrentConversation}
                 />
               </div>
@@ -524,7 +688,7 @@ export default function Chat() {
             from={SharedFrom.Chat}
             beta={beta}
             isAgent={false}
-          ></EmbedDialog>
+          />
         )}
 
         {visible && (
@@ -936,3 +1100,314 @@ function SourcePreviewPanel({
     </aside>
   );
 }
+
+// export default function Chat() {
+//   const { id } = useParams();
+//   const { navigateToChatList } = useNavigatePage();
+//   const { data } = useFetchDialog();
+//   const { t } = useTranslation();
+
+//   const [currentConversation, setCurrentConversation] =
+//     useState<IClientConversation>({} as IClientConversation);
+
+//   // 保存后最新的 dialog，防止旧 data 覆盖表单
+//   const [latestDialog, setLatestDialog] = useState<any>(null);
+
+//   // 保存后短时间内跳过旧 data reset
+//   const justSavedRef = useRef(false);
+
+//   const { fetchConversationManually } = useFetchConversationManually();
+
+//   const { handleConversationCardClick, controller, stopOutputMessage } =
+//     useHandleClickConversationCard();
+
+//   const { visible: settingVisible, switchVisible: switchSettingVisible } =
+//     useSetModalState(false);
+
+//   const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
+
+//   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
+//     useAddChatBox(isDebugMode);
+
+//   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
+//     useShowEmbedModal();
+
+//   const { conversationId, isNew } = useGetChatSearchParams();
+
+//   const { data: dialogList } = useFetchConversationList();
+
+//   const currentConversationName = useMemo(() => {
+//     return dialogList.find((x) => x.id === conversationId)?.name;
+//   }, [conversationId, dialogList]);
+
+//   const formSchema = useChatSettingSchema();
+
+//   const { setDialog, loading } = useSetDialog();
+
+//   const [kbIds, setKbIds] = useState<string[]>([]);
+
+//   type FormSchemaType = z.infer<typeof formSchema>;
+
+//   const form = useForm<FormSchemaType>({
+//     resolver: zodResolver(formSchema),
+//     shouldUnregister: false,
+//     defaultValues: {
+//       name: '',
+//       icon: '',
+//       description: '',
+//       kb_ids: [],
+//       prompt_config: {
+//         quote: true,
+//         keyword: false,
+//         tts: false,
+//         use_kg: false,
+//         refine_multiturn: true,
+//         system: '',
+//         prologue: '',
+//         empty_response: '',
+//         parameters: [],
+//         reasoning: false,
+//         cross_languages: [],
+//         toc_enhance: false,
+//       },
+//       top_n: 8,
+//       similarity_threshold: 0.2,
+//       vector_similarity_weight: 0.2,
+//       top_k: 1024,
+//       meta_data_filter: {
+//         method: DatasetMetadata.Disabled,
+//         manual: [],
+//       },
+//     },
+//   });
+
+//   async function onSubmit(values: FormSchemaType) {
+//     const nextValues: Record<string, any> = removeUselessFieldsFromValues(
+//       values,
+//       'llm_setting.',
+//     );
+
+//     const payload = {
+//       ...omit(data, 'operator_permission'),
+//       ...nextValues,
+//       dialog_id: id,
+//     };
+
+//     console.log('====== submit payload ======');
+//     console.log('submit prologue:', payload.prompt_config?.prologue);
+//     console.log('submit empty_response:', payload.prompt_config?.empty_response);
+
+//     const savedDialog = await setDialog(payload);
+
+//     console.log('====== setDialog return ======');
+//     console.log('savedDialog:', savedDialog);
+//     console.log('saved prologue:', savedDialog?.prompt_config?.prologue);
+//     console.log(
+//       'saved empty_response:',
+//       savedDialog?.prompt_config?.empty_response,
+//     );
+
+//     if (!savedDialog) return;
+
+//     const nextDialog = {
+//       ...savedDialog,
+//       prompt_config: {
+//         ...savedDialog.prompt_config,
+//         ...nextValues.prompt_config,
+//       },
+//     };
+
+//     justSavedRef.current = true;
+//     setLatestDialog(nextDialog);
+
+//     setCurrentConversation((prev) => ({
+//       ...prev,
+//       ...nextDialog,
+//     }));
+
+//     const llmSettingEnabledValues = setLLMSettingEnabledValues(
+//       nextDialog.llm_setting,
+//     );
+
+//     form.reset({
+//       ...nextDialog,
+//       ...llmSettingEnabledValues,
+//     } as FormSchemaType);
+
+//     console.log('====== after submit form.reset ======');
+//     console.log(
+//       'form prologue:',
+//       form.getValues('prompt_config.prologue'),
+//     );
+//     console.log(
+//       'form empty_response:',
+//       form.getValues('prompt_config.empty_response'),
+//     );
+
+//     setTimeout(() => {
+//       justSavedRef.current = false;
+//     }, 1000);
+//   }
+
+//   function onInvalid(errors: any) {
+//     console.log('Form validation failed:', errors);
+//   }
+
+//   // 切换会话时清空保存后的本地数据，避免串数据
+//   useEffect(() => {
+//     setLatestDialog(null);
+//     justSavedRef.current = false;
+//   }, [conversationId]);
+
+//   // 表单回显：优先使用保存后的 latestDialog，避免旧 data 覆盖
+//   useEffect(() => {
+//     if (!data || isEmpty(data)) return;
+
+//     if (justSavedRef.current && latestDialog) {
+//       console.log('====== skip old data reset after save ======');
+//       console.log(
+//         'latestDialog empty_response:',
+//         latestDialog?.prompt_config?.empty_response,
+//       );
+//       return;
+//     }
+
+//     const sourceData = latestDialog ?? data;
+
+//     console.log('====== form reset by useEffect ======');
+//     console.log('reset source:', latestDialog ? 'latestDialog' : 'data');
+//     console.log('reset prologue:', sourceData?.prompt_config?.prologue);
+//     console.log(
+//       'reset empty_response:',
+//       sourceData?.prompt_config?.empty_response,
+//     );
+
+//     const llmSettingEnabledValues = setLLMSettingEnabledValues(
+//       sourceData.llm_setting,
+//     );
+
+//     form.reset({
+//       ...sourceData,
+//       ...llmSettingEnabledValues,
+//     } as FormSchemaType);
+//   }, [data, latestDialog, form]);
+
+//   const fetchConversation: typeof handleConversationCardClick = useCallback(
+//     async (conversationId, isNew) => {
+//       if (conversationId && !isNew) {
+//         const conversation = await fetchConversationManually(conversationId);
+
+//         if (!isEmpty(conversation)) {
+//           setCurrentConversation(conversation);
+//         }
+//       }
+//     },
+//     [fetchConversationManually],
+//   );
+
+//   const handleSessionClick: typeof handleConversationCardClick = useCallback(
+//     (conversationId, isNew) => {
+//       handleConversationCardClick(conversationId, isNew);
+//       fetchConversation(conversationId, isNew);
+//     },
+//     [fetchConversation, handleConversationCardClick],
+//   );
+
+//   useMount(() => {
+//     fetchConversation(conversationId, isNew === 'true');
+//   });
+
+//   if (isDebugMode) {
+//     return (
+//       <section className="pt-14 h-[100vh] pb-24">
+//         <div className="flex items-center justify-between px-10 pb-5">
+//           <span className="text-2xl">
+//             {t('chat.multipleModels')} ({chatBoxIds.length}/3)
+//           </span>
+//           <Button variant={'ghost'} onClick={switchDebugMode}>
+//             {t('chat.exit')} <LogOut />
+//           </Button>
+//         </div>
+
+//         <MultipleChatBox
+//           chatBoxIds={chatBoxIds}
+//           controller={controller}
+//           removeChatBox={removeChatBox}
+//           addChatBox={addChatBox}
+//           stopOutputMessage={stopOutputMessage}
+//           conversation={currentConversation}
+//         />
+//       </section>
+//     );
+//   }
+
+//   return (
+//     <Form {...form}>
+//       <form
+//         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+//         className="h-full flex flex-col pr-5"
+//       >
+//         <div className="flex flex-1 min-h-0 pb-9">
+//           <Sessions
+//             hasSingleChatBox={hasSingleChatBox}
+//             handleConversationCardClick={handleSessionClick}
+//             switchSettingVisible={switchSettingVisible}
+//           />
+
+//           <Card className="flex-1 min-w-0 bg-transparent border h-full">
+//             <CardContent className="flex p-0 h-full">
+//               <Card className="flex flex-col flex-1 bg-transparent min-w-0">
+//                 <CardHeader className={cn('py-2 px-5')}>
+//                   <CardTitle className="flex justify-between items-center text-base">
+//                     <div className="flex items-center gap-4 flex-1 min-w-0 ml-[-8px]">
+//                       <div
+//                         className={cn('flex items-center gap-2', {
+//                           hidden: settingVisible,
+//                         })}
+//                       >
+//                         <div className="w-[240px]">
+//                           <KnowledgeBaseFormField hideLabel />
+//                         </div>
+
+//                         <SavingButton
+//                           loading={loading}
+//                           className="bg-white text-black hover:bg-gray-100 border"
+//                         />
+//                       </div>
+//                     </div>
+//                   </CardTitle>
+//                 </CardHeader>
+
+//                 <CardContent className="flex-1 p-0 min-h-[300px] pt-0">
+//                   <SingleChatBox
+//                     controller={controller}
+//                     stopOutputMessage={stopOutputMessage}
+//                     conversation={currentConversation}
+//                   />
+//                 </CardContent>
+//               </Card>
+
+//               <ChatSettings
+//                 className={cn({ hidden: !settingVisible })}
+//                 switchSettingVisible={switchSettingVisible}
+//                 onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+//                 loading={loading}
+//               />
+//             </CardContent>
+//           </Card>
+//         </div>
+
+//         {embedVisible && (
+//           <EmbedDialog
+//             visible={embedVisible}
+//             hideModal={hideEmbedModal}
+//             token={id!}
+//             from={SharedFrom.Chat}
+//             beta={beta}
+//             isAgent={false}
+//           />
+//         )}
+//       </form>
+//     </Form>
+//   );
+// }

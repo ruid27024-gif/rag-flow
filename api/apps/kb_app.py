@@ -571,7 +571,7 @@ async def create():
 
     
     def save_oa_failed(error_message):
-        """
+        """ 
         保存 OA 推送失败状态。
         """
         if not business_id:
@@ -890,7 +890,7 @@ async def create():
             "[KB CREATE] 保存知识库申请记录失败："
         )
         print(error_message)
-        print(traceback.format_exc())
+        # print(traceback.format_exc())
 
         return server_error_response(e)
 
@@ -1711,64 +1711,64 @@ async def approve_approval_request(oa_request_id):
     }
 
     # 回调知识库
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.post(
-                oa_application.callback_url,
-                json=callback_payload,
-                headers={
-                    "Content-Type": "application/json",
-                },
-            )
-
-        if response.status_code != 200:
-            raise RuntimeError(
-                f"Knowledge callback http error: "
-                f"{response.status_code}"
-            )
-
-        callback_result = response.json()
-
-        if callback_result.get("code") != 200:
-            raise RuntimeError(
-                callback_result.get(
-                    "message",
-                    "Knowledge callback failed"
-                )
-            )
-
-        OAApplication.update(
-            callback_status="success",
-            callback_error=None,
-            callback_time=int(time.time()),
-            updated_time=int(time.time()),
-        ).where(
-            OAApplication.oa_request_id == oa_request_id
-        ).execute()
-
-    except Exception as e:
-        OAApplication.update(
-            callback_status="failed",
-            callback_error=str(e),
-            callback_retry_count=(
-                OAApplication.callback_retry_count + 1
-            ),
-            callback_time=int(time.time()),
-            updated_time=int(time.time()),
-        ).where(
-            OAApplication.oa_request_id == oa_request_id
-        ).execute()
-
-        # 注意：OA 审批已经成功，不能因为回调失败而回滚审批状态
-        return get_json_result(
-            data={
-                "oa_request_id": oa_request_id,
-                "status": "approved",
-                "callback_status": "failed",
+    # try:
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.post(
+            oa_application.callback_url,
+            json=callback_payload,
+            headers={
+                "Content-Type": "application/json",
             },
-            message="Approved, but callback failed.",
-            code=RetCode.SERVER_ERROR,
         )
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Knowledge callback http error: "
+            f"{response.status_code}"
+        )
+
+    callback_result = response.json()
+
+    if callback_result.get("code") != 0:
+        raise RuntimeError(
+            callback_result.get(
+                "message",
+                "Knowledge callback failed"
+            )
+        )
+
+    OAApplication.update(
+        callback_status="success",
+        callback_error=None,
+        callback_time=int(time.time()),
+        updated_time=int(time.time()),
+    ).where(
+        OAApplication.oa_request_id == oa_request_id
+    ).execute()
+
+    # except Exception as e:
+    #     OAApplication.update(
+    #         callback_status="failed",
+    #         callback_error=str(e),
+    #         callback_retry_count=(
+    #             OAApplication.callback_retry_count + 1
+    #         ),
+    #         callback_time=int(time.time()),
+    #         updated_time=int(time.time()),
+    #     ).where(
+    #         OAApplication.oa_request_id == oa_request_id
+    #     ).execute()
+
+    #     # 注意：OA 审批已经成功，不能因为回调失败而回滚审批状态
+    #     return get_json_result(
+    #         data={
+    #             "oa_request_id": oa_request_id,
+    #             "status": "approved",
+    #             "callback_status": "failed",
+    #         },
+    #         message="Approved, but callback failed.",
+    #         code=RetCode.SERVER_ERROR,
+    #     )
 
     return get_json_result(
         data={
@@ -2026,22 +2026,13 @@ def get_oa_application_kb_name(oa_application):
     return str(kb_name).strip()
 
 # ragflow侧回调
-@manager.route(
-    "/oa/approval/callback",
-    methods=["POST"]
-)
+import time
+import json
+from quart import request
+
+@manager.route("/oa/approval/callback", methods=["POST"])
 async def oa_approval_callback():
-    """
-    OA 审批完成后回调知识库。
-
-    approved：
-        更新审批状态
-        真正创建知识库
-
-    rejected：
-        更新审批状态
-        不创建知识库
-    """
+    """OA 审批完成后回调知识库。"""
     data = await request.get_json()
 
     if not data:
@@ -2072,25 +2063,16 @@ async def oa_approval_callback():
             code=RetCode.ARGUMENT_ERROR,
         )
 
-    # 可以同时使用 business_id 和 oa_request_id 查询
     apply_record = (
-        KnowledgeBaseCreateApply
-        .select()
-        .where(
-            KnowledgeBaseCreateApply.oa_request_id
-            == oa_request_id
-        )
+        KnowledgeBaseCreateApply.select()
+        .where(KnowledgeBaseCreateApply.oa_request_id == oa_request_id)
         .first()
     )
 
     if not apply_record and business_id:
         apply_record = (
-            KnowledgeBaseCreateApply
-            .select()
-            .where(
-                KnowledgeBaseCreateApply.business_id
-                == business_id
-            )
+            KnowledgeBaseCreateApply.select()
+            .where(KnowledgeBaseCreateApply.business_id == business_id)
             .first()
         )
 
@@ -2101,11 +2083,7 @@ async def oa_approval_callback():
             code=RetCode.NOT_FOUND,
         )
 
-    # 校验 OA 回调中的 business_id
-    if (
-        business_id
-        and apply_record.business_id != business_id
-    ):
+    if business_id and apply_record.business_id != business_id:
         return get_json_result(
             data=False,
             message="business_id does not match.",
@@ -2114,7 +2092,6 @@ async def oa_approval_callback():
 
     now = int(time.time())
 
-    # 已经处理过的相同结果，直接幂等返回成功
     if apply_record.status == result:
         return get_json_result(
             data={
@@ -2125,22 +2102,16 @@ async def oa_approval_callback():
             }
         )
 
-    # 防止 approved 和 rejected 相互覆盖
     if apply_record.status != "pending":
         return get_json_result(
             data=False,
-            message=(
-                f"Invalid status transition: "
-                f"{apply_record.status} -> {result}"
-            ),
+            message=f"Invalid status transition: {apply_record.status} -> {result}",
             code=RetCode.ARGUMENT_ERROR,
         )
 
-    # 审批拒绝：只更新申请状态，不创建知识库
     if result == "rejected":
         updated_count = (
-            KnowledgeBaseCreateApply
-            .update(
+            KnowledgeBaseCreateApply.update(
                 status="rejected",
                 approver_id=approver.get("user_id"),
                 approver_name=approver.get("user_name"),
@@ -2150,10 +2121,8 @@ async def oa_approval_callback():
                 updated_time=now,
             )
             .where(
-                (KnowledgeBaseCreateApply.business_id
-                 == apply_record.business_id)
-                & (KnowledgeBaseCreateApply.status
-                   == "pending")
+                (KnowledgeBaseCreateApply.business_id == apply_record.business_id)
+                & (KnowledgeBaseCreateApply.status == "pending")
             )
             .execute()
         )
@@ -2173,11 +2142,9 @@ async def oa_approval_callback():
             }
         )
 
-    # 审批通过：
-    # 先抢占创建权，避免 OA 重复回调导致重复建库
+    # result == "approved"
     updated_count = (
-        KnowledgeBaseCreateApply
-        .update(
+        KnowledgeBaseCreateApply.update(
             status="approved",
             create_status="processing",
             approver_id=approver.get("user_id"),
@@ -2188,32 +2155,21 @@ async def oa_approval_callback():
             updated_time=now,
         )
         .where(
-            (KnowledgeBaseCreateApply.business_id
-             == apply_record.business_id)
-            & (KnowledgeBaseCreateApply.status
-               == "pending")
-            & (KnowledgeBaseCreateApply.create_status
-               == "pending")
+            (KnowledgeBaseCreateApply.business_id == apply_record.business_id)
+            & (KnowledgeBaseCreateApply.status == "pending")
+            & (KnowledgeBaseCreateApply.create_status == "pending")
         )
         .execute()
     )
 
     if updated_count == 0:
-        # 可能是并发回调，检查当前状态
         current = (
-            KnowledgeBaseCreateApply
-            .select()
-            .where(
-                KnowledgeBaseCreateApply.business_id
-                == apply_record.business_id
-            )
+            KnowledgeBaseCreateApply.select()
+            .where(KnowledgeBaseCreateApply.business_id == apply_record.business_id)
             .first()
         )
 
-        if current and current.create_status in (
-            "processing",
-            "success",
-        ):
+        if current and current.create_status in ("processing", "success"):
             return get_json_result(
                 data={
                     "business_id": current.business_id,
@@ -2230,103 +2186,66 @@ async def oa_approval_callback():
             code=RetCode.ARGUMENT_ERROR,
         )
 
-    # 查询最新申请记录，获取原始 request_data
     apply_record = (
-        KnowledgeBaseCreateApply
-        .select()
-        .where(
-            KnowledgeBaseCreateApply.business_id
-            == apply_record.business_id
-        )
+        KnowledgeBaseCreateApply.select()
+        .where(KnowledgeBaseCreateApply.business_id == apply_record.business_id)
         .first()
     )
 
-    try:
-        original_request = json.loads(
-            apply_record.request_data
-        )
+    original_request = json.loads(apply_record.request_data)
 
-        # 不能完全信任原始请求中的 tenant_id。
-        # 如果 tenant_id 应该是当前申请用户，需要由服务端重新赋值。
-        original_request["tenant_id"] = apply_record.user_id
+    # 不要把客户端传来的 tenant_id 带进创建逻辑，服务端重新赋值
+    original_request.pop("tenant_id", None)
 
-        create_name = original_request.pop(
-            "name",
-            apply_record.kb_name
-        )
+    create_name = original_request.pop(
+        "name",
+        apply_record.kb_name,
+    )
 
-        parser_id = original_request.pop(
-            "parser_id",
-            None
-        )
+    parser_id = original_request.pop(
+        "parser_id",
+        None,
+    )
 
-        # 防止客户端提交不应该进入创建逻辑的字段
-        original_request.pop("business_id", None)
-        original_request.pop("oa_request_id", None)
-        original_request.pop("reason", None)
+    # 防止客户端提交不应该进入创建逻辑的字段
+    original_request.pop("business_id", None)
+    original_request.pop("oa_request_id", None)
+    original_request.pop("reason", None)
 
-        e, res = KnowledgebaseService.create_with_name(
-            name=create_name,
-            tenant_id=apply_record.user_id,
-            parser_id=parser_id,
-            **original_request
-        )
+    e, res = KnowledgebaseService.create_with_name(
+    name=create_name,
+    tenant_id=apply_record.user_id,
+    parser_id=parser_id,
+    **original_request
+)
 
-        if not e:
-            raise RuntimeError(
-                "KnowledgebaseService.create_with_name failed"
-            )
+    if not e:
+        # 失败时 e 是 False，真正的错误信息通常在 res 里
+        raise RuntimeError(f"KnowledgebaseService.create_with_name failed: {res}")
 
-        if not KnowledgebaseService.save(**res):
-            raise RuntimeError(
-                "KnowledgebaseService.save failed"
-            )
+    if not KnowledgebaseService.save(**res):
+        raise RuntimeError("KnowledgebaseService.save failed")
 
-        created_kb_id = res["id"]
+    created_kb_id = res["id"]
 
-        KnowledgeBaseCreateApply.update(
-            create_status="success",
-            created_kb_id=created_kb_id,
-            create_error=None,
-            updated_time=int(time.time()),
-        ).where(
-            KnowledgeBaseCreateApply.business_id
-            == apply_record.business_id
-        ).execute()
+    KnowledgeBaseCreateApply.update(
+        create_status="success",
+        created_kb_id=created_kb_id,
+        create_error=None,
+        updated_time=int(time.time()),
+    ).where(
+        KnowledgeBaseCreateApply.business_id == apply_record.business_id
+    ).execute()
 
-        return get_json_result(
-            data={
-                "business_id": apply_record.business_id,
-                "oa_request_id": oa_request_id,
-                "status": "approved",
-                "create_status": "success",
-                "kb_id": created_kb_id,
-            }
-        )
-
-    except Exception as e:
-        KnowledgeBaseCreateApply.update(
-            create_status="failed",
-            create_error=str(e),
-            updated_time=int(time.time()),
-        ).where(
-            KnowledgeBaseCreateApply.business_id
-            == apply_record.business_id
-        ).execute()
-
-        # 返回失败后，OA 可以根据 callback_status 进行重试。
-        # 但这里需要注意：如果审批已是 approved，重复回调不能再次创建。
-        return get_json_result(
-            data={
-                "business_id": apply_record.business_id,
-                "oa_request_id": oa_request_id,
-                "status": "approved",
-                "create_status": "failed",
-                "message": str(e),
-            },
-            message="Approval succeeded, but knowledge base creation failed.",
-            code=RetCode.SERVER_ERROR,
-        )
+    return get_json_result(
+        data={
+            "business_id": apply_record.business_id,
+            "oa_request_id": oa_request_id,
+            "status": "approved",
+            "create_status": "success",
+            "kb_id": created_kb_id,
+        }
+    )
 
 @manager.route(
     "/oa/approval/tasks/todo",

@@ -404,7 +404,7 @@ async def completion():
         # dia 不需要特殊处理，保持原逻辑
         e, dia = DialogService.get_by_id(conv.dialog_id)
 
-        if not e:
+        if not e:   
             return get_data_error_result(
                 message="Dialog not found!"
             )
@@ -547,6 +547,9 @@ async def completion():
     except Exception as e:
         return server_error_response(e)
 
+
+
+    
 @manager.route("/sequence2txt", methods=["POST"])  # noqa: F821
 @login_required
 async def sequence2txt():

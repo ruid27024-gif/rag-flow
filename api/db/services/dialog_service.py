@@ -372,6 +372,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
     reasoning_enabled = prompt_config.get("reasoning", False)
     agent_mod_enabled = prompt_config.get("agent_mod", False) or kwargs.get("agent_mod", False)
+    experiment_report_mod_enabled = prompt_config.get("experiment_report", False) or kwargs.get("experiment_report", False)
+    project_compliance_mod_enabled = prompt_config.get("project_compliance", False) or kwargs.get("project_compliance", False)
 
     # 无 kb 且非 Agent 模式，才走纯对话
     if not agent_mod_enabled and not dialog.kb_ids and not prompt_config.get("tavily_api_key"):
@@ -1120,6 +1122,296 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                 refs["doc_aggs"] = []
             else:
                 refs=[]
+
+        
+
+        if project_compliance_mod_enabled:
+            import json
+            # import re
+            from pathlib import Path
+            from urllib.parse import urlencode
+
+            # 模板文件目录
+            APPLICATION_TEMPLATE_DIR = Path(
+                "/home/zyb/rag-flow/Application_Template"
+            ).resolve()
+
+            # 允许作为模板返回的文件类型
+            ALLOWED_TEMPLATE_EXTENSIONS = {
+                ".pdf",
+                ".doc",
+                ".docx",
+                ".xls",
+                ".xlsx",
+                ".ppt",
+                ".pptx",
+                ".txt",
+            }
+
+            # 前端访问文件的接口。
+            # manager 如果已经注册了 /v1/file 前缀，这里就是这个地址。
+            TEMPLATE_FILE_API = "/v1/file/template"
+
+            def get_application_template_files() -> list[str]:
+                """
+                获取 Application_Template 目录下的所有模板文件。
+
+                返回相对于 Application_Template 的路径，例如：
+                [
+                    "企业申请流程指南.pdf",
+                    "承诺书/企业合规承诺书.docx",
+                ]
+                """
+                if not APPLICATION_TEMPLATE_DIR.exists():
+                    return []
+
+                if not APPLICATION_TEMPLATE_DIR.is_dir():
+                    return []
+
+                template_files = []
+
+                for file_path in APPLICATION_TEMPLATE_DIR.rglob("*"):
+                    if not file_path.is_file():
+                        continue
+
+                    if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
+                        continue
+
+                    relative_path = file_path.relative_to(
+                        APPLICATION_TEMPLATE_DIR
+                    ).as_posix()
+
+                    template_files.append(relative_path)
+
+                return sorted(template_files)
+
+            def parse_model_json(content: str) -> dict:
+                """
+                兼容以下模型输出：
+
+                {"file_path": "企业申请流程指南.pdf"}
+
+                或：
+
+                ```json
+                {"file_path": "企业申请流程指南.pdf"}
+                ```
+                """
+                if not content:
+                    return {}
+
+                content = str(content).strip()
+
+                # 去掉 Markdown JSON 代码块
+                content = re.sub(
+                    r"^```(?:json)?\s*",
+                    "",
+                    content,
+                    flags=re.IGNORECASE,
+                )
+                content = re.sub(
+                    r"\s*```$",
+                    "",
+                    content,
+                )
+                content = content.strip()
+
+                try:
+                    result = json.loads(content)
+
+                    if isinstance(result, dict):
+                        return result
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+                # 模型可能在 JSON 前后输出了额外内容
+                json_match = re.search(r"\{.*\}", content, re.DOTALL)
+
+                if not json_match:
+                    return {}
+
+                try:
+                    result = json.loads(json_match.group(0))
+
+                    if isinstance(result, dict):
+                        return result
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+                return {}
+
+            async def select_application_template(
+                chat_mdl,
+                user_question: str,
+                answer: str = "",
+            ) -> str | None:
+                """
+                让模型根据用户问题选择模板。
+
+                模型只返回相对文件路径，不允许模型生成 URL。
+                """
+                template_files = get_application_template_files()
+
+                if not template_files:
+                    return None
+
+                template_list = "\n".join(
+                    f"- {file_path}"
+                    for file_path in template_files
+                )
+
+                suggestion_system_prompt = f"""
+            你是一个企业合规模板文件选择助手。
+
+            请根据用户的问题，判断是否需要给用户提供模板文件。
+            如果需要，请从“可用模板文件”中选择最合适的一个文件。
+            如果不需要，返回 null。
+
+            ## 可用模板文件
+
+            {template_list}
+
+            ## 用户问题
+
+            {user_question}
+
+            ## 当前系统回答
+
+            {answer}
+
+            ## 判断规则
+
+            1. file_path 只能从“可用模板文件”中原样选择。
+            2. 不得修改文件名，不得编造文件名。
+            3. 不得返回本地绝对路径。
+            4. 不得生成 URL。
+            5. 如果没有合适的模板，file_path 必须返回 null。
+            6. 一次最多选择一个模板。
+            7. 只返回 JSON，不要返回 Markdown，不要解释。
+
+            返回格式：
+
+            {{
+            "file_path": "企业申请流程指南.pdf"
+            }}
+
+            没有合适模板时返回：
+
+            {{
+            "file_path": null
+            }}
+            """.strip()
+
+                try:
+                    suggestions = await chat_mdl.async_chat(
+                        suggestion_system_prompt,
+                        [],
+                    )
+                except Exception:
+                    # 这里可以换成你项目里的 logger.exception(...)
+                    return None
+
+                # 如果 async_chat 返回的不是字符串，可根据实际返回结构调整
+                if isinstance(suggestions, str):
+                    model_content = suggestions
+                elif isinstance(suggestions, dict):
+                    model_content = (
+                        suggestions.get("content")
+                        or suggestions.get("answer")
+                        or json.dumps(suggestions, ensure_ascii=False)
+                    )
+                else:
+                    model_content = str(suggestions or "")
+
+                result = parse_model_json(model_content)
+
+                selected_path = result.get("file_path")
+
+                if not selected_path or not isinstance(selected_path, str):
+                    return None
+
+                # 统一路径分隔符
+                selected_path = selected_path.strip().replace("\\", "/")
+
+                # 模型返回结果必须存在于扫描得到的白名单中
+                if selected_path not in template_files:
+                    return None
+
+                # 再检查一次物理文件，不能直接信任模型
+                file_path = (
+                    APPLICATION_TEMPLATE_DIR / selected_path
+                ).resolve()
+
+                try:
+                    file_path.relative_to(APPLICATION_TEMPLATE_DIR)
+                except ValueError:
+                    # 防止 ../ 目录穿越
+                    return None
+
+                if not file_path.is_file():
+                    return None
+
+                return selected_path
+
+            def build_application_template_markdown(
+                relative_path: str,
+            ) -> str | None:
+                """
+                根据模板相对路径生成 Markdown 文件链接。
+                """
+                if not relative_path:
+                    return None
+
+                relative_path = relative_path.strip().replace("\\", "/")
+
+                file_path = (
+                    APPLICATION_TEMPLATE_DIR / relative_path
+                ).resolve()
+
+                try:
+                    file_path.relative_to(APPLICATION_TEMPLATE_DIR)
+                except ValueError:
+                    return None
+
+                if not file_path.is_file():
+                    return None
+
+                if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
+                    return None
+
+                ext = file_path.suffix.lower().lstrip(".")
+
+                query_string = urlencode({
+                    "path": relative_path,
+                    "preview": "1",
+                    "ext": ext,
+                })
+
+                document_url = (
+                    f"{TEMPLATE_FILE_API}?{query_string}"
+                )
+
+                # Markdown 中只展示文件名，不展示子目录
+                display_name = file_path.name
+
+                return f"[{display_name}]({document_url})"
+
+
+            selected_template = await select_application_template(
+                chat_mdl=chat_mdl,
+                user_question=questions[-1],  # 替换成你代码中的用户问题变量
+                answer=answer,
+            )
+
+            if selected_template:
+                document_link = build_application_template_markdown(
+                    selected_template
+                )
+
+                if document_link:
+                    answer = f"{answer}\n\n{document_link}"
+
+            # answer = answer + "\n\n" + document_link
 
         return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time(), "suggestions":suggestions}
 

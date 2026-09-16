@@ -11,6 +11,7 @@ import { buildMessageUuidWithRole } from '@/utils/chat';
 import { message } from 'antd';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { useNavigate, useParams } from 'umi';
 import {
   useGetSendButtonDisabled,
   useSendButtonDisabled,
@@ -18,6 +19,11 @@ import {
 import { useCreateConversationBeforeUploadDocument } from '../../hooks/use-create-conversation';
 import { useSendMessage } from '../../hooks/use-send-chat-message';
 import { buildMessageItemReference } from '../../utils';
+// interface IProps {
+//   controller: AbortController;
+//   stopOutputMessage(): void;
+//   conversation: IClientConversation;
+// }
 
 interface IProps {
   controller: any;
@@ -32,9 +38,14 @@ interface IProps {
   onOpenReferencePanel?: (list: ReferenceDocumentItem[]) => void;
   reasoning: boolean;
   agentMod: boolean;
+  projectCompliance?: boolean;
+  experimentReport?: boolean;
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
+
+  onEnableProjectCompliance?: () => void | Promise<void>;
+  onEnableExperimentReport?: () => void | Promise<void>;
   refreshConversation?: () => Promise<any>;
 }
 
@@ -46,33 +57,15 @@ export function SingleChatBox({
   onOpenReferencePanel,
   reasoning,
   agentMod,
+  projectCompliance,
+  experimentReport,
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
+  onEnableProjectCompliance, // ✅ 补上
+  onEnableExperimentReport, // ✅ 补上
   refreshConversation,
 }: IProps) {
-  function fallbackCopyText(text: string) {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    textarea.style.top = '-9999px';
-    textarea.style.opacity = '0';
-
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-
-    try {
-      const successful = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      return successful;
-    } catch (err) {
-      document.body.removeChild(textarea);
-      return false;
-    }
-  }
   const {
     value,
     scrollRef,
@@ -96,10 +89,38 @@ export function SingleChatBox({
   const { conversationId } = useGetChatSearchParams();
   const disabled = useGetSendButtonDisabled();
   const sendDisabled = useSendButtonDisabled(value);
+  const navigate = useNavigate();
+  const { id } = useParams();
+  const projectComplianceActive =
+    projectCompliance && !reasoning && !agentMod && !experimentReport;
+  const experimentReportActive =
+    experimentReport && !reasoning && !agentMod && !projectCompliance;
+
   // const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
   //   useClickDrawer();
+  function fallbackCopyText(text: string) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
 
-  // console.log(derivedMessages);
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    textarea.style.opacity = '0';
+
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return successful;
+    } catch (err) {
+      document.body.removeChild(textarea);
+      return false;
+    }
+  }
+  // console.log('derivedMessages',derivedMessages);
   useEffect(() => {
     const messages = conversation?.message;
 
@@ -137,11 +158,11 @@ export function SingleChatBox({
 
   // ✅ 新增：处理建议列表点击的函数
   // ✅ 修改：构造一个符合 ChangeEventHandler 的事件对象
-  // 单击：填入输入框
   const handleSuggestionClick = (suggestion: string) => {
     setValue(suggestion);
   };
 
+  // 双击：填入输入框并发送
   const handleSuggestionDoubleClick = (suggestion: string) => {
     flushSync(() => {
       setValue(suggestion);
@@ -266,12 +287,16 @@ export function SingleChatBox({
 
       const result = await response.json();
 
+      console.log('share result:', result);
+
       if (result.code !== 0) {
         message.error(result.message || '创建分享失败');
         return;
       }
 
       const shareUrl = result.data?.url;
+
+      console.log('shareUrl:', shareUrl);
 
       if (!shareUrl) {
         message.error('后端未返回分享链接');
@@ -300,6 +325,7 @@ export function SingleChatBox({
       message.error('分享失败');
     }
   };
+  // import { SunIcon, SmileIcon, MoonIcon, StarIcon } from 'lucide-react';
 
   const handleRebaseMessage = async (messageId: string) => {
     if (!conversationId) {
@@ -350,8 +376,6 @@ export function SingleChatBox({
       message.error('创建分支会话失败');
     }
   };
-  // import { SunIcon, SmileIcon, MoonIcon, StarIcon } from 'lucide-react';
-
   // 或者用简单 SVG：
   const SunIcon = () => (
     <svg
@@ -452,6 +476,12 @@ export function SingleChatBox({
         : hours >= 18 && hours < 22
           ? MoonIcon
           : StarIcon;
+  //   useEffect(() => {
+  //   if (visible) {
+  //     console.log('PdfSheet documentId:', documentId);
+  //     console.log('PdfSheet selectedChunk:', selectedChunk);
+  //   }
+  // }, [visible, documentId, selectedChunk]);
 
   const isWelcomePage = !conversationId || derivedMessages.length === 1;
 
@@ -471,11 +501,17 @@ export function SingleChatBox({
       onUpload={handleUploadFile}
       isUploading={isUploading}
       removeFile={removeFile}
+      // 👇 状态传递
       reasoning={reasoning}
       agentMod={agentMod}
+      projectCompliance={projectCompliance} // ✅ 补上
+      experimentReport={experimentReport} // ✅ 补上
+      // 👇 回调函数传递
       onEnableDeepReasoning={onEnableDeepReasoning}
       onEnableMultiKbReasoning={onEnableMultiKbReasoning}
       onEnableAgent={onEnableAgent}
+      onEnableProjectCompliance={onEnableProjectCompliance} // ✅ 补上
+      onEnableExperimentReport={onEnableExperimentReport} // ✅ 补上
     />
   );
   return (
@@ -522,8 +558,8 @@ export function SingleChatBox({
         </div>
       ) : (
         /**
-         * 正常对话布局：
-         * 消息滚动 + 底部固定输入框
+         * 正常对话：
+         * 消息滚动区域 + 底部固定输入框
          */
         <>
           {/* 消息滚动区域：这一层是全宽的，所以滚动条会在最右侧 */}
@@ -532,7 +568,7 @@ export function SingleChatBox({
             className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
           >
             {/* 内容居中区域：只控制内容宽度，不负责滚动 */}
-            <div className="max-w-[860px] mx-auto w-full px-5 pt-0 pb-4">
+            <div className="mx-auto w-full max-w-[860px] px-5 pt-0 pb-4">
               {derivedMessages?.map((message, i) => (
                 <MessageItem
                   loading={
@@ -563,6 +599,7 @@ export function SingleChatBox({
                   onSuggestionDoubleClick={handleSuggestionDoubleClick}
                   onShareMessage={handleShareMessage}
                   onRebaseMessage={handleRebaseMessage}
+                  isLastMessage={derivedMessages.length - 1 === i}
                 />
               ))}
 
@@ -573,10 +610,29 @@ export function SingleChatBox({
 
           {/* 底部输入框：固定在底部，不参与滚动 */}
           <div className="shrink-0 w-full px-5 pb-4">
-            <div className="max-w-[860px] mx-auto w-full">{inputBox}</div>
+            <div
+              className="
+              mx-auto
+              w-full
+              max-w-[860px]
+              rounded-xl
+            "
+            >
+              {inputBox}
+            </div>
           </div>
         </>
       )}
+
+      {/* PDF 预览弹窗 */}
+      {/* {visible && (
+      <PdfSheet
+        visible={visible}
+        hideModal={hideModal}
+        documentId={documentId}
+        chunk={selectedChunk}
+      />
+    )} */}
     </section>
   );
 }

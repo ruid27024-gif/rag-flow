@@ -411,6 +411,17 @@ def get_parser_config(chunk_method, parser_config):
         },
         "email": None,
         "picture": None,
+        "apply_process": {
+            "layout_recognize": "DeepDOC",
+            "chunk_token_num": 512,
+            "delimiter": "\n",
+            "auto_keywords": 0,
+            "auto_questions": 0,
+            "html4excel": False,
+            "topn_tags": 3,
+            "raptor": {"use_raptor": False},
+            "graphrag": {"use_graphrag": False},
+        },
     }
 
     default_config = key_mapping[chunk_method]

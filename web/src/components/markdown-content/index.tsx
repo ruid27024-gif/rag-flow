@@ -22,8 +22,18 @@ import { visitParents } from 'unist-util-visit-parents';
 
 import { useTranslation } from 'react-i18next';
 
+import DocxPreviewModal from '@/components/DocxPreviewModal';
 import { HomeIcon } from '@/components/svg-icon';
 import 'katex/dist/katex.min.css'; // `rehype-katex` does not import the CSS for you
+
+import {
+  File,
+  FileArchive,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  Presentation,
+} from 'lucide-react';
 
 import { useFetchDocumentThumbnailsByIds } from '@/hooks/use-document-request';
 import {
@@ -565,6 +575,292 @@ const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
   );
 };
 
+function getMarkdownFileName(href: string, children: React.ReactNode): string {
+  // 优先使用 Markdown 链接展示的文字
+  if (typeof children === 'string' && children.trim()) {
+    return children.trim();
+  }
+
+  try {
+    const parsedUrl = new URL(href, window.location.origin);
+
+    // 兼容：
+    // /v1/file/template?path=xxx.docx
+    const pathParam = parsedUrl.searchParams.get('path');
+
+    if (pathParam) {
+      const decodedPath = decodeURIComponent(pathParam);
+
+      return decodedPath.split('/').filter(Boolean).pop() || '查看文件';
+    }
+
+    // 兼容：
+    // /v1/file/template/xxx.docx
+    const pathname = decodeURIComponent(parsedUrl.pathname);
+
+    return pathname.split('/').filter(Boolean).pop() || '查看文件';
+  } catch {
+    return '查看文件';
+  }
+}
+
+function getMarkdownFileExtension(fileName: string, href: string): string {
+  try {
+    const parsedUrl = new URL(href, window.location.origin);
+
+    const extFromQuery = parsedUrl.searchParams.get('ext') || '';
+
+    if (extFromQuery) {
+      return extFromQuery.replace('.', '').toLowerCase();
+    }
+  } catch {
+    // 使用文件名解析扩展名
+  }
+
+  const lastDotIndex = fileName.lastIndexOf('.');
+
+  if (lastDotIndex === -1) {
+    return '';
+  }
+
+  return fileName.slice(lastDotIndex + 1).toLowerCase();
+}
+
+function isFileMarkdownLink(href?: string): boolean {
+  if (!href) {
+    return false;
+  }
+
+  return href.includes('/document/') || href.includes('/v1/file/template');
+}
+
+interface MarkdownFileLinkProps {
+  href?: string;
+  children?: React.ReactNode;
+  [key: string]: any;
+}
+
+function MarkdownFileLink({
+  href = '',
+  children,
+  ...props
+}: MarkdownFileLinkProps) {
+  const [docxPreviewOpen, setDocxPreviewOpen] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+
+  const fileName = getMarkdownFileName(href, children);
+
+  const extension = getMarkdownFileExtension(fileName, href);
+
+  const isDocx = extension === 'docx';
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>) => {
+      // 只有 DOCX 使用前端预览
+      if (!isDocx) {
+        // DOC、PDF、图片等保持默认行为
+        return;
+      }
+
+      event.preventDefault();
+
+      if (loading) {
+        return;
+      }
+
+      setDocxPreviewOpen(true);
+    },
+    [isDocx, loading],
+  );
+
+  const META: Record<
+    string,
+    {
+      Icon: any;
+      iconCls: string;
+      label: string;
+    }
+  > = {
+    pdf: {
+      Icon: FileText,
+      iconCls: 'bg-red-50 text-red-500 dark:bg-red-500/10 dark:text-red-400',
+      label: 'PDF',
+    },
+    doc: {
+      Icon: FileText,
+      iconCls:
+        'bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400',
+      label: 'DOC',
+    },
+    docx: {
+      Icon: FileText,
+      iconCls:
+        'bg-blue-50 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400',
+      label: 'DOCX',
+    },
+    xls: {
+      Icon: FileSpreadsheet,
+      iconCls:
+        'bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-400',
+      label: 'XLS',
+    },
+    xlsx: {
+      Icon: FileSpreadsheet,
+      iconCls:
+        'bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-400',
+      label: 'XLSX',
+    },
+    csv: {
+      Icon: FileSpreadsheet,
+      iconCls:
+        'bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-400',
+      label: 'CSV',
+    },
+    ppt: {
+      Icon: Presentation,
+      iconCls:
+        'bg-orange-50 text-orange-500 dark:bg-orange-500/10 dark:text-orange-400',
+      label: 'PPT',
+    },
+    pptx: {
+      Icon: Presentation,
+      iconCls:
+        'bg-orange-50 text-orange-500 dark:bg-orange-500/10 dark:text-orange-400',
+      label: 'PPTX',
+    },
+    zip: {
+      Icon: FileArchive,
+      iconCls:
+        'bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400',
+      label: 'ZIP',
+    },
+    rar: {
+      Icon: FileArchive,
+      iconCls:
+        'bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400',
+      label: 'RAR',
+    },
+    '7z': {
+      Icon: FileArchive,
+      iconCls:
+        'bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400',
+      label: '7Z',
+    },
+    png: {
+      Icon: FileImage,
+      iconCls:
+        'bg-purple-50 text-purple-500 dark:bg-purple-500/10 dark:text-purple-400',
+      label: 'PNG',
+    },
+    jpg: {
+      Icon: FileImage,
+      iconCls:
+        'bg-purple-50 text-purple-500 dark:bg-purple-500/10 dark:text-purple-400',
+      label: 'JPG',
+    },
+    jpeg: {
+      Icon: FileImage,
+      iconCls:
+        'bg-purple-50 text-purple-500 dark:bg-purple-500/10 dark:text-purple-400',
+      label: 'JPEG',
+    },
+    webp: {
+      Icon: FileImage,
+      iconCls:
+        'bg-purple-50 text-purple-500 dark:bg-purple-500/10 dark:text-purple-400',
+      label: 'WEBP',
+    },
+    txt: {
+      Icon: FileText,
+      iconCls:
+        'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+      label: 'TXT',
+    },
+  };
+
+  const { Icon, iconCls, label } = META[extension] ?? {
+    Icon: File,
+    iconCls:
+      'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+    label: extension ? extension.toUpperCase() : 'FILE',
+  };
+
+  return (
+    <>
+      <div className="my-2">
+        <a
+          {...props}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleClick}
+          title={isDocx ? `预览 ${fileName}` : `打开 ${fileName}`}
+          className="
+            group inline-flex h-11 w-full max-w-[300px]
+            items-center gap-2.5
+            rounded-lg border border-slate-200
+            bg-white px-2.5
+            no-underline
+            transition-colors
+            hover:border-slate-300 hover:bg-slate-50
+            dark:border-slate-700 dark:bg-slate-900
+            dark:hover:border-slate-600 dark:hover:bg-slate-800
+          "
+        >
+          {/* 文件图标 */}
+          <span
+            className={`
+              flex h-7 w-7 shrink-0
+              items-center justify-center
+              rounded-md
+              ${iconCls}
+            `}
+          >
+            <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
+          </span>
+
+          {/* 文件名 */}
+          <span className="min-w-0 flex-1">
+            <span
+              className="
+                block truncate
+                text-[13px] font-medium leading-[17px]
+                text-slate-700
+                dark:text-slate-200
+              "
+              title={fileName}
+            >
+              {loading ? '正在加载…' : fileName}
+            </span>
+
+            <span
+              className="
+                block text-[10px] leading-[12px]
+                text-slate-400
+                dark:text-slate-500
+              "
+            >
+              {isDocx ? '点击预览' : label}
+            </span>
+          </span>
+        </a>
+      </div>
+
+      {docxPreviewOpen && isDocx && (
+        <DocxPreviewModal
+          url={href}
+          fileName={fileName}
+          onClose={() => {
+            setDocxPreviewOpen(false);
+            setLoading(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 const MarkdownContent = ({
   reference,
   clickDocumentButton,
@@ -834,6 +1130,7 @@ const MarkdownContent = ({
           'think',
           'script',
           'style',
+          'a', // 关键
         ]);
 
         const shouldSkip = ancestors.some((ancestor: any) => {
@@ -1087,6 +1384,23 @@ const MarkdownContent = ({
           </h3>
         ),
 
+        a: (props: any) => {
+          if (isFileMarkdownLink(props.href)) {
+            return <MarkdownFileLink {...props} />;
+          }
+
+          return (
+            <a
+              {...props}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="
+        text-[#018B8D] underline
+        hover:text-[#017476]
+      "
+            />
+          );
+        },
         p: ({ children }: { children: React.ReactNode }) => (
           <p
             className="
