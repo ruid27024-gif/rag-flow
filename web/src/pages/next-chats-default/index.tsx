@@ -70,6 +70,7 @@ export default function ChatList() {
               icon="chats"
               onSearchChange={handleInputChange}
               searchString={searchString}
+              showFilter={false}
             >
               <Button onClick={handleShowCreateModal}>
                 <Plus className="size-2.5" />

@@ -9,17 +9,22 @@ import {
   FileUploadItemPreview,
   FileUploadItemProgress,
   FileUploadList,
+  FileUploadTrigger,
   type FileUploadProps,
 } from '@/components/file-upload';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { Popover } from 'antd';
 import { t } from 'i18next';
 import {
   Bot,
   CircleStop,
   FileText,
+  Folder,
   Layers3,
+  Paperclip,
+  Puzzle,
   Send,
   ShieldCheck,
   Sparkles,
@@ -29,6 +34,10 @@ import {
 import * as React from 'react';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
+import type { ComplianceTemplate } from './ComplianceTemplatePopover';
+import ComplianceTemplatePopover from './ComplianceTemplatePopover';
+import type { SkillItem } from './SkillPopover';
+import SkillPopover from './SkillPopover';
 
 interface IProps {
   disabled: boolean;
@@ -46,15 +55,29 @@ interface IProps {
   stopOutputMessage?(): void;
   onUpload?: NonNullable<FileUploadProps['onUpload']>;
   removeFile?(file: File): void;
-  reasoning: boolean;
-  agentMod: boolean;
-  projectCompliance?: boolean; // ✅ 补上
-  experimentReport?: boolean; // ✅ 补上
-  onEnableDeepReasoning?: () => void;
-  onEnableMultiKbReasoning?: () => void;
-  onEnableAgent?: () => void;
-  onEnableProjectCompliance?: () => void; // ✅ 补上
-  onEnableExperimentReport?: () => void; // ✅ 补上
+
+  // 👇 外部传入的当前模式状态
+  reasoning?: boolean;
+  agentMod?: boolean;
+  projectCompliance?: boolean;
+  experimentReport?: boolean;
+
+  // 👇 允许外部覆盖最外层输入框样式（首页用来改圆角/高度）
+  wrapperClassName?: string;
+
+  // ✅ 合规模式下的两个按钮回调
+  onClickComplianceFolder?: () => void;
+  /** 点小面板某一项 / 点「查看模板」时触发，参数为该模板（没有则打开大弹窗的默认项） */
+  onClickComplianceTemplate?: (tpl?: ComplianceTemplate) => void;
+
+  // ✅ 小面板要展示的模板列表
+  complianceTemplates?: ComplianceTemplate[];
+  complianceTemplatesLoading?: boolean;
+  isComplianceFolderOpen?: boolean; // 新增：工作区是否打开
+
+  onSelectSkill?: (skill: SkillItem) => void;
+  onClickSkill?: () => void; // 👈 新增：点「查看全部技能」时触发
+  skillActive?: boolean; // 👈 新增：技能页是否打开（用于高亮）
 }
 
 export function NextMessageInput({
@@ -69,23 +92,31 @@ export function NextMessageInput({
   stopOutputMessage,
   onPressEnter,
   removeFile,
-  reasoning,
-  agentMod,
-  projectCompliance, // ✅ 补上
-  experimentReport, // ✅ 补上
-  onEnableDeepReasoning,
-  onEnableMultiKbReasoning,
-  onEnableAgent,
-  onEnableProjectCompliance, // ✅ 补上
-  onEnableExperimentReport, // ✅ 补上
+  reasoning = false,
+  agentMod = false,
+  projectCompliance = false,
+  experimentReport = false,
+  wrapperClassName,
+  onClickComplianceFolder,
+  onClickComplianceTemplate,
+  complianceTemplates = [],
+  complianceTemplatesLoading = false,
+  isComplianceFolderOpen = false,
+  onSelectSkill,
+  onClickSkill, // 👈 新增
+  skillActive = false, // 👈 新增
 }: IProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [audioInputValue, setAudioInputValue] = React.useState<string | null>(
     null,
   );
-  const [inputHeight, setInputHeight] = React.useState(120);
+  const [inputHeight, setInputHeight] = React.useState(130);
   const startYRef = React.useRef(0);
   const startHeightRef = React.useRef(120);
+
+  /** ✅ 模板 Popover 开关 */
+  const [templatePopoverOpen, setTemplatePopoverOpen] = React.useState(false);
+  const [skillPopoverOpen, setSkillPopoverOpen] = React.useState(false);
 
   useEffect(() => {
     if (audioInputValue !== null) {
@@ -134,11 +165,6 @@ export function NextMessageInput({
       startHeightRef.current = inputHeight;
 
       const handleMouseMove = (event: MouseEvent) => {
-        /**
-         * 因为拖的是上边沿：
-         * 鼠标往上移动，event.clientY 变小，高度增加
-         * 鼠标往下移动，event.clientY 变大，高度减少
-         */
         const deltaY = startYRef.current - event.clientY;
         const nextHeight = startHeightRef.current + deltaY;
 
@@ -170,20 +196,55 @@ export function NextMessageInput({
     [inputHeight],
   );
 
-  const isMultiKbMode =
-    !reasoning && !agentMod && !projectCompliance && !experimentReport;
+  /** 根据外部状态计算当前选中的模式 */
+  const activeMode = React.useMemo(() => {
+    if (reasoning) {
+      return {
+        label: '深度推理',
+        Icon: Sparkles,
+        className:
+          'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400',
+      };
+    }
+    if (agentMod) {
+      return {
+        label: 'Agent Skills',
+        Icon: Bot,
+        className:
+          'border-purple-300 bg-purple-50 text-purple-600 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400',
+      };
+    }
+    if (projectCompliance) {
+      return {
+        label: '合规申报',
+        Icon: ShieldCheck,
+        className:
+          'border-orange-300 bg-orange-50 text-orange-600 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-400',
+      };
+    }
+    if (experimentReport) {
+      return {
+        label: '实验报告',
+        Icon: FileText,
+        className:
+          'border-cyan-300 bg-cyan-50 text-cyan-600 dark:border-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400',
+      };
+    }
+    return {
+      label: '多库并行',
+      Icon: Layers3,
+      className:
+        'border-emerald-300 bg-emerald-50 text-emerald-600 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+    };
+  }, [reasoning, agentMod, projectCompliance, experimentReport]);
 
-  const isDeepReasoningMode =
-    reasoning && !agentMod && !projectCompliance && !experimentReport;
+  const ActiveIcon = activeMode.Icon;
 
-  const isAgentMode =
-    !reasoning && agentMod && !projectCompliance && !experimentReport;
+  /** ✅ 是否显示「工作区 / 文件管理」按钮：合规、Agent、实验报告三种模式都显示 */
+  const showWorkspaceButton = projectCompliance || agentMod || experimentReport;
 
-  const isProjectComplianceMode =
-    !reasoning && !agentMod && projectCompliance && !experimentReport;
-
-  const isExperimentReportMode =
-    !reasoning && !agentMod && !projectCompliance && experimentReport;
+  /** ✅ 是否显示「模板」按钮：仅合规模式显示 */
+  const showTemplateButton = projectCompliance;
 
   return (
     <FileUpload
@@ -196,7 +257,6 @@ export function NextMessageInput({
     >
       <FileUploadDropzone
         tabIndex={-1}
-        // Prevents the dropzone from triggering on click
         onClick={(event) => event.preventDefault()}
         className="absolute top-0 left-0 z-0 flex size-full items-center justify-center rounded-none border-none bg-background/50 p-0 opacity-0 backdrop-blur transition-opacity duration-200 ease-out data-[dragging]:z-10 data-[dragging]:opacity-100"
       >
@@ -210,19 +270,21 @@ export function NextMessageInput({
           </p>
         </div>
       </FileUploadDropzone>
-      {/* <div
-        className="relative flex w-full flex-col gap-2.5 rounded-md border border-input px-3 py-2 outline-none focus-within:ring-1 focus-within:ring-ring/50"
-        style={{ height: inputHeight }}
-      > */}
+
       <div
-        className="relative flex w-full flex-col gap-2.5 rounded-3xl border border-input px-3 py-2 outline-none focus-within:ring-1 focus-within:ring-ring/50"
+        className={cn(
+          // 将 px-3 py-2 改为 px-5 py-4（如果觉得太大，可以改为 px-4 py-3）
+          'relative flex w-full flex-col gap-2.5 rounded-3xl border border-input px-5 py-4 outline-none focus-within:ring-1 focus-within:ring-ring/50',
+          wrapperClassName,
+        )}
         style={{ height: inputHeight }}
       >
-        {/* 顶部拖拽条：鼠标放到最外层输入框上边沿后上下拖动 */}
+        {/* 顶部拖拽条 */}
         <div
           onMouseDown={handleResizeMouseDown}
           className="absolute top-0 left-0 z-20 h-2 w-full cursor-ns-resize bg-transparent"
         />
+
         <FileUploadList
           orientation="horizontal"
           className="overflow-x-auto px-0 py-1"
@@ -247,308 +309,159 @@ export function NextMessageInput({
             </FileUploadItem>
           ))}
         </FileUploadList>
-        {/* <Textarea
-          value={value}
-          onChange={onInputChange}
-          placeholder={t('chat.messagePlaceholder')}
-          className="field-sizing-content min-h-10 w-full resize-none border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
-          disabled={isUploading || disabled || sendLoading}
-          onKeyDown={handleKeyDown}
-        /> */}
+
         <Textarea
           value={value}
           onChange={onInputChange}
           placeholder={t('chat.messagePlaceholder')}
-          className="min-h-10 flex-1 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
+          className="
+            min-h-10 flex-1 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 dark:bg-transparent
+            placeholder:text-[15px] placeholder:text-gray-500 dark:placeholder:text-gray-400
+          "
           disabled={isUploading || disabled || sendLoading}
           onKeyDown={handleKeyDown}
         />
+
         <div className="flex items-center justify-between gap-1.5">
-          {/* 左侧工具区 */}
+          {/* 左侧工具区：上传按钮 + 当前模式标记 + 工作区/模板按钮 */}
           <div className="flex items-center gap-2">
-            {/* {showUploadIcon && (
+            {showUploadIcon && (
               <FileUploadTrigger asChild>
                 <Button
                   type="button"
                   size="icon"
                   variant="ghost"
                   className="size-7 rounded-sm"
-                  disabled={isUploading || sendLoading}
+                  disabled={isUploading || sendLoading || disabled}
+                  title="上传文件"
                 >
                   <Paperclip className="size-3.5" />
                   <span className="sr-only">Attach file</span>
                 </Button>
               </FileUploadTrigger>
-            )} */}
+            )}
 
-            <div className="flex items-center gap-2">
-              {/* 多库并行推理 */}
-              <Button
+            <span
+              title={activeMode.label}
+              className={cn(
+                'inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
+                activeMode.className,
+              )}
+            >
+              <ActiveIcon className="h-3.5 w-3.5 shrink-0" />
+            </span>
+
+            {/* ✅ 合规 / Agent / 实验报告：都显示「工作区（文件管理）」按钮 */}
+            {showWorkspaceButton && (
+              <button
                 type="button"
-                title="精确度高，速度快"
-                size="sm"
-                variant="outline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onEnableMultiKbReasoning?.();
-                }}
-                disabled={isUploading || sendLoading || disabled}
+                onClick={onClickComplianceFolder}
+                disabled={disabled || sendLoading}
+                title="查看工作区文件"
                 className={cn(
-                  `
-        h-8 rounded-full border px-3 text-xs font-medium
-        shadow-none transition-all duration-200
-        hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600
-        dark:hover:bg-emerald-950/30
-      `,
-                  isMultiKbMode
-                    ? `
-          border-emerald-300 bg-emerald-50 text-emerald-600 shadow-sm
-          dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400
-        `
-                    : `
-          border-gray-200 bg-transparent text-gray-500
-          dark:border-gray-700 dark:text-gray-400
-        `,
+                  'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                  isComplianceFolderOpen
+                    ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
+                    : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400 dark:hover:bg-gray-700/50',
                 )}
               >
-                <span
-                  className={cn(
-                    `
-          mr-1.5 inline-flex h-5 w-5 items-center justify-center
-          rounded-full transition-all duration-200
-        `,
-                    isMultiKbMode
-                      ? `
-            scale-105 bg-gradient-to-br from-emerald-400 to-teal-500
-            text-white shadow-sm shadow-emerald-300/50
-            ring-1 ring-emerald-200 dark:ring-emerald-700
-          `
-                      : `
-            bg-gray-100 text-gray-400 ring-1 ring-gray-200
-            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
-          `,
-                  )}
-                >
-                  <Layers3 className="h-3 w-3" />
-                </span>
-                多库并行
-              </Button>
+                <Folder className="h-3.5 w-3.5 shrink-0" />
+                <span>工作区</span>
+              </button>
+            )}
 
-              {/* 深度推理 */}
-              <Button
-                type="button"
-                title="海量查询，速度慢"
-                size="sm"
-                variant="outline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onEnableDeepReasoning?.();
+            {/* ✅ 合规 / Agent / 实验报告：都显示「工作区（文件管理）」按钮 */}
+            {/* ✅ Agent 模式：技能按钮（样式同模板按钮） */}
+            {/* ✅ Agent 模式：技能按钮（popover 弹出技能列表） */}
+            {agentMod && (
+              <Popover
+                trigger="click"
+                placement="topLeft"
+                arrow={false}
+                open={skillPopoverOpen}
+                onOpenChange={setSkillPopoverOpen}
+                overlayInnerStyle={{
+                  padding: 0,
+                  borderRadius: 12,
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+                  overflow: 'hidden',
                 }}
-                disabled={isUploading || sendLoading || disabled}
-                className={cn(
-                  `
-        h-8 rounded-full border px-3 text-xs font-medium
-        shadow-none transition-all duration-200
-        hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600
-        dark:hover:bg-blue-950/30
-      `,
-                  isDeepReasoningMode
-                    ? `
-          border-blue-300 bg-blue-50 text-blue-600 shadow-sm
-          dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400
-        `
-                    : `
-          border-gray-200 bg-transparent text-gray-500
-          dark:border-gray-700 dark:text-gray-400
-        `,
-                )}
+                content={
+                  <SkillPopover
+                    onSelect={(skill) => {
+                      setSkillPopoverOpen(false);
+                      onSelectSkill?.(skill);
+                    }}
+                    onViewAll={() => {
+                      setSkillPopoverOpen(false);
+                      onClickSkill?.();
+                    }}
+                  />
+                }
               >
-                <span
+                <button
+                  type="button"
+                  disabled={disabled || sendLoading}
+                  title="查看技能"
                   className={cn(
-                    `
-          mr-1.5 inline-flex h-5 w-5 items-center justify-center
-          rounded-full transition-all duration-200
-        `,
-                    isDeepReasoningMode
-                      ? `
-            scale-105 bg-gradient-to-br from-blue-400 to-indigo-500
-            text-white shadow-sm shadow-blue-300/50
-            ring-1 ring-blue-200 dark:ring-blue-700
-          `
-                      : `
-            bg-gray-100 text-gray-400 ring-1 ring-gray-200
-            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
-          `,
+                    'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                    skillPopoverOpen
+                      ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400 dark:hover:bg-gray-700/50',
                   )}
                 >
-                  <Sparkles className="h-3 w-3" />
-                </span>
-                深度推理
-              </Button>
+                  <Puzzle className="h-3.5 w-3.5 shrink-0" />
+                  <span>技能</span>
+                </button>
+              </Popover>
+            )}
 
-              {/* Agent */}
-              <Button
-                type="button"
-                title="Agent 模式"
-                size="sm"
-                variant="outline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onEnableAgent?.();
+            {/* ✅ 仅合规模式：显示「模板」按钮 */}
+            {showTemplateButton && (
+              <Popover
+                trigger="click"
+                placement="topLeft"
+                arrow={false}
+                open={templatePopoverOpen}
+                onOpenChange={setTemplatePopoverOpen}
+                overlayInnerStyle={{
+                  padding: 0,
+                  borderRadius: 12,
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+                  overflow: 'hidden',
                 }}
-                disabled={isUploading || sendLoading || disabled}
-                className={cn(
-                  `
-        h-8 rounded-full border px-3 text-xs font-medium
-        shadow-none transition-all duration-200
-        hover:border-purple-300 hover:bg-purple-50 hover:text-purple-600
-        dark:hover:bg-purple-950/30
-      `,
-                  isAgentMode
-                    ? `
-          border-purple-300 bg-purple-50 text-purple-600 shadow-sm
-          dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400
-        `
-                    : `
-          border-gray-200 bg-transparent text-gray-500
-          dark:border-gray-700 dark:text-gray-400
-        `,
-                )}
+                content={
+                  <ComplianceTemplatePopover
+                    templates={complianceTemplates}
+                    loading={complianceTemplatesLoading}
+                    onSelect={(tpl) => {
+                      setTemplatePopoverOpen(false);
+                      onClickComplianceTemplate?.(tpl);
+                    }}
+                    onViewAll={() => {
+                      setTemplatePopoverOpen(false);
+                      onClickComplianceTemplate?.();
+                    }}
+                  />
+                }
               >
-                <span
+                <button
+                  type="button"
+                  disabled={disabled || sendLoading}
+                  title="查看合规模板"
                   className={cn(
-                    `
-          mr-1.5 inline-flex h-5 w-5 items-center justify-center
-          rounded-full transition-all duration-200
-        `,
-                    isAgentMode
-                      ? `
-            scale-105 bg-gradient-to-br from-purple-400 to-fuchsia-500
-            text-white shadow-sm shadow-purple-300/50
-            ring-1 ring-purple-200 dark:ring-purple-700
-          `
-                      : `
-            bg-gray-100 text-gray-400 ring-1 ring-gray-200
-            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
-          `,
+                    'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                    // 根据 templatePopoverOpen 状态切换颜色
+                    templatePopoverOpen
+                      ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400 dark:hover:bg-gray-700/50',
                   )}
                 >
-                  <Bot className="h-3 w-3" />
-                </span>
-                Agent Skills
-              </Button>
-
-              {/* 项目申报与合规 */}
-              <Button
-                type="button"
-                title="辅助项目申报与合规审查"
-                size="sm"
-                variant="outline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  console.log('点击了合规申报按钮');
-                  onEnableProjectCompliance?.();
-                }}
-                disabled={isUploading || sendLoading || disabled}
-                className={cn(
-                  `
-        h-8 rounded-full border px-3 text-xs font-medium
-        shadow-none transition-all duration-200
-        hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600
-        dark:hover:bg-orange-950/30
-      `,
-                  isProjectComplianceMode
-                    ? `
-          border-orange-300 bg-orange-50 text-orange-600 shadow-sm
-          dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-400
-        `
-                    : `
-          border-gray-200 bg-transparent text-gray-500
-          dark:border-gray-700 dark:text-gray-400
-        `,
-                )}
-              >
-                <span
-                  className={cn(
-                    `
-          mr-1.5 inline-flex h-5 w-5 items-center justify-center
-          rounded-full transition-all duration-200
-        `,
-                    isProjectComplianceMode
-                      ? `
-            scale-105 bg-gradient-to-br from-orange-400 to-amber-500
-            text-white shadow-sm shadow-orange-300/50
-            ring-1 ring-orange-200 dark:ring-orange-700
-          `
-                      : `
-            bg-gray-100 text-gray-400 ring-1 ring-gray-200
-            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
-          `,
-                  )}
-                >
-                  <ShieldCheck className="h-3 w-3" />
-                </span>
-                合规申报
-              </Button>
-
-              {/* 实验报告 */}
-              <Button
-                type="button"
-                title="自动生成实验报告"
-                size="sm"
-                variant="outline"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  console.log('点击了实验报告按钮');
-                  onEnableExperimentReport?.();
-                }}
-                disabled={isUploading || sendLoading || disabled}
-                className={cn(
-                  `
-        h-8 rounded-full border px-3 text-xs font-medium
-        shadow-none transition-all duration-200
-        hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-600
-        dark:hover:bg-cyan-950/30
-      `,
-                  isExperimentReportMode
-                    ? `
-          border-cyan-300 bg-cyan-50 text-cyan-600 shadow-sm
-          dark:border-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400
-        `
-                    : `
-          border-gray-200 bg-transparent text-gray-500
-          dark:border-gray-700 dark:text-gray-400
-        `,
-                )}
-              >
-                <span
-                  className={cn(
-                    `
-          mr-1.5 inline-flex h-5 w-5 items-center justify-center
-          rounded-full transition-all duration-200
-        `,
-                    isExperimentReportMode
-                      ? `
-            scale-105 bg-gradient-to-br from-cyan-400 to-sky-500
-            text-white shadow-sm shadow-cyan-300/50
-            ring-1 ring-cyan-200 dark:ring-cyan-700
-          `
-                      : `
-            bg-gray-100 text-gray-400 ring-1 ring-gray-200
-            dark:bg-gray-800 dark:text-gray-500 dark:ring-gray-700
-          `,
-                  )}
-                >
-                  <FileText className="h-3 w-3" />
-                </span>
-                实验报告
-              </Button>
-            </div>
+                  <FileText className="h-3.5 w-3.5 shrink-0" />
+                  <span>模板</span>
+                </button>
+              </Popover>
+            )}
           </div>
 
           {/* 右侧发送/停止区 */}
@@ -599,58 +512,3 @@ export function NextMessageInput({
     </FileUpload>
   );
 }
-
-{
-  /* <div
-          className={cn('flex items-center justify-between gap-1.5', {
-            'justify-end': !showUploadIcon,
-          })}
-        >
-          {showUploadIcon && (
-            <FileUploadTrigger asChild>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="size-7 rounded-sm"
-                disabled={isUploading || sendLoading}
-              >
-                <Paperclip className="size-3.5" />
-                <span className="sr-only">Attach file</span>
-              </Button>
-            </FileUploadTrigger>
-          )}
-          {sendLoading ? (
-            <Button
-              type="button"
-              onClick={stopOutputMessage}
-              className="size-5 rounded-sm"
-            >
-              <CircleStop />
-            </Button>
-          ) : (
-            <div className="flex items-center gap-3">
-              {/* <div className="bg-bg-input rounded-md hover:bg-bg-card p-1"> */
-}
-{
-  /* <AudioButton
-                onOk={(value) => {
-                  setAudioInputValue(value);
-                }}
-              /> */
-}
-//       {/* </div> */}
-//       <Button
-//         type="button"
-//         onClick={submit}
-//         className="size-5 rounded-sm"
-//         disabled={
-//           sendDisabled || isUploading || sendLoading || !value.trim()
-//         }
-//       >
-//         <Send />
-//         <span className="sr-only">Send message</span>
-//       </Button>
-//     </div>
-//   )}
-// </div> */}

@@ -1,18 +1,9 @@
 'use client';
 
 import { CrossLanguageFormField } from '@/components/cross-language-form-field';
-import { RerankFormFields } from '@/components/rerank';
 import { SimilaritySliderFormField } from '@/components/similarity-slider';
 import { SwitchFormField } from '@/components/switch-fom-field';
 import { TopNFormField } from '@/components/top-n-item';
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Textarea } from '@/components/ui/textarea';
 import { UseKnowledgeGraphFormField } from '@/components/use-knowledge-graph-item';
 import { useTranslate } from '@/hooks/common-hooks';
 import { useFormContext } from 'react-hook-form';
@@ -24,7 +15,7 @@ export function ChatPromptEngine() {
 
   return (
     <div className="space-y-8">
-      <FormField
+      {/* <FormField
         control={form.control}
         name="prompt_config.system"
         render={({ field }) => (
@@ -41,7 +32,7 @@ export function ChatPromptEngine() {
             <FormMessage />
           </FormItem>
         )}
-      />
+      /> */}
       <SimilaritySliderFormField isTooltipShown></SimilaritySliderFormField>
       <TopNFormField></TopNFormField>
       <SwitchFormField
@@ -55,7 +46,7 @@ export function ChatPromptEngine() {
         label={t('reasoning')}
         tooltip={t('reasoningTip')}
       ></SwitchFormField>
-      <RerankFormFields></RerankFormFields>
+      {/* <RerankFormFields></RerankFormFields> */}
       <CrossLanguageFormField></CrossLanguageFormField>
       <DynamicVariableForm></DynamicVariableForm>
     </div>

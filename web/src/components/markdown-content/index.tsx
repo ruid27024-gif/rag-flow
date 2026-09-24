@@ -10,7 +10,7 @@ import {
   ChevronRight,
   Wrench,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Markdown from 'react-markdown';
 import reactStringReplace from 'react-string-replace';
 import SyntaxHighlighter from 'react-syntax-highlighter';
@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import DocxPreviewModal from '@/components/DocxPreviewModal';
 import { HomeIcon } from '@/components/svg-icon';
 import 'katex/dist/katex.min.css'; // `rehype-katex` does not import the CSS for you
+import * as React from 'react';
 
 import {
   File,
@@ -44,6 +45,7 @@ import {
 } from '@/utils/chat';
 import classNames from 'classnames';
 import { omit } from 'lodash';
+import { Paperclip } from 'lucide-react';
 import { Button } from '../ui/button';
 import {
   HoverCard,
@@ -261,6 +263,53 @@ function splitThinkContent(content: string): ThinkSegment[] {
   }
 
   return segments;
+}
+
+type SourceGroup =
+  | { type: 'plain'; content: string }
+  | { type: 'heading'; heading: string; content: string };
+
+function splitBySourceHeading(text: string): SourceGroup[] {
+  const groups: SourceGroup[] = [];
+
+  // 此时 text 里已经是被替换好的 <source-heading>xxx</source-heading>
+  const regex = /<source-heading>([\s\S]*?)<\/source-heading>/g;
+
+  const matches: { start: number; end: number; heading: string }[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    matches.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      heading: match[1],
+    });
+  }
+
+  // 没有找到 source-heading，整段作为普通内容
+  if (matches.length === 0) {
+    return [{ type: 'plain', content: text }];
+  }
+
+  // 第一个 heading 之前的内容（通常为空或前导文本）
+  if (matches[0].start > 0) {
+    groups.push({ type: 'plain', content: text.slice(0, matches[0].start) });
+  }
+
+  // 每个 heading 到下一个 heading 之间的内容，归入该 heading
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i];
+    const next = matches[i + 1];
+    const contentEnd = next ? next.start : text.length;
+
+    groups.push({
+      type: 'heading',
+      heading: current.heading,
+      content: text.slice(current.end, contentEnd),
+    });
+  }
+
+  return groups;
 }
 
 function isVisibleAgentEvent(event: AgentEvent) {
@@ -576,32 +625,37 @@ const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
 };
 
 function getMarkdownFileName(href: string, children: React.ReactNode): string {
-  // 优先使用 Markdown 链接展示的文字
-  if (typeof children === 'string' && children.trim()) {
-    return children.trim();
+  const childrenText =
+    typeof children === 'string' && children.trim() ? children.trim() : '';
+
+  // 如果 children 里已经带扩展名（如 xxx.docx），直接用
+  if (childrenText && /\.[a-z0-9]+$/i.test(childrenText)) {
+    return childrenText;
   }
 
+  // 否则从 URL 里解析文件名
   try {
     const parsedUrl = new URL(href, window.location.origin);
 
-    // 兼容：
-    // /v1/file/template?path=xxx.docx
+    // 兼容 /v1/file/workspace-file?path=xxx.docx
+    // 兼容 /v1/file/template?path=xxx.docx
     const pathParam = parsedUrl.searchParams.get('path');
-
     if (pathParam) {
       const decodedPath = decodeURIComponent(pathParam);
-
-      return decodedPath.split('/').filter(Boolean).pop() || '查看文件';
+      const name = decodedPath.split('/').filter(Boolean).pop();
+      if (name) return name;
     }
 
-    // 兼容：
-    // /v1/file/template/xxx.docx
+    // 兼容 /v1/file/template/xxx.docx
     const pathname = decodeURIComponent(parsedUrl.pathname);
-
-    return pathname.split('/').filter(Boolean).pop() || '查看文件';
+    const nameFromPath = pathname.split('/').filter(Boolean).pop();
+    if (nameFromPath) return nameFromPath;
   } catch {
-    return '查看文件';
+    // ignore
   }
+
+  // 兜底：返回 children 或默认文案
+  return childrenText || '查看文件';
 }
 
 function getMarkdownFileExtension(fileName: string, href: string): string {
@@ -625,13 +679,16 @@ function getMarkdownFileExtension(fileName: string, href: string): string {
 
   return fileName.slice(lastDotIndex + 1).toLowerCase();
 }
-
 function isFileMarkdownLink(href?: string): boolean {
   if (!href) {
     return false;
   }
 
-  return href.includes('/document/') || href.includes('/v1/file/template');
+  return (
+    href.includes('/document/') ||
+    href.includes('/v1/file/template') ||
+    href.includes('/v1/file/workspace-file') // 👈 新增这一行
+  );
 }
 
 interface MarkdownFileLinkProps {
@@ -788,7 +845,7 @@ function MarkdownFileLink({
 
   return (
     <>
-      <div className="my-2">
+      <div className="mt-1 mb-3">
         <a
           {...props}
           href={href}
@@ -797,25 +854,25 @@ function MarkdownFileLink({
           onClick={handleClick}
           title={isDocx ? `预览 ${fileName}` : `打开 ${fileName}`}
           className="
-            group inline-flex h-11 w-full max-w-[300px]
-            items-center gap-2.5
-            rounded-lg border border-slate-200
-            bg-white px-2.5
-            no-underline
-            transition-colors
-            hover:border-slate-300 hover:bg-slate-50
-            dark:border-slate-700 dark:bg-slate-900
-            dark:hover:border-slate-600 dark:hover:bg-slate-800
-          "
+      group inline-flex h-12 w-full max-w-[300px]
+      items-center gap-2.5
+      rounded-lg border border-slate-200
+      bg-white px-2.5
+      no-underline
+      transition-colors
+      hover:border-slate-300 hover:bg-slate-50
+      dark:border-slate-700 dark:bg-slate-900
+      dark:hover:border-slate-600 dark:hover:bg-slate-800
+    "
         >
           {/* 文件图标 */}
           <span
             className={`
-              flex h-7 w-7 shrink-0
-              items-center justify-center
-              rounded-md
-              ${iconCls}
-            `}
+        flex h-7 w-7 shrink-0
+        items-center justify-center
+        rounded-md
+        ${iconCls}
+      `}
           >
             <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
           </span>
@@ -824,11 +881,11 @@ function MarkdownFileLink({
           <span className="min-w-0 flex-1">
             <span
               className="
-                block truncate
-                text-[13px] font-medium leading-[17px]
-                text-slate-700
-                dark:text-slate-200
-              "
+          block truncate
+          text-[13px] font-medium leading-[17px]
+          text-slate-700
+          dark:text-slate-200
+        "
               title={fileName}
             >
               {loading ? '正在加载…' : fileName}
@@ -836,10 +893,10 @@ function MarkdownFileLink({
 
             <span
               className="
-                block text-[10px] leading-[12px]
-                text-slate-400
-                dark:text-slate-500
-              "
+          block text-[10px] leading-[12px]
+          text-slate-400
+          dark:text-slate-500
+        "
             >
               {isDocx ? '点击预览' : label}
             </span>
@@ -858,6 +915,49 @@ function MarkdownFileLink({
         />
       )}
     </>
+  );
+}
+
+function CollapsibleSourceSection({
+  heading,
+  children,
+}: {
+  heading: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div className="my-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="
+          group/source
+          flex w-full items-center gap-3
+          cursor-pointer select-none
+          text-left
+          text-xl font-bold
+          text-black dark:text-white
+          transition-colors
+          hover:opacity-80
+        "
+      >
+        <HomeIcon name="datasets" width="20" />
+
+        <span className="flex-1">{heading}</span>
+
+        <ChevronRight
+          className={`
+            h-5 w-5 shrink-0 text-gray-400
+            transition-transform duration-200
+            ${open ? 'rotate-90' : 'rotate-0'}
+          `}
+        />
+      </button>
+
+      {open && <div className="mt-2">{children}</div>}
+    </div>
   );
 }
 
@@ -945,6 +1045,7 @@ const MarkdownContent = ({
   }, []);
 
   // 换行治理：普通缩进文本转换成更标准的 Markdown 结构
+  // 换行治理：普通缩进文本转换成更标准的 Markdown 结构
   const normalizeIndentedTextToMarkdown = useCallback((text: string) => {
     if (!text) return text;
 
@@ -953,50 +1054,65 @@ const MarkdownContent = ({
 
       const sectionTitles = new Set(['标准', '外文', '文献', '综合总结']);
 
-      return lines
-        .map((line) => {
-          const raw = line;
-          const trimmed = raw.trim();
+      const processedLines: { text: string; isTable: boolean }[] = [];
 
-          if (!trimmed) {
-            return '';
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const trimmed = raw.trim();
+
+        if (!trimmed) {
+          processedLines.push({ text: '', isTable: false });
+          continue;
+        }
+
+        // 👇 核心改动：检测是否为表格行（以 | 开头）
+        const isTable = /^\s*\|/.test(raw) || /^\|\s*---/.test(trimmed);
+
+        // 已经是 Markdown / HTML 的，不处理
+        if (
+          /^(\s*)(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```)/.test(raw) ||
+          /^<source-heading>/i.test(trimmed) ||
+          /^<\/source-heading>/i.test(trimmed) ||
+          isTable // 表格行直接保留原样
+        ) {
+          processedLines.push({ text: raw, isTable });
+          continue;
+        }
+
+        const indentLength = raw.match(/^\s*/)?.[0]?.length ?? 0;
+        let outText = trimmed;
+
+        // 独立一级标题：标准、外文、文献、综合总结
+        if (indentLength === 0 && sectionTitles.has(trimmed)) {
+          outText = `## ${trimmed}`;
+        }
+        // 无缩进 + 冒号结尾：一级标题
+        else if (indentLength === 0 && /[：:]$/.test(trimmed)) {
+          outText = `## ${trimmed.replace(/[：:]$/, '')}`;
+        }
+        // 有缩进 + 冒号结尾：二级标题
+        else if (indentLength > 0 && /[：:]$/.test(trimmed)) {
+          outText = `### ${trimmed.replace(/[：:]$/, '')}`;
+        }
+
+        processedLines.push({ text: outText, isTable: false });
+      }
+
+      // 👇 智能拼接：表格行之间用 \n，其他情况用 \n\n
+      let output = '';
+      for (let i = 0; i < processedLines.length; i++) {
+        output += processedLines[i].text;
+        if (i < processedLines.length - 1) {
+          const current = processedLines[i];
+          const next = processedLines[i + 1];
+          if (current.isTable && next.isTable) {
+            output += '\n';
+          } else {
+            output += '\n\n';
           }
-
-          // 已经是 Markdown / HTML 的，不处理
-          if (
-            /^(\s*)(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|```)/.test(raw) ||
-            /^<source-heading>/i.test(trimmed) ||
-            /^<\/source-heading>/i.test(trimmed)
-          ) {
-            return raw;
-          }
-
-          const indentLength = raw.match(/^\s*/)?.[0]?.length ?? 0;
-
-          // 独立一级标题：标准、外文、文献、综合总结
-          if (indentLength === 0 && sectionTitles.has(trimmed)) {
-            return `## ${trimmed}`;
-          }
-
-          // 无缩进 + 冒号结尾：一级标题
-          if (indentLength === 0 && /[：:]$/.test(trimmed)) {
-            return `## ${trimmed.replace(/[：:]$/, '')}`;
-          }
-
-          // 有缩进 + 冒号结尾：二级标题
-          if (indentLength > 0 && /[：:]$/.test(trimmed)) {
-            return `### ${trimmed.replace(/[：:]$/, '')}`;
-          }
-
-          // 有缩进正文：转成普通段落，不转列表
-          if (indentLength > 0) {
-            return trimmed;
-          }
-
-          // 普通正文
-          return trimmed;
-        })
-        .join('\n\n');
+        }
+      }
+      return output;
     };
 
     let result = '';
@@ -1284,25 +1400,27 @@ const MarkdownContent = ({
             <HoverCardTrigger asChild>
               <span
                 className="
-                  reference-badge
-                  mx-0.5
-                  inline-flex
-                  h-4
-                  w-4
-                  shrink-0
-                  cursor-pointer
-                  items-center
-                  justify-center
-                  rounded-full
-                  bg-[#018B8D]
-                  text-[10px]
-                  font-semibold
-                  leading-none
-                  text-white
-                  align-middle
-                  indent-0
-                  [text-indent:0]
-                "
+                reference-badge
+                mx-0.5
+                inline-flex
+                h-4
+                w-4
+                shrink-0
+                cursor-pointer
+                items-center
+                justify-center
+                rounded-full
+                bg-gray-200              /* 浅色模式：浅灰背景 */
+                dark:bg-gray-700         /* 暗黑模式：深灰背景 */
+                text-[10px]
+                font-semibold
+                leading-none
+                text-gray-700            /* 浅色模式：深灰文字 */
+                dark:text-gray-300       /* 暗黑模式：浅灰文字 */
+                align-middle
+                indent-0
+                [text-indent:0]
+              "
                 style={{
                   textIndent: 0,
                 }}
@@ -1323,43 +1441,228 @@ const MarkdownContent = ({
     [getPopoverContent, getReferenceInfo, handleDocumentButtonClick],
   );
 
+  // const markdownComponents = useMemo(
+  //   () =>
+  //     ({
+  //       /**
+  //        * 兜底：
+  //        * 如果 Markdown 真的解析到了 think，隐藏它。
+  //        * 因为 think 已经在外层 splitThinkContent 里手动渲染了。
+  //        */
+  //       think: () => null,
+
+  //       'source-heading': ({ children }: { children: React.ReactNode }) => (
+  //         <div
+  //           className="
+  //     mt-5 mb-3
+  //     flex items-center gap-3
+  //     text-lg font-extrabold
+  //     text-[#018B8D] dark:text-[#018B8D]
+  //     indent-0
+  //     [&_*]:indent-0
+  //   "
+  //           style={{ textIndent: 0 }}
+  //         >
+  //           <HomeIcon name="datasets" width="20" />
+
+  //           <span className="indent-0" style={{ textIndent: 0 }}>
+  //             {children}
+  //           </span>
+  //         </div>
+  //       ),
+  //       h2: ({ children }: { children: React.ReactNode }) => (
+  //         <h2
+  //           className="
+  //           mt-5 mb-3
+
+  //           text-lg font-extrabold leading-7
+  //           text-gray-900 dark:text-gray-100
+  //           indent-0
+  //           [&_*]:indent-0
+  //         "
+  //           style={{ textIndent: 0 }}
+  //         >
+  //           {children}
+  //         </h2>
+  //       ),
+
+  //               h3: ({ children }: { children: React.ReactNode }) => (
+  //         <h3
+  //           className="
+  //           mt-4 mb-2
+  //           ml-[2em]         /* 关键：向右侧推后 2 个字符宽度 */
+  //           text-base font-bold leading-7
+  //           text-gray-900 dark:text-gray-100
+  //           indent-0
+  //           [&_*]:indent-0
+  //         "
+  //           style={{ textIndent: 0 }}
+  //         >
+  //           {children}
+  //         </h3>
+  //       ),
+
+  //       a: (props: any) => {
+  //         if (isFileMarkdownLink(props.href)) {
+  //           return <MarkdownFileLink {...props} />;
+  //         }
+
+  //         return (
+  //           <a
+  //             {...props}
+  //             target="_blank"
+  //             rel="noopener noreferrer"
+  //             className="
+  //       text-[#018B8D] underline
+  //       hover:text-[#017476]
+  //     "
+  //           />
+  //         );
+  //       },
+  //       p: ({ children }: { children: React.ReactNode }) => (
+  //         <p
+  //           className="
+  //     my-2
+  //     text-[15px]
+  //     leading-8
+  //     text-gray-800
+  //     indent-[2em]
+  //     dark:text-gray-200
+  //   "
+  //         >
+  //           {children}
+  //         </p>
+  //       ),
+
+  //       ul: ({ children }: { children: React.ReactNode }) => (
+  //         <ul
+  //           className="
+  //     my-2
+  //     ml-[2em]
+  //     list-disc
+  //     space-y-2
+  //     pl-4
+  //     text-gray-800
+  //     dark:text-gray-200
+  //     indent-0
+  //   "
+  //         >
+  //           {children}
+  //         </ul>
+  //       ),
+
+  //       ol: ({ children }: { children: React.ReactNode }) => (
+  //         <ol
+  //           className="
+  //     my-2
+  //     ml-[2em]
+  //     list-decimal
+  //     space-y-2
+  //     pl-4
+  //     text-gray-800
+  //     dark:text-gray-200
+  //     indent-0
+  //   "
+  //         >
+  //           {children}
+  //         </ol>
+  //       ),
+
+  //       li: ({ children }: { children: React.ReactNode }) => (
+  //         <li
+  //           className="
+  //     pl-1
+  //     text-[15px]
+  //     leading-8
+  //     text-gray-800
+  //     marker:text-[#018B8D]
+  //     dark:text-gray-200
+
+  //     indent-0
+  //     [&_*]:indent-0
+  //     [&>p]:my-0
+  //     [&>p]:indent-0
+  //     [&_p]:indent-0
+  //   "
+  //         >
+  //           {children}
+  //         </li>
+  //       ),
+
+  //       // 自定义引用包裹
+  //       'custom-typography': ({ children }: { children: string }) => {
+  //         return renderReference(children);
+  //       },
+
+  //       // 代码块
+  //       code(props: any) {
+  //         const { children, className, ...rest } = props;
+  //         const restProps = omit(rest, 'node');
+  //         const match = /language-(\w+)/.exec(className || '');
+
+  //         return match ? (
+  //           <SyntaxHighlighter
+  //             {...restProps}
+  //             PreTag="div"
+  //             language={match[1]}
+  //             wrapLongLines
+  //             className="rounded-md my-2"
+  //           >
+  //             {String(children).replace(/\n$/, '')}
+  //           </SyntaxHighlighter>
+  //         ) : (
+  //           <code
+  //             {...restProps}
+  //             className={classNames(
+  //               className,
+  //               'text-wrap',
+  //               'px-1.5 py-0.5',
+  //               'bg-gray-100 dark:bg-gray-800',
+  //               'rounded',
+  //               'text-sm',
+  //             )}
+  //           >
+  //             {children}
+  //           </code>
+  //         );
+  //       },
+  //     }) as any,
+  //   [renderReference],
+  // );
+
   const markdownComponents = useMemo(
     () =>
       ({
-        /**
-         * 兜底：
-         * 如果 Markdown 真的解析到了 think，隐藏它。
-         * 因为 think 已经在外层 splitThinkContent 里手动渲染了。
-         */
         think: () => null,
 
         'source-heading': ({ children }: { children: React.ReactNode }) => (
           <div
             className="
-      mt-5 mb-3
-      flex items-center gap-3
-      text-lg font-extrabold
-      text-[#018B8D] dark:text-[#018B8D]
-      indent-0
-      [&_*]:indent-0
-    "
+            mt-8 mb-4
+            flex items-center gap-3
+            text-xl font-bold
+            text-black dark:text-white  /* 👈 改成纯黑/纯白 */
+            indent-0
+            [&_*]:indent-0
+          "
             style={{ textIndent: 0 }}
           >
             <HomeIcon name="datasets" width="20" />
-
             <span className="indent-0" style={{ textIndent: 0 }}>
               {children}
             </span>
           </div>
         ),
+
+        // ====== H2：主标题，字重最大，颜色最深 ======
+        // ====== H2：主标题，字号最大，特粗，颜色稳重但不过黑 ======
+        // ====== H2：主标题，20px，特粗，纯黑 ======
         h2: ({ children }: { children: React.ReactNode }) => (
           <h2
             className="
-            mt-5 mb-3
-            border-l-4 border-[#018B8D]
-            pl-3
-            text-lg font-extrabold leading-7
-            text-gray-900 dark:text-gray-100
+            mt-6 mb-3
+            text-xl font-extrabold leading-8     /* 20px，字重最高 */
+            text-black dark:text-white           /* 关键：纯黑（暗黑模式纯白） */
             indent-0
             [&_*]:indent-0
           "
@@ -1369,12 +1672,13 @@ const MarkdownContent = ({
           </h2>
         ),
 
+        // ====== H3：副标题，17px，粗体，纯黑 ======
         h3: ({ children }: { children: React.ReactNode }) => (
           <h3
             className="
-            mt-4 mb-2
-            text-base font-bold leading-7
-            text-[#018B8D] dark:text-[#20B2AA]
+            mt-5 mb-2
+            text-[17px] font-bold leading-7      /* 17px，比正文(15px)大 */
+            text-black dark:text-white           /* 关键：纯黑（暗黑模式纯白） */
             indent-0
             [&_*]:indent-0
           "
@@ -1388,29 +1692,31 @@ const MarkdownContent = ({
           if (isFileMarkdownLink(props.href)) {
             return <MarkdownFileLink {...props} />;
           }
-
           return (
             <a
               {...props}
               target="_blank"
               rel="noopener noreferrer"
               className="
-        text-[#018B8D] underline
-        hover:text-[#017476]
-      "
+              text-[#018B8D] underline underline-offset-4
+              decoration-[#018B8D]/30 hover:decoration-[#018B8D]
+              transition-colors
+            "
             />
           );
         },
+
         p: ({ children }: { children: React.ReactNode }) => (
           <p
             className="
-      my-2
-      text-[15px]
-      leading-8
-      text-gray-800
-      indent-[2em]
-      dark:text-gray-200
-    "
+            my-4
+            text-[15px]
+            leading-7
+            text-gray-800
+            dark:text-gray-200
+            indent-0
+          "
+            style={{ textIndent: 0 }}
           >
             {children}
           </p>
@@ -1419,15 +1725,14 @@ const MarkdownContent = ({
         ul: ({ children }: { children: React.ReactNode }) => (
           <ul
             className="
-      my-2
-      ml-[2em]
-      list-disc
-      space-y-2
-      pl-4
-      text-gray-800
-      dark:text-gray-200
-      indent-0
-    "
+            my-4
+            ml-5
+            list-disc
+            space-y-2
+            text-gray-800
+            dark:text-gray-200
+            indent-0
+          "
           >
             {children}
           </ul>
@@ -1436,15 +1741,14 @@ const MarkdownContent = ({
         ol: ({ children }: { children: React.ReactNode }) => (
           <ol
             className="
-      my-2
-      ml-[2em]
-      list-decimal
-      space-y-2
-      pl-4
-      text-gray-800
-      dark:text-gray-200
-      indent-0
-    "
+            my-4
+            ml-5
+            list-decimal
+            space-y-2
+            text-gray-800
+            dark:text-gray-200
+            indent-0
+          "
           >
             {children}
           </ol>
@@ -1453,30 +1757,97 @@ const MarkdownContent = ({
         li: ({ children }: { children: React.ReactNode }) => (
           <li
             className="
-      pl-1
-      text-[15px]
-      leading-8
-      text-gray-800
-      marker:text-[#018B8D]
-      dark:text-gray-200
-
-      indent-0
-      [&_*]:indent-0
-      [&>p]:my-0
-      [&>p]:indent-0
-      [&_p]:indent-0
-    "
+            pl-1
+            text-[15px]
+            leading-7
+            text-gray-800
+            marker:text-gray-400 dark:marker:text-gray-500   /* 关键：黑点变灰点 */
+            dark:text-gray-200
+            indent-0
+            [&_*]:indent-0
+            [&>p]:my-0
+            [&>p]:indent-0
+            [&_p]:indent-0
+          "
           >
             {children}
           </li>
         ),
+        span: ({ children, className, ...rest }: any) => {
+          // 👇 附件标签（带图标）
+          if (className === 'md-attachment-label') {
+            return (
+              <span className="mt-6 -mb-2 flex items-center gap-1.5 font-semibold text-blue-600 dark:text-blue-400">
+                <Paperclip className="h-4 w-4" />
+                {children}
+              </span>
+            );
+          }
 
-        // 自定义引用包裹
+          // 👇 新增：纯蓝文字（不带图标）
+          if (className === 'md-blue-text') {
+            return (
+              <span className="mt-2 block font-semibold text-blue-600 dark:text-blue-400">
+                {children}
+              </span>
+            );
+          }
+
+          return <span {...rest}>{children}</span>;
+        },
+
+        table: ({ children }: { children: React.ReactNode }) => (
+          <div className="my-4 w-full overflow-x-auto">
+            <table className="w-full border-collapse table-fixed">
+              {children}
+            </table>
+          </div>
+        ),
+
+        thead: ({ children }: { children: React.ReactNode }) => (
+          <thead className="bg-slate-50 dark:bg-slate-800/60">{children}</thead>
+        ),
+
+        th: ({ children, ...props }: any) => {
+          const text = String(children);
+          const isFirstCol = text === '字段';
+
+          return (
+            <th
+              className="
+        border border-slate-200 px-3 py-2 text-left
+        text-[14px] font-semibold
+        text-slate-800
+        dark:border-slate-700
+        dark:text-slate-100
+      "
+              style={{ width: isFirstCol ? '30%' : '70%' }}
+              {...props}
+            >
+              {children}
+            </th>
+          );
+        },
+
+        td: ({ children, ...props }: any) => (
+          <td
+            className="
+      border border-slate-200 px-3 py-2
+      text-[14px]
+      text-slate-700
+      dark:border-slate-700
+      dark:text-slate-200
+    "
+            {...props}
+          >
+            {children}
+          </td>
+        ),
+
         'custom-typography': ({ children }: { children: string }) => {
           return renderReference(children);
         },
 
-        // 代码块
         code(props: any) {
           const { children, className, ...rest } = props;
           const restProps = omit(rest, 'node');
@@ -1488,7 +1859,7 @@ const MarkdownContent = ({
               PreTag="div"
               language={match[1]}
               wrapLongLines
-              className="rounded-md my-2"
+              className="rounded-lg my-4 !bg-gray-50 dark:!bg-gray-900 border border-gray-100 dark:border-gray-800"
             >
               {String(children).replace(/\n$/, '')}
             </SyntaxHighlighter>
@@ -1500,8 +1871,9 @@ const MarkdownContent = ({
                 'text-wrap',
                 'px-1.5 py-0.5',
                 'bg-gray-100 dark:bg-gray-800',
-                'rounded',
-                'text-sm',
+                'rounded-md',
+                'text-sm font-mono',
+                'text-[#018B8D] dark:text-[#20B2AA]',
               )}
             >
               {children}
@@ -1515,11 +1887,14 @@ const MarkdownContent = ({
   return (
     <div className={styles.markdownContentWrapper}>
       {showAgentToolCalls && <AgentToolCalls events={agentEvents} />}
+
       {segments.map((segment, index) => {
         if (segment.type === 'think') {
-          const hasAnswerAfterThink = segments.slice(index + 1).some((item) => {
-            return item.type === 'text' && item.content.trim().length > 0;
-          });
+          const hasAnswerAfterThink = segments
+            .slice(index + 1)
+            .some(
+              (item) => item.type === 'text' && item.content.trim().length > 0,
+            );
 
           /**
            * 规则：
@@ -1533,37 +1908,38 @@ const MarkdownContent = ({
               open={true}
               key={`think-${index}`}
               className="
-        group
-        my-2
-        text-sm
-        text-gray-400
-        dark:text-gray-500
-      "
+                group
+                my-2
+                text-sm
+                text-gray-400
+                dark:text-gray-500
+              "
             >
               <summary
                 className="
-          flex
-          cursor-pointer
-          select-none
-          list-none
-          items-center
-          gap-1
-          text-sm
-          font-normal
-          text-gray-400
-          dark:text-gray-500
-          [&::-webkit-details-marker]:hidden
-        "
+                  flex
+                  cursor-pointer
+                  select-none
+                  list-none
+                  items-center
+                  gap-1
+                  text-sm
+                  font-normal
+                  text-gray-400
+                  dark:text-gray-500
+                  [&::-webkit-details-marker]:hidden
+                "
               >
                 <span className="flex items-center gap-1.5">
                   <svg
-                    className={`h-[18px] w-[18px] text-emerald-600 dark:text-emerald-400 ${
+                    className={`h-5 w-5 text-blue-600 dark:text-blue-400 ${
                       isThinking ? 'animate-[spin_2.6s_linear_infinite]' : ''
                     }`}
                     viewBox="0 0 24 24"
                     fill="none"
                     xmlns="http://www.w3.org/2000/svg"
                   >
+                    {/* 第一条对角线 */}
                     <ellipse
                       cx="12"
                       cy="12"
@@ -1571,7 +1947,9 @@ const MarkdownContent = ({
                       ry="3.2"
                       stroke="currentColor"
                       strokeWidth="1.7"
+                      transform="rotate(45 12 12)"
                     />
+                    {/* 第二条对角线 */}
                     <ellipse
                       cx="12"
                       cy="12"
@@ -1579,8 +1957,9 @@ const MarkdownContent = ({
                       ry="3.2"
                       stroke="currentColor"
                       strokeWidth="1.7"
-                      transform="rotate(90 12 12)"
+                      transform="rotate(-45 12 12)"
                     />
+                    {/* 中心圆点 */}
                     <circle cx="12" cy="12" r="1.8" fill="currentColor" />
                   </svg>
 
@@ -1603,22 +1982,22 @@ const MarkdownContent = ({
 
                 <ChevronRight
                   className="
-            h-4 w-4
-            text-text-secondary
-            transition-transform duration-300 ease-out
-            group-open:rotate-90
-          "
+                    h-4 w-4
+                    text-text-secondary
+                    transition-transform duration-300 ease-out
+                    group-open:rotate-90
+                  "
                 />
               </summary>
 
               <div
                 className="
-          mt-3
-          whitespace-pre-wrap
-          leading-7
-          text-gray-400
-          dark:text-gray-500
-        "
+                  mt-3
+                  whitespace-pre-wrap
+                  leading-7
+                  text-gray-400
+                  dark:text-gray-500
+                "
               >
                 {segment.content}
               </div>
@@ -1626,15 +2005,49 @@ const MarkdownContent = ({
           );
         }
 
+        // ====== 关键：text 段按 source-heading 二次切分 ======
+        const sourceGroups = splitBySourceHeading(segment.content);
+
         return (
-          <Markdown
-            key={`text-${index}`}
-            rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
-            remarkPlugins={[remarkGfm, remarkMath]}
-            components={markdownComponents}
-          >
-            {segment.content}
-          </Markdown>
+          <Fragment key={`text-${index}`}>
+            {sourceGroups.map((group, gi) => {
+              if (group.type === 'plain') {
+                return (
+                  <Markdown
+                    key={`plain-${gi}`}
+                    rehypePlugins={[
+                      rehypeWrapReference,
+                      rehypeKatex,
+                      rehypeRaw,
+                    ]}
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    components={markdownComponents}
+                  >
+                    {group.content}
+                  </Markdown>
+                );
+              }
+
+              return (
+                <CollapsibleSourceSection
+                  key={`heading-${gi}`}
+                  heading={group.heading}
+                >
+                  <Markdown
+                    rehypePlugins={[
+                      rehypeWrapReference,
+                      rehypeKatex,
+                      rehypeRaw,
+                    ]}
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    components={markdownComponents}
+                  >
+                    {group.content}
+                  </Markdown>
+                </CollapsibleSourceSection>
+              );
+            })}
+          </Fragment>
         );
       })}
 

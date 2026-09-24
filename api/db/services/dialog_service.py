@@ -48,6 +48,1576 @@ from common.string_utils import remove_redundant_spaces
 from common import settings
 import asyncio
 
+import asyncio
+import json
+import re
+import shutil
+import uuid
+
+from copy import deepcopy
+from pathlib import Path
+from urllib.parse import (
+    parse_qs,
+    quote,
+    unquote,
+    urlencode,
+    urlparse,
+)
+from docx import Document as DocxDocument
+from openpyxl import load_workbook
+
+COMPLIANCE_FLOW_ONLY = "flow_only"
+COMPLIANCE_FILL_ONLY = "fill_only"
+COMPLIANCE_FLOW_AND_FILL = "flow_and_fill"
+COMPLIANCE_NONE = "none"
+
+
+APPLICATION_TEMPLATE_DIR = Path(
+    "/home/zyb/rag-flow/Application_Template"
+).resolve()
+
+WORKSPACE_ROOT = Path(
+    "/home/zyb/rag-flow/Workspace"
+).resolve()
+
+TEMPLATE_FILE_API = "/v1/file/template"
+
+# 需要你实现对应的工作区文件访问接口
+WORKSPACE_FILE_API = "/v1/file/workspace-file"
+
+ALLOWED_TEMPLATE_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".txt",
+}
+
+# 模板的相关函数 
+# 获取所有的模板文件
+def get_application_template_files() -> list[str]:
+    """
+    返回 Application_Template 下所有允许的模板相对路径。
+    """
+
+    if not APPLICATION_TEMPLATE_DIR.exists():
+        return []
+
+    if not APPLICATION_TEMPLATE_DIR.is_dir():
+        return []
+
+    template_files = []
+
+    for file_path in APPLICATION_TEMPLATE_DIR.rglob("*"):
+        if not file_path.is_file():
+            continue
+
+        if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
+            continue
+
+        relative_path = file_path.relative_to(
+            APPLICATION_TEMPLATE_DIR
+        ).as_posix()
+
+        template_files.append(relative_path)
+
+    return sorted(template_files)
+
+
+# 校验模板路径
+def validate_application_template_path(
+    relative_path: str,
+) -> str | None:
+    """
+    校验模板相对路径，防止目录穿越。
+
+    返回标准化后的相对路径。
+    """
+
+    if not relative_path:
+        return None
+
+    relative_path = (
+        str(relative_path)
+        .strip()
+        .replace("\\", "/")
+    )
+
+    # 禁止绝对路径
+    if relative_path.startswith("/"):
+        return None
+
+    # 禁止明显的目录穿越
+    if ".." in Path(relative_path).parts:
+        return None
+
+    file_path = (
+        APPLICATION_TEMPLATE_DIR / relative_path
+    ).resolve()
+
+    try:
+        file_path.relative_to(
+            APPLICATION_TEMPLATE_DIR
+        )
+    except ValueError:
+        return None
+
+    if not file_path.is_file():
+        return None
+
+    if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
+        return None
+
+    return file_path.relative_to(
+        APPLICATION_TEMPLATE_DIR
+    ).as_posix()
+
+def extract_placeholders_from_text(text: str) -> set:
+    """从文本中提取 {{ xxx }} 占位符名。"""
+    if not text:
+        return set()
+    pattern = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+    return {m.group(1).strip() for m in pattern.finditer(text) if m.group(1).strip()}
+
+
+def extract_template_placeholders(template_path: str) -> list[str]:
+    """
+    从模板文件里提取所有 {{ xxx }} 占位符。
+    支持 .docx / .xlsx / .txt；其他格式返回空列表。
+    """
+    relative_path = validate_application_template_path(template_path)
+    if not relative_path:
+        return []
+
+    source_file = (APPLICATION_TEMPLATE_DIR / relative_path).resolve()
+    suffix = source_file.suffix.lower()
+
+    placeholders = set()
+
+    try:
+        if suffix == ".docx":
+            document = DocxDocument(str(source_file))
+
+            # 正文段落
+            for para in document.paragraphs:
+                placeholders |= extract_placeholders_from_text(para.text)
+
+            # 表格
+            for table in document.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for para in cell.paragraphs:
+                            placeholders |= extract_placeholders_from_text(para.text)
+
+            # 页眉页脚
+            for section in document.sections:
+                for para in section.header.paragraphs:
+                    placeholders |= extract_placeholders_from_text(para.text)
+                for para in section.footer.paragraphs:
+                    placeholders |= extract_placeholders_from_text(para.text)
+
+        elif suffix == ".xlsx":
+            workbook = load_workbook(
+                filename=str(source_file),
+                read_only=True,
+                data_only=False,
+            )
+            for ws in workbook.worksheets:
+                for row in ws.iter_rows():
+                    for cell in row:
+                        if isinstance(cell.value, str):
+                            placeholders |= extract_placeholders_from_text(cell.value)
+            workbook.close()
+
+        elif suffix == ".txt":
+            text = source_file.read_text(encoding="utf-8", errors="ignore")
+            placeholders |= extract_placeholders_from_text(text)
+
+    except Exception:
+        logging.exception("提取模板占位符失败：%s", source_file)
+        return []
+
+    return sorted(placeholders)
+
+# 解析模型json
+def parse_model_json(content: str) -> dict:
+    """
+    兼容模型返回纯 JSON、Markdown JSON 代码块以及 JSON 前后带说明文字。
+    """
+
+    if not content:
+        return {}
+
+    content = str(content).strip()
+
+    content = re.sub(
+        r"^```(?:json)?\s*",
+        "",
+        content,
+        flags=re.IGNORECASE,
+    )
+
+    content = re.sub(
+        r"\s*```$",
+        "",
+        content,
+    )
+
+    content = content.strip()
+
+    try:
+        result = json.loads(content)
+
+        if isinstance(result, dict):
+            return result
+
+    except (
+        json.JSONDecodeError,
+        TypeError,
+    ):
+        pass
+
+    # 兼容 JSON 前后存在额外文本
+    json_match = re.search(
+        r"\{.*\}",
+        content,
+        flags=re.DOTALL,
+    )
+
+    if not json_match:
+        return {}
+
+    try:
+        result = json.loads(
+            json_match.group(0)
+        )
+
+        if isinstance(result, dict):
+            return result
+
+    except (
+        json.JSONDecodeError,
+        TypeError,
+    ):
+        pass
+
+    return {}
+
+# 从模板 URL 中提取模板路径
+def extract_template_path_from_answer(
+    answer_content: str,
+) -> str | None:
+    """
+    从历史 assistant 答案中的模板链接提取模板相对路径。
+
+    支持：
+
+    [模板.docx](/v1/file/template?path=xxx&preview=1&ext=docx)
+    """
+
+    if not answer_content:
+        return None
+
+    answer_content = str(answer_content)
+
+    # 先找模板 API URL。
+    # 允许 URL 中出现空格或换行，后续统一去除。
+    match = re.search(
+        r"/v1/file/template\?[^)\]]+",
+        answer_content,
+        flags=re.IGNORECASE,
+    )
+
+    if not match:
+        return None
+
+    url_text = match.group(0)
+
+    # Markdown 链接被换行时，去掉空白
+    url_text = re.sub(
+        r"\s+",
+        "",
+        url_text,
+    )
+
+    # 去掉可能跟随的标点
+    url_text = url_text.rstrip(
+        ".,，。；;》）]"
+    )
+
+    try:
+        parsed_url = urlparse(url_text)
+
+        query_params = parse_qs(
+            parsed_url.query
+        )
+
+        path_values = query_params.get(
+            "path"
+        )
+
+        if not path_values:
+            return None
+
+        relative_path = unquote(
+            path_values[0]
+        )
+
+        return validate_application_template_path(
+            relative_path
+        )
+
+    except Exception:
+        return None
+# 从模板 URL 中提取模板路径
+def extract_template_path_from_answer(
+    answer_content: str,
+) -> str | None:
+    """
+    从历史 assistant 答案中的模板链接提取模板相对路径。
+
+    支持：
+
+    [模板.docx](/v1/file/template?path=xxx&preview=1&ext=docx)
+    """
+
+    if not answer_content:
+        return None
+
+    answer_content = str(answer_content)
+
+    # 先找模板 API URL。
+    # 允许 URL 中出现空格或换行，后续统一去除。
+    match = re.search(
+        r"/v1/file/template\?[^)\]]+",
+        answer_content,
+        flags=re.IGNORECASE,
+    )
+
+    if not match:
+        return None
+
+    url_text = match.group(0)
+
+    # Markdown 链接被换行时，去掉空白
+    url_text = re.sub(
+        r"\s+",
+        "",
+        url_text,
+    )
+
+    # 去掉可能跟随的标点
+    url_text = url_text.rstrip(
+        ".,，。；;》）]"
+    )
+
+    try:
+        parsed_url = urlparse(url_text)
+
+        query_params = parse_qs(
+            parsed_url.query
+        )
+
+        path_values = query_params.get(
+            "path"
+        )
+
+        if not path_values:
+            return None
+
+        relative_path = unquote(
+            path_values[0]
+        )
+
+        return validate_application_template_path(
+            relative_path
+        )
+
+    except Exception:
+        return None
+# 从历史 assistant 答案中获取最近模板
+def get_previous_template_path(
+    messages,
+) -> str | None:
+    """
+    从历史 assistant 消息中倒序查找最近一个模板。
+
+    注意：
+    messages 中必须包含上一轮 assistant 的完整回答。
+    """
+
+    if not messages:
+        return None
+
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+
+        if message.get("role") != "assistant":
+            continue
+
+        content = message.get(
+            "content",
+            "",
+        )
+
+        if not content:
+            continue
+
+        template_path = (
+            extract_template_path_from_answer(
+                content
+            )
+        )
+
+        if template_path:
+            return template_path
+
+    return None
+# 选择模板
+async def select_application_template(
+    chat_mdl,
+    user_question: str,
+    answer: str = "",
+) -> str | None:
+    """
+    根据用户问题和 RAG 回答选择模板。
+    """
+
+    template_files = (
+        get_application_template_files()
+    )
+
+    if not template_files:
+        return None
+
+    template_list = "\n".join(
+        f"- {file_path}"
+        for file_path in template_files
+    )
+
+    prompt = f"""
+你是一个企业合规模板文件选择助手。
+
+请根据用户问题和系统回答，判断是否需要提供模板文件。
+
+## 可用模板
+
+{template_list}
+
+## 用户问题
+
+{user_question}
+
+## 系统回答
+
+{answer}
+
+## 要求
+
+1. 如果需要模板，只能从可用模板中选择。
+2. file_path 必须原样返回。
+3. 不得修改文件名。
+4. 不得生成 URL。
+5. 不得返回绝对路径。
+6. 如果没有合适模板，返回 null。
+7. 只返回 JSON，不要解释。
+
+返回格式：
+
+{{
+  "file_path": "企业合规承诺书.docx"
+}}
+
+如果没有合适模板：
+
+{{
+  "file_path": null
+}}
+""".strip()
+
+    try:
+        raw_result = await chat_mdl.async_chat(
+            prompt,
+            [],
+        )
+
+        if isinstance(raw_result, str):
+            content = raw_result
+
+        elif isinstance(raw_result, dict):
+            content = (
+                raw_result.get("content")
+                or raw_result.get("answer")
+                or json.dumps(
+                    raw_result,
+                    ensure_ascii=False,
+                )
+            )
+
+        else:
+            content = str(
+                raw_result or ""
+            )
+
+        result = parse_model_json(
+            content
+        )
+
+        selected_path = result.get(
+            "file_path"
+        )
+
+        if not selected_path:
+            return None
+
+        if not isinstance(
+            selected_path,
+            str,
+        ):
+            return None
+
+        return validate_application_template_path(
+            selected_path
+        )
+
+    except Exception:
+        return None
+
+# 构造空白模板链接
+def build_application_template_markdown(
+    relative_path: str,
+) -> str | None:
+    """
+    生成空白模板 Markdown 链接。
+    """
+
+    relative_path = (
+        validate_application_template_path(
+            relative_path
+        )
+    )
+
+    if not relative_path:
+        return None
+
+    file_path = (
+        APPLICATION_TEMPLATE_DIR
+        / relative_path
+    ).resolve()
+
+    ext = (
+        file_path.suffix
+        .lower()
+        .lstrip(".")
+    )
+
+    query_string = urlencode({
+        "path": relative_path,
+        "preview": "1",
+        "ext": ext,
+    })
+
+    document_url = (
+        f"{TEMPLATE_FILE_API}?{query_string}"
+    )
+
+    display_name = file_path.name
+
+    return (
+        f"[{display_name}]"
+        f"({document_url})"
+    )
+
+# 构造对话上下文
+def build_conversation_context(
+    messages,
+    max_messages: int = 8,
+) -> str:
+    """
+    提取最近几轮对话，用于合规模式识别和字段提取。
+    """
+
+    if not messages:
+        return ""
+
+    lines = []
+
+    for message in messages[
+        -max_messages:
+    ]:
+        if not isinstance(message, dict):
+            continue
+
+        role = message.get(
+            "role",
+            "",
+        )
+
+        content = message.get(
+            "content",
+            "",
+        )
+
+        if not content:
+            continue
+
+        if role == "user":
+            role_name = "用户"
+
+        elif role == "assistant":
+            role_name = "助手"
+
+        else:
+            role_name = role
+
+        lines.append(
+            f"{role_name}：{content}"
+        )
+
+    return "\n".join(lines)
+async def detect_compliance_mode(
+    chat_mdl,
+    user_question: str,
+    conversation_context: str,
+) -> str:
+    """
+    判断当前属于：
+
+    flow_only：
+        只问流程，需要知识库和空白模板。
+
+    fill_only：
+        只提供数据，填写历史模板，不需要知识库。
+
+    flow_and_fill：
+        既问流程，又提供数据，需要知识库和填写文件。
+    """
+
+    prompt = f"""
+你是企业合规业务模式识别助手。
+
+用户当前已经开启了「企业合规模式」，所以问题一定与合规业务相关。
+你只需在下面三种模式中选择最匹配的一种，不允许返回其它值。
+
+## 模式定义
+
+### flow_only
+
+用户询问企业合规流程、申请流程、办理步骤、
+审批要求、所需材料等，但没有提供足够的企业数据。
+
+处理方式：
+查询知识库，并返回空白模板。
+
+### fill_only
+
+用户主要是在提供企业名称、统一社会信用代码、
+法定代表人、注册地址、联系人等数据，
+希望继续填写上一轮已经出现的模板。
+
+处理方式：
+不查询知识库，直接填写历史模板。
+
+### flow_and_fill
+
+用户同时询问流程、要求、办理条件等，
+并且提供了足够的企业数据。
+
+处理方式：
+查询知识库，并生成填写后的模板。
+
+## 重要判断规则
+
+1. 只询问流程，没有业务数据：flow_only。
+2. 只提供数据，明显是在继续补充模板：fill_only。
+3. 同时问流程并提供数据：flow_and_fill。
+4. 如果用户是在补充上一轮字段，优先判断为 fill_only。
+5. 如果用户既没有明确问流程，也没有明确提供数据，默认返回 flow_only。
+6. 不要编造用户没有提供的信息。
+7. 只返回 JSON，不要解释。
+
+## 历史对话
+
+{conversation_context}
+
+## 当前用户问题
+
+{user_question}
+
+返回格式：
+
+{{
+  "mode": "flow_only",
+  "reason": ""
+}}
+""".strip()
+
+    try:
+        raw_result = await chat_mdl.async_chat(
+            prompt,
+            [],
+        )
+
+        if isinstance(raw_result, str):
+            content = raw_result
+
+        elif isinstance(raw_result, dict):
+            content = (
+                raw_result.get("content")
+                or raw_result.get("answer")
+                or json.dumps(
+                    raw_result,
+                    ensure_ascii=False,
+                )
+            )
+
+        else:
+            content = str(
+                raw_result or ""
+            )
+
+        result = parse_model_json(
+            content
+        )
+
+        mode = result.get(
+            "mode"
+        )
+
+        if mode in {
+            COMPLIANCE_FLOW_ONLY,
+            COMPLIANCE_FILL_ONLY,
+            COMPLIANCE_FLOW_AND_FILL,
+            COMPLIANCE_NONE,
+        }:
+            return mode
+
+    except Exception as exc:
+        print(
+            "合规模式识别失败：",
+            repr(exc),
+        )
+
+    return COMPLIANCE_NONE
+
+import re
+import json
+
+
+def _norm(s) -> str:
+    """归一化字段 key：去空白、去常见标点、转小写。
+    用于容忍模型返回的 key 与模板字段名的细微差异。"""
+    if s is None:
+        return ""
+    s = str(s)
+    # 去空白 + 常见分隔符/标点（中英文）
+    s = re.sub(
+        r"[\s\u3000：:_\-—\.。、,，;；/\\|()（）\[\]【】{}<>《》\"'`]+",
+        "",
+        s,
+    )
+    return s.lower()
+
+
+async def extract_template_fill_data(
+    chat_mdl,
+    user_question: str,
+    conversation_context: str,
+    template_path: str,
+    required_fields: list[str] | None = None,
+) -> dict:
+    """
+    从对话中提取用于填写模板的字段。
+
+    规则：
+    - 只从 required_fields 中取值作为 fields 的 key，其余一律丢弃；
+    - required_fields 为空时，自动从模板占位符推导；
+    - 会合并「历史对话」和「当前用户输入」中用户提供过的全部字段；
+    - 返回 {"fields": {字段名: 值}}。
+    """
+
+    # ---- 0. 推导模板需要的字段 ----
+    if required_fields is None:
+        required_fields = extract_template_placeholders(template_path)
+
+    if not required_fields:
+        return {"fields": {}}
+
+    # ---- 1. 构造 prompt ----
+    required_text = "\n".join(f"- {f}" for f in required_fields)
+    example_key = required_fields[0]
+
+    prompt = f"""
+你是企业合规模板字段提取助手。
+
+当前模板：{template_path}
+
+## 模板需要的字段（fields 的 key 只能从下面选，逐字复制）
+
+{required_text}
+
+## 历史对话
+
+{conversation_context}
+
+## 当前用户输入
+
+{user_question}
+
+## 规则
+
+1. fields 的 key 只能从上面「模板需要的字段」列表中逐字复制，不得改写、翻译、加空格、加标点。
+2. **请同时阅读「历史对话」和「当前用户输入」，提取用户在所有轮次中提供过的字段，一并返回。**
+3. **历史对话里用户之前说过、但本轮没有重复的信息，也要提取，不要遗漏。**
+4. 如果历史里出现过某字段的值，但本轮用户又给了新值，以最新一次为准。
+5. 只提取用户明确提供的信息，不得猜测、不得补全。
+6. 用户从未提供过的字段，不要放进 fields。
+7. 只返回 JSON，不要 Markdown、不要解释。
+
+返回格式：
+{{"fields": {{"{example_key}": "示例值"}}}}
+""".strip()
+
+    # ---- 2. 调用模型 ----
+    try:
+        raw_result = await chat_mdl.async_chat(prompt, [])
+
+        if isinstance(raw_result, str):
+            content = raw_result
+        elif isinstance(raw_result, dict):
+            content = (
+                raw_result.get("content")
+                or raw_result.get("answer")
+                or json.dumps(raw_result, ensure_ascii=False)
+            )
+        else:
+            content = str(raw_result or "")
+
+        result = parse_model_json(content)
+        if not isinstance(result, dict):
+            return {"fields": {}}
+
+        fields = result.get("fields", {})
+        if not isinstance(fields, dict):
+            return {"fields": {}}
+
+        # ---- 3. 归一化：只保留 required_fields 里有的 key ----
+        
+        allowed = {_norm(f): f for f in required_fields}
+        clean = {}
+        dropped = []
+        for k, v in fields.items():
+            canonical = allowed.get(_norm(k))
+            if canonical and v not in (None, "", [], {}):
+                clean[canonical] = v
+            elif k:
+                dropped.append(k)
+
+        if dropped:
+            print("模板字段提取：丢弃非模板字段 key：", dropped)
+
+        # ---- 4. 识别「其余/其他/剩下 都写 X」的默认值 ----
+        default_value = None
+
+        # 只识别明确出现「其余/其他/剩下/剩余/别的/其它」的语句
+        if re.search(r"其余|其他|剩下|剩余|别的|其它", user_question or ""):
+            # 匹配形式：「其余都写2」「其他填写 2」「剩下的统一填：2」「其他：2」
+            match = re.search(
+                r"(?:其余|其他|剩下|剩余|别的|其它)"
+                r"(?:字段|的)?"
+                r"(?:都|全部|一律|统一|通通|统统)?"
+                r"(?:填写|填|写|写为|设为|设为为|设成|是|用)?"
+                r"\s*[：:，,]?\s*"
+                r"([^\s，。；;、]+)",
+                user_question,
+            )
+            if match:
+                default_value = match.group(1).strip()
+
+        # ---- 5. 用默认值补齐所有还没赋值的字段 ----
+        if default_value:
+            filled_count = 0
+            for f in required_fields:
+                if f not in clean:
+                    clean[f] = default_value
+                    filled_count += 1
+
+            print(
+                f"模板字段提取：检测到默认值「{default_value}」，"
+                f"已补齐 {filled_count} 个字段"
+            )
+
+        return {"fields": clean}
+
+    except Exception as exc:
+        print("模板字段提取失败：", repr(exc))
+        return {"fields": {}}
+
+# 替换 Word 段落和表格
+def replace_text_in_paragraph(
+    paragraph,
+    replacements: dict,
+):
+    """
+    简单替换段落中的 {{字段}}。
+
+    注意：
+    如果占位符被 Word 拆分到多个 run，
+    需要后续再做 run 合并处理。
+    """
+
+    original_text = paragraph.text
+
+    if not original_text:
+        return
+
+    changed = False
+    new_text = original_text
+
+    for key, value in replacements.items():
+        placeholder = (
+            "{{"
+            + str(key)
+            + "}}"
+        )
+
+        if placeholder in new_text:
+            new_text = new_text.replace(
+                placeholder,
+                str(value),
+            )
+            changed = True
+
+    if not changed:
+        return
+
+    # 简单场景下直接重建段落文本
+    # 会丢失该段落的细粒度 run 样式。
+    # 如果模板样式非常重要，需要单独实现 run 级替换。
+    for run in paragraph.runs:
+        run.text = ""
+
+    if paragraph.runs:
+        paragraph.runs[0].text = new_text
+    else:
+        paragraph.add_run(new_text)
+
+# 生成 Word 文件
+def generate_filled_docx(
+    template_path: str,
+    fill_data: dict,
+    workspace_dir: str,
+) -> dict | None:
+    """
+    根据 Word 模板生成填写后的 docx 文件。
+    """
+
+    template_relative_path = (
+        validate_application_template_path(
+            template_path
+        )
+    )
+
+    if not template_relative_path:
+        return None
+
+    source_file = (
+        APPLICATION_TEMPLATE_DIR
+        / template_relative_path
+    ).resolve()
+
+    workspace_path = Path(
+        workspace_dir
+    ).resolve()
+
+    workspace_path.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_name = (
+        f"{source_file.stem}_已填写_"
+        f"{uuid.uuid4().hex[:8]}"
+        f"{source_file.suffix}"
+    )
+
+    output_file = (
+        workspace_path / output_name
+    )
+
+    fields = fill_data.get(
+        "fields",
+        {},
+    )
+
+    document = DocxDocument(str(source_file))   # 不要用 Document
+    replace_text_in_docx(document, fields)
+    document.save(str(output_file))
+
+    return {
+        "file_path": str(output_file),
+        "file_name": output_name,
+    }
+
+# 生成 Excel 文件
+def generate_filled_excel(
+    template_path: str,
+    fill_data: dict,
+    workspace_dir: str,
+) -> dict | None:
+    template_relative_path = (
+        validate_application_template_path(
+            template_path
+        )
+    )
+
+    if not template_relative_path:
+        return None
+
+    source_file = (
+        APPLICATION_TEMPLATE_DIR
+        / template_relative_path
+    ).resolve()
+
+    workspace_path = Path(
+        workspace_dir
+    ).resolve()
+
+    workspace_path.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_name = (
+        f"{source_file.stem}_已填写_"
+        f"{uuid.uuid4().hex[:8]}"
+        f"{source_file.suffix}"
+    )
+
+    output_file = (
+        workspace_path / output_name
+    )
+
+    fields = fill_data.get(
+        "fields",
+        {},
+    )
+
+    workbook = load_workbook(
+        filename=str(source_file)
+    )
+
+    for worksheet in workbook.worksheets:
+        for row in worksheet.iter_rows():
+            for cell in row:
+                if not isinstance(
+                    cell.value,
+                    str,
+                ):
+                    continue
+
+                new_value = cell.value
+
+                for key, value in fields.items():
+                    placeholder = (
+                        "{{"
+                        + str(key)
+                        + "}}"
+                    )
+
+                    new_value = new_value.replace(
+                        placeholder,
+                        str(value),
+                    )
+
+                cell.value = new_value
+
+    workbook.save(
+        str(output_file)
+    )
+
+    return {
+        "file_path": str(output_file),
+        "file_name": output_name,
+    }
+
+
+def generate_filled_txt(
+    template_path: str,
+    fill_data: dict,
+    workspace_dir: str,
+) -> dict | None:
+    template_relative_path = (
+        validate_application_template_path(
+            template_path
+        )
+    )
+
+    if not template_relative_path:
+        return None
+
+    source_file = (
+        APPLICATION_TEMPLATE_DIR
+        / template_relative_path
+    ).resolve()
+
+    workspace_path = Path(
+        workspace_dir
+    ).resolve()
+
+    workspace_path.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_name = (
+        f"{source_file.stem}_已填写_"
+        f"{uuid.uuid4().hex[:8]}"
+        f"{source_file.suffix}"
+    )
+
+    output_file = (
+        workspace_path / output_name
+    )
+
+    content = source_file.read_text(
+        encoding="utf-8"
+    )
+
+    fields = fill_data.get(
+        "fields",
+        {},
+    )
+
+    for key, value in fields.items():
+        placeholder = (
+            "{{"
+            + str(key)
+            + "}}"
+        )
+
+        content = content.replace(
+            placeholder,
+            str(value),
+        )
+
+    output_file.write_text(
+        content,
+        encoding="utf-8",
+    )
+
+    return {
+        "file_path": str(output_file),
+        "file_name": output_name,
+    }
+
+# 按文件类型生成文件
+async def generate_filled_application_file(
+    template_path: str,
+    fill_data: dict,
+    workspace_dir: str,
+) -> dict | None:
+    """
+    根据模板扩展名生成填写后的文件。
+    """
+
+    suffix = Path(
+        template_path
+    ).suffix.lower()
+
+    if suffix == ".docx":
+        return await asyncio.to_thread(
+            generate_filled_docx,
+            template_path,
+            fill_data,
+            workspace_dir,
+        )
+
+    if suffix == ".xlsx":
+        return await asyncio.to_thread(
+            generate_filled_excel,
+            template_path,
+            fill_data,
+            workspace_dir,
+        )
+
+    if suffix == ".txt":
+        return await asyncio.to_thread(
+            generate_filled_txt,
+            template_path,
+            fill_data,
+            workspace_dir,
+        )
+
+    # 旧 .xls、doc、pdf、ppt 等格式需要另外处理
+    return None
+
+
+def build_workspace_file_markdown(
+    output_file_path: str,
+    workspace_root: Path,
+) -> str | None:
+    """
+    从文件路径推导 dialog_id 和相对路径，拼出预览链接。
+    假设磁盘结构为：
+        {workspace_root}/{dialog_id}/{conversation_id?}/{filename}
+    """
+    if not output_file_path:
+        return None
+
+    output_path = Path(output_file_path).resolve()
+    workspace_root = workspace_root.resolve()
+
+    try:
+        relative_path = output_path.relative_to(workspace_root).as_posix()
+    except ValueError:
+        return None
+
+    if not output_path.is_file():
+        return None
+
+    parts = relative_path.split("/")
+
+    # 至少要 {dialog_id}/xxx.docx 两层
+    if len(parts) < 2:
+        return None
+
+    dialog_id = parts[0]
+    # 去掉 dialog_id 前缀，剩下的相对路径给后端用
+    path_within_dialog = "/".join(parts[1:])
+
+    query_string = urlencode({
+        "dialog_id": dialog_id,
+        "path": path_within_dialog,
+        "preview": "1",
+    })
+
+    return f"[查看已生成模板]({WORKSPACE_FILE_API}?{query_string})"
+
+
+# 直接填写的模式
+async def handle_fill_only_mode(
+    chat_mdl,
+    user_question: str,
+    conversation_context: str,
+    messages,
+    workspace_dir: str,
+) -> str:
+    """
+    fill_only 流程：
+    1. 从历史 assistant 答案中提取模板 URL；
+    2. 不检索知识库；
+    3. 提取模板需要的字段；
+    4. 对比用户已提供字段 → 缺则提示补充；
+    5. 齐全 → 生成文件。
+    """
+
+    template_path = get_previous_template_path(messages)
+
+    if not template_path:
+        return (
+            "没有找到上一轮对应的模板文件。"
+            "请先询问相关申请流程，或重新选择需要填写的模板。"
+        )
+
+    # ---- 1. 模板需要的字段 ----
+    required_fields = extract_template_placeholders(template_path)
+
+    # ---- 2. 用户已提供的数据 ----
+    fill_data = await extract_template_fill_data(
+        chat_mdl=chat_mdl,
+        user_question=user_question,
+        conversation_context=conversation_context,
+        template_path=template_path,
+        required_fields=required_fields,
+    )
+
+    fields = fill_data.get("fields", {}) or {}
+    provided_keys = set(fields.keys())
+
+    # ---- 3. 系统计算缺失字段（不信模型） ----
+    missing_fields = [f for f in required_fields if f not in provided_keys]
+
+    # 保留模板链接，供下一轮继续识别
+    template_link = build_application_template_markdown(template_path)
+
+    # 用户友好的模板名
+    template_name = Path(template_path).name
+
+    # ---- 4. 有缺失 → 提示用户补充 ----
+    if missing_fields:
+        missing_text = "\n".join(f"- **{f}**" for f in missing_fields)
+
+        provided_text = ""
+        if provided_keys:
+            provided_text = (
+                "已收到以下信息：\n"
+                + "\n".join(f"- {k}：{v}" for k, v in fields.items())
+                + "\n\n"
+            )
+
+        think = (
+            f"匹配到模板：{template_name}\n"
+            f"模板需要的字段：{required_fields}\n"
+            f"用户已提供：{list(provided_keys) or '无'}\n"
+            f"缺失字段：{missing_fields}\n"
+            f"策略：先向用户索要缺失信息，暂不生成文件。"
+        )
+
+        # 已收到信息 → 表格
+        provided_text = ""
+        if provided_keys:
+            provided_rows = "\n".join(
+                f"| {k} | {v} |" for k, v in fields.items()
+            )
+            provided_text = (
+                "已收到以下信息：\n\n"
+                "| 字段 | 内容 |\n"
+                "| --- | --- |\n"
+                f"{provided_rows}\n\n"
+            )
+
+        # 缺失信息 → 表格
+        missing_rows = "\n".join(f"| {f} | |" for f in missing_fields)
+        missing_text = (
+            "| 字段 | 内容 |\n"
+            "| --- | --- |\n"
+            f"{missing_rows}"
+        )
+
+        answer = (
+            f"已识别到你要填写的是 **{template_name}**。\n\n"
+            f"{provided_text}"
+            "还需要你补充以下信息：\n\n"
+            f"{missing_text}\n\n"
+            "补充后我会立即为你生成填写好的模板。"
+        )
+
+        # if template_link:
+        #     answer += f"\n\n**空白模板参考**\n{template_link}"
+
+        return f"<think>{think}</think>\n{answer}"
+
+    # ---- 5. 齐全 → 生成文件 ----
+    think = (
+        f"字段已齐全：{list(provided_keys)}\n"
+        f"调用 generate_filled_application_file 生成文件，模板={template_name}"
+    )
+
+    generated_file = await generate_filled_application_file(
+        template_path=template_path,
+        fill_data=fill_data,
+        workspace_dir=workspace_dir,
+    )
+
+    if not generated_file:
+        think += "\n生成失败：当前模板格式不支持自动填写。"
+        answer = (
+            "当前模板格式暂不支持自动填写，"
+            "请下载后手动填写。"
+        )
+        if template_link:
+            answer += f"\n\n{template_link}"
+        return f"<think>{think}</think>\n{answer}"
+
+    workspace_link = build_workspace_file_markdown(
+        generated_file["file_path"],
+        WORKSPACE_ROOT,
+    )
+
+    generated_name = Path(generated_file["file_path"]).name
+    think += f"\n生成成功：{generated_name}"
+
+    # 回显用户提供的信息，方便核对
+    filled_rows = "\n".join(f"| {k} | {v} |" for k, v in fields.items())
+
+    answer = (
+        f"已根据以下信息生成 **{generated_name}**\n\n"
+        f"| 字段 | 内容 |\n"
+        f"| --- | --- |\n"
+        f"{filled_rows}\n\n"
+        '<span class="md-blue-text">文件生成完毕，点击下方文件即可预览下载。</span>'
+    )
+
+    if workspace_link:
+        answer += f"\n\n{workspace_link}"
+
+    return f"<think>{think}</think>\n{answer}"
+
+# 查询填写的模式
+async def apply_compliance_after_rag(
+    compliance_mode: str,
+    chat_mdl,
+    user_question: str,
+    answer: str,
+    conversation_context: str,
+    messages,
+    workspace_dir: str,
+) -> str:
+    """
+    在普通 RAG 已生成 answer 后执行合规处理。
+    """
+    print(answer)
+    # =========================
+    # 1. 只询问流程
+    # =========================
+    if compliance_mode == COMPLIANCE_FLOW_ONLY:
+        print("🔵 进入 FLOW_ONLY")
+        print("🔵 user_question:", user_question)
+        print("🔵 answer 前 200 字:", answer[:200])
+
+        selected_template = await select_application_template(
+            chat_mdl=chat_mdl,
+            user_question=user_question,
+            answer=answer,
+        )
+        print("🔵 selected_template:", selected_template)
+
+        if not selected_template:
+            print("❌ select_application_template 返回空，直接 return")
+            return answer
+
+        document_link = build_application_template_markdown(selected_template)
+        print("🔵 document_link:", document_link)
+
+        if not document_link:
+            print("❌ build_application_template_markdown 返回空")
+            return answer
+
+        if "/v1/file/template?" in answer:
+            print("🔵 answer 里已经有模板链接，跳过追加")
+            return answer
+
+        print("✅ 追加附件模板链接")
+        return (
+            f"{answer}\n\n"
+            '<span class="md-attachment-label">附件</span>\n'
+            f"{document_link}"
+        )
+    # =========================
+    # 2. 既问流程又提供数据
+    # =========================
+    if compliance_mode == COMPLIANCE_FLOW_AND_FILL:
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++当前模式--------------------------------")
+        selected_template = get_previous_template_path(messages)
+
+        if not selected_template:
+            selected_template = await select_application_template(
+                chat_mdl=chat_mdl,
+                user_question=user_question,
+                answer=answer,
+            )
+
+        if not selected_template:
+            return (
+                f"{answer}\n\n"
+                "已识别到你需要填写申请材料，"
+                "但暂时无法确定对应模板。"
+            )
+
+        # ---- 模板需要的字段 ----
+        required_fields = extract_template_placeholders(selected_template)
+
+        # ---- 提取用户数据 ----
+        fill_data = await extract_template_fill_data(
+            chat_mdl=chat_mdl,
+            user_question=user_question,
+            conversation_context=conversation_context,
+            template_path=selected_template,
+            required_fields=required_fields,
+        )
+
+        fields = fill_data.get("fields", {}) or {}
+        provided_keys = set(fields.keys())
+        missing_fields = [f for f in required_fields if f not in provided_keys]
+
+        template_link = build_application_template_markdown(selected_template)
+
+        # ---- 有缺失 → 提示补充 ----
+        if missing_fields:
+            print('---- 有缺失 → 提示补充 ----')
+            missing_text = (
+                "| 需要补充的字段 |\n"
+                "| --- |\n"
+                + "\n".join(f"| {f} |" for f in missing_fields)
+            )
+
+            result = (
+                f"{answer}\n\n"
+                "---\n\n"
+                f"已识别到你想填写的模板：**{selected_template}**\n\n"
+                "还需要你补充以下信息：\n"
+                f"{missing_text}\n\n"
+                "请补充以上信息，我会继续为你生成填写后的模板。"
+            )
+
+
+            if template_link and "/v1/file/template?" not in answer:
+                result += (
+                    "\n\n"
+                    '<span class="md-attachment-label">附件</span>\n'
+                    f"{template_link}"
+                )
+
+            return result
+
+        # ---- 齐全 → 生成文件 ----
+        generated_file = await generate_filled_application_file(
+            template_path=selected_template,
+            fill_data=fill_data,
+            workspace_dir=workspace_dir,
+        )
+
+        if not generated_file:
+            result = (
+                f"{answer}\n\n"
+                "模板格式暂不支持自动填写，"
+                "请下载空白模板手动填写。"
+            )
+            if template_link and "/v1/file/template?" not in answer:
+                result += f"\n\n{template_link}"
+            return result
+
+        workspace_link = build_workspace_file_markdown(
+            generated_file["file_path"],
+            WORKSPACE_ROOT,
+        )
+
+        result = (
+            f"{answer}\n\n"
+            '<span class="md-blue-text">文件生成完毕，点击下方文件即可预览下载。</span>'
+        )
+
+        if workspace_link:
+            result += f"\n\n{workspace_link}"
+
+        return result
+
+    return answer
+
+def replace_text_in_docx(
+    document,
+    replacements: dict,
+):
+    for paragraph in document.paragraphs:
+        replace_text_in_paragraph(
+            paragraph,
+            replacements,
+        )
+
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    replace_text_in_paragraph(
+                        paragraph,
+                        replacements,
+                    )
+
 
 class DialogService(CommonService):
     model = Dialog
@@ -358,6 +1928,7 @@ def get_public_doc_ids_by_kb(kb_id):
 async def async_chat(dialog, messages, stream=True, **kwargs):
     # 获取当前用户的id
     user_id = kwargs["user_id"]
+    conversation_id = kwargs.get("conversation_id") or "default"
 
     assert messages[-1]["role"] == "user", "The last content of this conversation is not from user."
     # # 无kb搜索的情况
@@ -455,7 +2026,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             # prompt_config["system"] = prompt_config["system"].replace("{%s}" % p["key"], " ")
             prompt_config["system"] = prompt_config.get("system", "").replace("{%s}" % p["key"], " ")
     # 把多轮对话整合成一个完整的问题
-    if len(questions) > 1 and prompt_config.get("refine_multiturn"):
+    if len(questions) > 1 and prompt_config.get("refine_multiturn") and not project_compliance_mod_enabled:
         questions = [await full_question(dialog.tenant_id, dialog.llm_id, messages)]
         
         # 新增历史问题改写
@@ -467,6 +2038,9 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
     else:
         questions = questions[-1:]
+
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print(questions)
     # 跨语言处理
     if prompt_config.get("cross_languages"):
         questions = [await cross_languages(dialog.tenant_id, dialog.llm_id, questions[0], prompt_config["cross_languages"])]
@@ -619,6 +2193,122 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
         # 普通 RAG 检索
         else:
+            # ==========================================
+            # 企业合规模式判断
+            # ==========================================
+            compliance_mode = COMPLIANCE_NONE
+            conversation_context = ""
+            previous_template_path = None
+
+            if project_compliance_mod_enabled:
+                conversation_context = (
+                    build_conversation_context(
+                        messages
+                    )
+                )
+
+                compliance_mode = (
+                    await detect_compliance_mode(
+                        chat_mdl=chat_mdl,
+                        user_question=questions[-1],
+                        conversation_context=conversation_context,
+                    )
+                )
+
+                previous_template_path = (
+                    get_previous_template_path(
+                        messages
+                    )
+                )
+
+                print(
+                    "企业合规模式：--------------------------------------------------------------------------------------------",
+                    compliance_mode,
+                )
+
+                print(
+                    "历史模板路径：",
+                    previous_template_path,
+                )
+
+            # ==========================================
+            # fill_only：直接处理，不走 RAG
+            # ==========================================
+            if (
+                project_compliance_mod_enabled
+                and compliance_mode == COMPLIANCE_FILL_ONLY
+            ):
+                # 这里的 workspace_dir 可以按照你的系统修改
+                workspace_dir = str(
+                    WORKSPACE_ROOT / str(dialog.id) / str(conversation_id)
+                )
+
+                fill_answer = (
+                    await handle_fill_only_mode(
+                        chat_mdl=chat_mdl,
+                        user_question=questions[-1],
+                        conversation_context=conversation_context,
+                        messages=messages,
+                        workspace_dir=workspace_dir,
+                    )
+                )
+
+                # 后面需要根据你的整体函数结构返回。
+                # 如果当前函数本身是 async generator，可以这样直接返回。
+                if stream:
+                    current_answer = ""
+
+                    for start in range(
+                        0,
+                        len(fill_answer),
+                        40,
+                    ):
+                        chunk = fill_answer[
+                            start:start + 40
+                        ]
+
+                        current_answer += chunk
+
+                        yield {
+                            "answer": current_answer,
+                            "reference": {},
+                            "prompt": "",
+                            "audio_binary": None,
+                            "suggestions": [],
+                        }
+
+                        await asyncio.sleep(0)
+
+                    yield {
+                        "answer": current_answer,
+                        "reference": {},
+                        "prompt": "",
+                        "audio_binary": tts(
+                            tts_mdl,
+                            current_answer,
+                        ),
+                        "suggestions": [],
+                    }
+
+                else:
+                    yield {
+                        "answer": fill_answer,
+                        "reference": {},
+                        "prompt": "",
+                        "audio_binary": tts(
+                            tts_mdl,
+                            fill_answer,
+                        ),
+                        "suggestions": [],
+                    }
+
+                return
+
+            # ==========================================
+            # flow_only、flow_and_fill、none
+            # 继续执行你原来的普通 RAG 逻辑
+            # ==========================================
+
             # 向量检索 重排序 TOC 增强 KG 检索 Tavily 搜索
             print("===============================检索的知识库id为===================================")
             print(dialog.kb_ids)
@@ -894,7 +2584,22 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
     kwargs["knowledge"] = "\n------\n" + "\n\n------\n\n".join(knowledges)
     source_group_answer_prompt = ""
-    if knowledges and len(dialog.kb_ids or []) > 1 and not prompt_config.get("reasoning", False):
+
+    if project_compliance_mod_enabled:
+        # 合规模式：优先走这里，不走来源分组
+        source_group_answer_prompt = """
+            # 输出要求
+
+            请根据上下文直接回答用户的问题，不需要按来源分组，不需要输出【综合总结】。
+
+            请使用 Markdown 格式回答：
+            - 一级主题用 `##` 标题；
+            - 二级主题用 `###` 标题，如果存在多条加上阿拉伯数字序号，格式为 `### 1. 标题`、`### 2. 标题`，依次递增；
+            - 具体内容用 `-` 列表；
+            - 不要使用空格缩进模拟层级。
+            """
+
+    elif knowledges and len(dialog.kb_ids or []) > 1 and not prompt_config.get("reasoning", False):
         # 多知识库回答格式要求：只追加运行时指令，不改前端 prompt_config。
         selected_kb_ids = dialog.kb_ids if isinstance(dialog.kb_ids, list) else [dialog.kb_ids]
         selected_kb_names = []
@@ -905,6 +2610,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             kb_name = kb_detail["name"] if kb_detail else kbs_by_id.get(kb_id, f"未知知识库({kb_id})")
             selected_kb_names.append(kb_name)
         source_headings = "\n".join([f"【从{name}来说】" for name in selected_kb_names])
+        
         source_group_answer_prompt = f"""
             # 来源分组回答要求
 
@@ -919,24 +2625,38 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             2. 如果某个来源未检索到相关内容，或内容与用户问题无关，必须完全跳过该来源标签，不要输出空标签、占位语或“未提及”等表述。
             3. 每个来源的回答必须严格基于其对应的“【来源：...】”上下文，不得使用其他来源内容，不得编造、推断或补充原文未包含的信息。
             4. “【综合总结】”必须放在最后，仅基于已输出的各来源内容进行总结。
-            5. 不要先写总述，不要合并不同来源
+            5. 不要先写总述，不要合并不同来源。
             6. 请使用 Markdown 格式回答：
-                - 一级主题用 ## 标题
-                - 二级主题用 ### 标题
-                - 具体内容用 - 列表
-                - 不要使用空格缩进模拟层级。
+            - 一级主题用 `##` 标题；
+            - 二级主题用 `###` 标题，如果存在多条加上阿拉伯数字序号，格式为 `### 1. 标题`、`### 2. 标题`，依次递增；
+            - 具体内容用 `-` 列表；
+            - 不要使用空格缩进模拟层级。
             """
 
-        # # 来源分组回答要求
-        # 你必须严格按下面的标签结构输出，不要先写总述，不要合并不同来源，也不要使用 Markdown 标题符号 #：
-        # {source_headings}
-        # 【综合总结】
+        
 
-        # 规则：
-        # 1. 每个“【从...来说】”标签都必须出现，标签下换行后用要点回答。
-        # 2. 每个来源只能使用对应“【来源：...】”上下文里的内容；如果该来源未检索到相关内容，则直接略过该来源，不要编造。
-        # 3. “【综合总结】”必须放在最后，总结各来源的共同结论、差异点和总体判断。
-        # """
+        # source_group_answer_prompt = f"""
+        #     # 来源分组回答要求
+
+        #     你必须严格按照以下来源标签结构进行回答，但只输出有相关内容的来源标签：
+
+        #     {source_headings}
+
+        #     【综合总结】
+
+        #     输出规则：
+        #     1. 仅当某个“【从...来说】”标签对应的“【来源：...】”上下文中，存在与用户问题直接相关的内容时，才输出该标签及其回答。
+        #     2. 如果某个来源未检索到相关内容，或内容与用户问题无关，必须完全跳过该来源标签，不要输出空标签、占位语或“未提及”等表述。
+        #     3. 每个来源的回答必须严格基于其对应的“【来源：...】”上下文，不得使用其他来源内容，不得编造、推断或补充原文未包含的信息。
+        #     4. “【综合总结】”必须放在最后，仅基于已输出的各来源内容进行总结。
+        #     5. 不要先写总述，不要合并不同来源。
+        #     6. 请使用 Markdown 格式回答：
+        #         - 一级主题用 ## 标题
+        #         - 二级主题用 ### 标题
+        #         - 具体内容用 - 列表
+        #         - 不要使用空格缩进模拟层级。
+        #     7. 重点强化：“【综合总结】”部分必须提炼各来源的核心结论，并严格使用 **加粗**（即 `**文字**` 格式）来突出显示关键信息、核心差异或重要结论，确保用户一眼就能看到重点。总结内部请使用 - 列表进行分点陈述。
+        #     """
 
     print("相关的召回信息为----------------------------------------------------------------------")
     print(kwargs)
@@ -999,26 +2719,20 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             用户: {questions[-1]}
             AI: {answer}
             """
-        suggestions = await chat_mdl.async_chat(suggestion_system_prompt, [])
-        print(suggestions)
-        import json
-        try:
-            # 1. 拿到原始字符串 (例如: '["问题1", "问题2"]')
-            raw_suggestions = await chat_mdl.async_chat(suggestion_system_prompt, [])
 
-            # 2. 清洗数据 (防止模型不听话带上了 ```json ... ```)
-            clean_text = raw_suggestions.replace("```json", "").replace("```", "").strip()
-
-            # 3. 解析 JSON (把字符串变成 Python 列表)
-            suggestions = json.loads(clean_text)
-
-            # 确保它是列表类型 (防呆)
-            if not isinstance(suggestions, list):
+        if project_compliance_mod_enabled:
+            # 合规模式：完全不生成建议
+            suggestions = []
+        else:
+            try:
+                raw_suggestions = await chat_mdl.async_chat(suggestion_system_prompt, [])
+                clean_text = raw_suggestions.replace("```json", "").replace("```", "").strip()
+                suggestions = json.loads(clean_text)
+                if not isinstance(suggestions, list):
+                    suggestions = []
+            except Exception as e:
+                print(f"生成建议问题解析失败: {e}")
                 suggestions = []
-
-        except Exception as e:
-            print(f"生成建议问题解析失败: {e}")
-            suggestions = []  # 失败了给个空列表，别让程序崩了
 
 
         # 处理引用与知识库
@@ -1125,293 +2839,6 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
         
 
-        if project_compliance_mod_enabled:
-            import json
-            # import re
-            from pathlib import Path
-            from urllib.parse import urlencode
-
-            # 模板文件目录
-            APPLICATION_TEMPLATE_DIR = Path(
-                "/home/zyb/rag-flow/Application_Template"
-            ).resolve()
-
-            # 允许作为模板返回的文件类型
-            ALLOWED_TEMPLATE_EXTENSIONS = {
-                ".pdf",
-                ".doc",
-                ".docx",
-                ".xls",
-                ".xlsx",
-                ".ppt",
-                ".pptx",
-                ".txt",
-            }
-
-            # 前端访问文件的接口。
-            # manager 如果已经注册了 /v1/file 前缀，这里就是这个地址。
-            TEMPLATE_FILE_API = "/v1/file/template"
-
-            def get_application_template_files() -> list[str]:
-                """
-                获取 Application_Template 目录下的所有模板文件。
-
-                返回相对于 Application_Template 的路径，例如：
-                [
-                    "企业申请流程指南.pdf",
-                    "承诺书/企业合规承诺书.docx",
-                ]
-                """
-                if not APPLICATION_TEMPLATE_DIR.exists():
-                    return []
-
-                if not APPLICATION_TEMPLATE_DIR.is_dir():
-                    return []
-
-                template_files = []
-
-                for file_path in APPLICATION_TEMPLATE_DIR.rglob("*"):
-                    if not file_path.is_file():
-                        continue
-
-                    if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
-                        continue
-
-                    relative_path = file_path.relative_to(
-                        APPLICATION_TEMPLATE_DIR
-                    ).as_posix()
-
-                    template_files.append(relative_path)
-
-                return sorted(template_files)
-
-            def parse_model_json(content: str) -> dict:
-                """
-                兼容以下模型输出：
-
-                {"file_path": "企业申请流程指南.pdf"}
-
-                或：
-
-                ```json
-                {"file_path": "企业申请流程指南.pdf"}
-                ```
-                """
-                if not content:
-                    return {}
-
-                content = str(content).strip()
-
-                # 去掉 Markdown JSON 代码块
-                content = re.sub(
-                    r"^```(?:json)?\s*",
-                    "",
-                    content,
-                    flags=re.IGNORECASE,
-                )
-                content = re.sub(
-                    r"\s*```$",
-                    "",
-                    content,
-                )
-                content = content.strip()
-
-                try:
-                    result = json.loads(content)
-
-                    if isinstance(result, dict):
-                        return result
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-                # 模型可能在 JSON 前后输出了额外内容
-                json_match = re.search(r"\{.*\}", content, re.DOTALL)
-
-                if not json_match:
-                    return {}
-
-                try:
-                    result = json.loads(json_match.group(0))
-
-                    if isinstance(result, dict):
-                        return result
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-                return {}
-
-            async def select_application_template(
-                chat_mdl,
-                user_question: str,
-                answer: str = "",
-            ) -> str | None:
-                """
-                让模型根据用户问题选择模板。
-
-                模型只返回相对文件路径，不允许模型生成 URL。
-                """
-                template_files = get_application_template_files()
-
-                if not template_files:
-                    return None
-
-                template_list = "\n".join(
-                    f"- {file_path}"
-                    for file_path in template_files
-                )
-
-                suggestion_system_prompt = f"""
-            你是一个企业合规模板文件选择助手。
-
-            请根据用户的问题，判断是否需要给用户提供模板文件。
-            如果需要，请从“可用模板文件”中选择最合适的一个文件。
-            如果不需要，返回 null。
-
-            ## 可用模板文件
-
-            {template_list}
-
-            ## 用户问题
-
-            {user_question}
-
-            ## 当前系统回答
-
-            {answer}
-
-            ## 判断规则
-
-            1. file_path 只能从“可用模板文件”中原样选择。
-            2. 不得修改文件名，不得编造文件名。
-            3. 不得返回本地绝对路径。
-            4. 不得生成 URL。
-            5. 如果没有合适的模板，file_path 必须返回 null。
-            6. 一次最多选择一个模板。
-            7. 只返回 JSON，不要返回 Markdown，不要解释。
-
-            返回格式：
-
-            {{
-            "file_path": "企业申请流程指南.pdf"
-            }}
-
-            没有合适模板时返回：
-
-            {{
-            "file_path": null
-            }}
-            """.strip()
-
-                try:
-                    suggestions = await chat_mdl.async_chat(
-                        suggestion_system_prompt,
-                        [],
-                    )
-                except Exception:
-                    # 这里可以换成你项目里的 logger.exception(...)
-                    return None
-
-                # 如果 async_chat 返回的不是字符串，可根据实际返回结构调整
-                if isinstance(suggestions, str):
-                    model_content = suggestions
-                elif isinstance(suggestions, dict):
-                    model_content = (
-                        suggestions.get("content")
-                        or suggestions.get("answer")
-                        or json.dumps(suggestions, ensure_ascii=False)
-                    )
-                else:
-                    model_content = str(suggestions or "")
-
-                result = parse_model_json(model_content)
-
-                selected_path = result.get("file_path")
-
-                if not selected_path or not isinstance(selected_path, str):
-                    return None
-
-                # 统一路径分隔符
-                selected_path = selected_path.strip().replace("\\", "/")
-
-                # 模型返回结果必须存在于扫描得到的白名单中
-                if selected_path not in template_files:
-                    return None
-
-                # 再检查一次物理文件，不能直接信任模型
-                file_path = (
-                    APPLICATION_TEMPLATE_DIR / selected_path
-                ).resolve()
-
-                try:
-                    file_path.relative_to(APPLICATION_TEMPLATE_DIR)
-                except ValueError:
-                    # 防止 ../ 目录穿越
-                    return None
-
-                if not file_path.is_file():
-                    return None
-
-                return selected_path
-
-            def build_application_template_markdown(
-                relative_path: str,
-            ) -> str | None:
-                """
-                根据模板相对路径生成 Markdown 文件链接。
-                """
-                if not relative_path:
-                    return None
-
-                relative_path = relative_path.strip().replace("\\", "/")
-
-                file_path = (
-                    APPLICATION_TEMPLATE_DIR / relative_path
-                ).resolve()
-
-                try:
-                    file_path.relative_to(APPLICATION_TEMPLATE_DIR)
-                except ValueError:
-                    return None
-
-                if not file_path.is_file():
-                    return None
-
-                if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
-                    return None
-
-                ext = file_path.suffix.lower().lstrip(".")
-
-                query_string = urlencode({
-                    "path": relative_path,
-                    "preview": "1",
-                    "ext": ext,
-                })
-
-                document_url = (
-                    f"{TEMPLATE_FILE_API}?{query_string}"
-                )
-
-                # Markdown 中只展示文件名，不展示子目录
-                display_name = file_path.name
-
-                return f"[{display_name}]({document_url})"
-
-
-            selected_template = await select_application_template(
-                chat_mdl=chat_mdl,
-                user_question=questions[-1],  # 替换成你代码中的用户问题变量
-                answer=answer,
-            )
-
-            if selected_template:
-                document_link = build_application_template_markdown(
-                    selected_template
-                )
-
-                if document_link:
-                    answer = f"{answer}\n\n{document_link}"
-
-            # answer = answer + "\n\n" + document_link
 
         return {"answer": think + answer, "reference": refs, "prompt": re.sub(r"\n", "  \n", prompt), "created_at": time.time(), "suggestions":suggestions}
 
@@ -1635,8 +3062,30 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         last_ans = ""
         answer = ""
 
+        # ============================================================
+        # 合规 flow_only 模式：只回答流程，不回答其它内容
+        # ============================================================
+        compliance_prompt_extra = ""
+
+        # if (
+        #     project_compliance_mod_enabled
+        #     and compliance_mode == COMPLIANCE_FLOW_ONLY
+        # ):
+        if project_compliance_mod_enabled:
+            compliance_prompt_extra = (
+    "\n\n## 输出约束（必须严格遵守）\n"
+    "1. 你的任务只有一个：把知识库中召回的流程内容，原封不动地展示给用户。只需要流程即可。\n"
+    "2. 禁止改写、翻译、总结、提炼、扩写、缩写，禁止调整原有顺序和层级。\n"
+    "3. 禁止结合用户问题做任何解读或补充说明，禁止引入用户问题中的信息。\n"
+    "4. 禁止引入历史对话内容，禁止复述历史回答中出现过的任何链接或模板名。\n"
+    "5. 禁止输出任何文件下载链接、模板名、'可下载空白模板'、'模板参考'、\n"
+    "'已填写模板' 等字样，禁止输出 /v1/file/ 开头的 URL。\n"
+    "7. 文件下载链接由系统在回答之后统一追加，你只负责原样展示知识库的流程正文。\n"
+    "8. 不用不用混入我的问题数据。"
+)
+
         async for ans in chat_mdl.async_chat_streamly(
-            prompt + prompt4citation,
+            prompt + prompt4citation + compliance_prompt_extra,
             msg[1:],
             gen_conf,
             dialog_id=dialog.id
@@ -1694,10 +3143,67 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             id_doc_name_map
         )
 
+        if (
+            project_compliance_mod_enabled
+            and compliance_mode in {
+                COMPLIANCE_FLOW_ONLY,
+                COMPLIANCE_FLOW_AND_FILL,
+            }
+        ):
+            workspace_dir = str(
+                WORKSPACE_ROOT / str(dialog.id) / str(conversation_id)
+            )
+
+            answer = (
+                await apply_compliance_after_rag(
+                    compliance_mode=compliance_mode,
+                    chat_mdl=chat_mdl,
+                    user_question=questions[-1],
+                    answer=answer,
+                    conversation_context=conversation_context,
+                    messages=messages,
+                    workspace_dir=workspace_dir,
+                )
+            )
+
+            # 继续使用原来的 decorate_answer
+            final_package = await decorate_answer(
+                answer
+            )
+
         yield final_package
 
     else:
-        answer = await chat_mdl.async_chat(prompt + prompt4citation, msg[1:], gen_conf)
+        # answer = await chat_mdl.async_chat(prompt + prompt4citation, msg[1:], gen_conf)
+
+        answer = await chat_mdl.async_chat(
+            prompt + prompt4citation,
+            msg[1:],
+            gen_conf,
+        )
+
+        if (
+            project_compliance_mod_enabled
+            and compliance_mode in {
+                COMPLIANCE_FLOW_ONLY,
+                COMPLIANCE_FLOW_AND_FILL,
+            }
+        ):
+            workspace_dir = str(
+                WORKSPACE_ROOT / str(dialog.id) / str(conversation_id)
+            )
+
+            answer = (
+                await apply_compliance_after_rag(
+                    compliance_mode=compliance_mode,
+                    chat_mdl=chat_mdl,
+                    user_question=questions[-1],
+                    answer=answer,
+                    conversation_context=conversation_context,
+                    messages=messages,
+                    workspace_dir=workspace_dir,
+                )
+            )
 
         user_content = msg[-1].get("content", "[content not available]")
         logging.debug("User: {}|Assistant: {}".format(user_content, answer))

@@ -2062,3 +2062,377 @@ async def get_application_template():
             status=500,
             content_type="text/plain; charset=utf-8",
         )
+
+
+# 前端展示模板
+import json
+import logging
+import mimetypes
+import traceback
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote
+
+from quart import request as quart_request, Response as QuartResponse
+
+# ============ 目录常量 ============
+
+# 相对 file_app.py 定位：/home/zyb/rag-flow/Application_Template
+APPLICATION_TEMPLATE_DIR = (
+    Path(__file__).resolve().parents[2] / "Application_Template"
+).resolve()
+
+# 允许读取的后缀
+ALLOWED_TEMPLATE_EXTENSIONS = {
+    ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf", ".txt", ".csv",
+}
+
+
+# ============ 工具函数 ============
+
+def _safe_resolve(base_dir: Path, relative_path: str) -> Path | None:
+    """把相对路径安全地解析到 base_dir 下，防止 ../ 穿越。"""
+    if not relative_path:
+        return None
+    relative_path = relative_path.replace("\\", "/")
+    file_path = (base_dir / relative_path).resolve()
+    try:
+        file_path.relative_to(base_dir)
+    except ValueError:
+        return None
+    return file_path
+
+
+def _list_files(base_dir: Path) -> list[dict]:
+    """列出目录下所有允许的文件，返回前端需要的格式。"""
+    items = []
+    if not base_dir.exists() or not base_dir.is_dir():
+        return items
+
+    for file_path in sorted(base_dir.rglob("*")):
+        if not file_path.is_file():
+            continue
+        if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
+            continue
+
+        relative_path = file_path.relative_to(base_dir).as_posix()
+        stat = file_path.stat()
+
+        items.append({
+            "id": relative_path,
+            "name": file_path.name,
+            "path": relative_path,
+            "size": stat.st_size,
+            "updatedAt": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d"),
+        })
+    return items
+
+
+def _file_response(file_path: Path, preview: bool) -> QuartResponse:
+    """按文件路径返回 Quart 响应（inline / attachment）。"""
+    mimetype, _ = mimetypes.guess_type(file_path.name)
+    mimetype = mimetype or "application/octet-stream"
+
+    file_content = file_path.read_bytes()
+    encoded_filename = quote(file_path.name, safe="")
+    disposition = "inline" if preview else "attachment"
+
+    response = QuartResponse(
+        response=file_content,
+        status=200,
+        content_type=mimetype,
+    )
+    response.headers["Content-Disposition"] = (
+        f"{disposition}; filename*=UTF-8''{encoded_filename}"
+    )
+    response.headers["Content-Length"] = str(len(file_content))
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "private, no-cache, max-age=0"
+    return response
+
+
+# ============ 接口 1：模板列表 ============
+
+@manager.route("/templates", methods=["GET"])  # noqa: F821
+# @login_required
+async def list_application_templates():
+    """列出 Application_Template 下所有模板文件。"""
+    try:
+        base_dir = APPLICATION_TEMPLATE_DIR
+
+        if not base_dir.exists() or not base_dir.is_dir():
+            return QuartResponse(
+                response="Template directory does not exist!",
+                status=500,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        items = _list_files(base_dir)
+
+        return QuartResponse(
+            response=json.dumps(items, ensure_ascii=False),
+            status=200,
+            content_type="application/json; charset=utf-8",
+        )
+
+    except Exception as error:
+        logging.exception("List application templates failed")
+        traceback.print_exc()
+        return QuartResponse(
+            response=f"List templates failed: {error}",
+            status=500,
+            content_type="text/plain; charset=utf-8",
+        )
+
+
+# ============ 接口 2：模板文件内容 ============
+
+@manager.route("/template-file", methods=["GET"])  # noqa: F821
+# @login_required
+async def get_application_template_file():
+    """按相对路径读取模板文件。preview=1 走 inline，否则 attachment。"""
+    try:
+        relative_path = (quart_request.args.get("path") or "").strip()
+        preview_value = (quart_request.args.get("preview") or "1").strip().lower()
+        preview = preview_value in {"1", "true", "yes", "on"}
+
+        if not relative_path:
+            return QuartResponse(
+                response="Template file path is required!",
+                status=400,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        base_dir = APPLICATION_TEMPLATE_DIR
+        file_path = _safe_resolve(base_dir, relative_path)
+
+        if file_path is None:
+            return QuartResponse(
+                response="Invalid template file path!",
+                status=403,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        if not file_path.is_file():
+            return QuartResponse(
+                response="Template file does not exist!",
+                status=404,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        if file_path.suffix.lower() not in ALLOWED_TEMPLATE_EXTENSIONS:
+            return QuartResponse(
+                response="Unsupported template file type!",
+                status=403,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        return _file_response(file_path, preview)
+
+    except Exception as error:
+        logging.exception("Get application template file failed")
+        traceback.print_exc()
+        return QuartResponse(
+            response=f"Get template file failed: {error}",
+            status=500,
+            content_type="text/plain; charset=utf-8",
+        )
+
+# 相对 file_app.py 定位：/home/zyb/rag-flow/Workspace
+WORKSPACE_DIR = (
+    Path(__file__).resolve().parents[2] / "Workspace"
+).resolve()
+
+@manager.route("/workspace-files", methods=["GET"])  # noqa: F821
+# @login_required
+async def list_workspace_files():
+    """列出 Workspace 下指定 dialog_id / conversation_id 的文件。"""
+    try:
+        dialog_id = (quart_request.args.get("dialog_id") or "").strip()
+        conversation_id = (quart_request.args.get("conversation_id") or "").strip()
+
+        if not dialog_id and not conversation_id:
+            return QuartResponse(
+                response=json.dumps([], ensure_ascii=False),
+                status=200,
+                content_type="application/json; charset=utf-8",
+            )
+
+        base_dir = WORKSPACE_DIR
+
+        if not base_dir.exists() or not base_dir.is_dir():
+            return QuartResponse(
+                response="Workspace directory does not exist!",
+                status=500,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        # 逐级拼接并做安全校验
+        candidates = []
+
+        if dialog_id and conversation_id:
+            candidates.append(base_dir / dialog_id / conversation_id)
+            candidates.append(base_dir / conversation_id)
+        elif dialog_id:
+            candidates.append(base_dir / dialog_id)
+        elif conversation_id:
+            candidates.append(base_dir / conversation_id)
+
+        target_dir = None
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+                # 防止目录穿越
+                resolved.relative_to(base_dir)
+            except ValueError:
+                continue
+
+            if resolved.exists() and resolved.is_dir():
+                target_dir = resolved
+                break
+
+        if target_dir is None:
+            return QuartResponse(
+                response=json.dumps([], ensure_ascii=False),
+                status=200,
+                content_type="application/json; charset=utf-8",
+            )
+
+        # 复用现有工具函数
+        items = _list_files(target_dir)
+
+        return QuartResponse(
+            response=json.dumps(items, ensure_ascii=False),
+            status=200,
+            content_type="application/json; charset=utf-8",
+        )
+
+    except Exception as error:
+        logging.exception("List workspace files failed")
+        traceback.print_exc()
+        return QuartResponse(
+            response=f"List workspace files failed: {error}",
+            status=500,
+            content_type="text/plain; charset=utf-8",
+        )
+
+# ============ 接口：获取工作区单个文件 ============
+
+WORKSPACE_ALLOWED_EXTENSIONS = {
+    # 文档类
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".txt", ".md", ".csv", ".json", ".xml", ".yaml", ".yml",
+    # 图片类
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg",
+    # 压缩包
+    ".zip", ".rar", ".7z", ".tar", ".gz",
+    # 其他
+    ".log", ".html", ".htm",
+}
+
+
+@manager.route("/workspace-file", methods=["GET"])  # noqa: F821
+# @login_required
+async def get_workspace_file():
+    """读取 Workspace 下的单个文件。preview=1 走 inline，否则 attachment。
+
+    Query 参数：
+        dialog_id       可选
+        conversation_id 可选
+        path            必填，相对于目标目录的文件名/子路径
+        preview         可选，默认 "0"（下载）
+    """
+    try:
+        dialog_id = (quart_request.args.get("dialog_id") or "").strip()
+        conversation_id = (quart_request.args.get("conversation_id") or "").strip()
+        relative_path = (quart_request.args.get("path") or "").strip()
+        preview_value = (quart_request.args.get("preview") or "0").strip().lower()
+        preview = preview_value in {"1", "true", "yes", "on"}
+
+        if not relative_path:
+            return QuartResponse(
+                response="Workspace file path is required!",
+                status=400,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        if not dialog_id and not conversation_id:
+            return QuartResponse(
+                response="dialog_id or conversation_id is required!",
+                status=400,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        base_dir = WORKSPACE_DIR
+
+        if not base_dir.exists() or not base_dir.is_dir():
+            return QuartResponse(
+                response="Workspace directory does not exist!",
+                status=500,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        # ---------- 1. 定位目标子目录（和 list 接口保持一致）----------
+        candidates = []
+
+        if dialog_id and conversation_id:
+            candidates.append(base_dir / dialog_id / conversation_id)
+            candidates.append(base_dir / conversation_id)
+        elif dialog_id:
+            candidates.append(base_dir / dialog_id)
+        elif conversation_id:
+            candidates.append(base_dir / conversation_id)
+
+        target_dir = None
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+                resolved.relative_to(base_dir)
+            except ValueError:
+                continue
+
+            if resolved.exists() and resolved.is_dir():
+                target_dir = resolved
+                break
+
+        if target_dir is None:
+            return QuartResponse(
+                response="Workspace file does not exist!",
+                status=404,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        # ---------- 2. 安全解析文件路径 ----------
+        file_path = _safe_resolve(target_dir, relative_path)
+
+        if file_path is None:
+            return QuartResponse(
+                response="Invalid workspace file path!",
+                status=403,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        if not file_path.is_file():
+            return QuartResponse(
+                response="Workspace file does not exist!",
+                status=404,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        if file_path.suffix.lower() not in WORKSPACE_ALLOWED_EXTENSIONS:
+            return QuartResponse(
+                response="Unsupported workspace file type!",
+                status=403,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        return _file_response(file_path, preview)
+
+    except Exception as error:
+        logging.exception("Get workspace file failed")
+        traceback.print_exc()
+        return QuartResponse(
+            response=f"Get workspace file failed: {error}",
+            status=500,
+            content_type="text/plain; charset=utf-8",
+        )

@@ -24,6 +24,7 @@ export enum Routes {
   Chat = '/next-chat',
   ChatsDefault = '/next-chats-default',
   ChatDefault = '/next-chat-default',
+  Skill = '/skill',
   Files = '/files',
   ProfileSetting = '/profile-setting',
   Profile = '/profile',
@@ -369,6 +370,18 @@ const routes = [
     path: Routes.ChatDefault + '/:id',
     layout: false,
     component: `@/pages${Routes.ChatsDefault}/chat`,
+  },
+
+  {
+    path: Routes.Skill, // '/skill'
+    layout: false,
+    component: '@/layouts/next',
+    routes: [
+      {
+        path: `${Routes.Skill}/:id`, // '/skill/:id'  👈 关键改动
+        component: `@/pages${Routes.Skill}`,
+      },
+    ],
   },
   {
     path: '/share/chat/:shareId',

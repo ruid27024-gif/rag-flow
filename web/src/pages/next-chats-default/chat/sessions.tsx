@@ -1,13 +1,11 @@
 import { MoreButton } from '@/components/more-button';
 import { PageHeader } from '@/components/page-header';
-import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
 } from '@/components/ui/breadcrumb';
-import { Card, CardContent } from '@/components/ui/card';
 import { SearchInput } from '@/components/ui/input';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
@@ -24,6 +22,8 @@ import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { useSelectDerivedConversationList } from '../hooks/use-select-conversation-list';
 import { ConversationDropdown } from './conversation-dropdown';
 
+import { CheckSquare, ListFilter, Puzzle, Search, Square } from 'lucide-react';
+
 import {
   useRemoveConversation,
   useRenameConversation,
@@ -35,11 +35,24 @@ import { IConversation } from '@/interfaces/database/chat';
 type SessionProps = Pick<
   ReturnType<typeof useHandleClickConversationCard>,
   'handleConversationCardClick'
-> & { switchSettingVisible(): void; hasSingleChatBox: boolean };
+> & {
+  switchSettingVisible(): void;
+  hasSingleChatBox: boolean;
+  isWelcomePage: boolean; // 👈 必传
+  agentMod?: boolean;
+  onOpenSkill?: () => void;
+  onExitSkill?: () => void; // 👈 加回来
+  skillActive?: boolean; // 👈 加回来
+};
 export function Sessions({
   hasSingleChatBox,
   handleConversationCardClick,
   switchSettingVisible,
+  isWelcomePage = true, // 👈 新增
+  agentMod = false,
+  onOpenSkill,
+  onExitSkill, // 👈 加回来
+  skillActive = false, // 👈 加回来
 }: SessionProps) {
   const { t } = useTranslation();
   const {
@@ -161,13 +174,42 @@ export function Sessions({
     }
   }, [removeConversation, selectedConversationIds]);
 
+  const [showSearch, setShowSearch] = useState(false);
+
+  // if (!visible) {
+  //   return (
+  //     <aside
+  //       className="
+  //       w-[40px] shrink-0
+  //       bg-[#F6FAFF] dark:bg-slate-950
+  //       border-r border-sky-100/80 dark:border-slate-800
+  //       flex flex-col items-center
+  //     "
+  //     >
+  //       <button
+  //         type="button"
+  //         onClick={switchVisible}
+  //         className="
+  //         mt-[76px]
+  //         inline-flex size-8 items-center justify-center
+  //         rounded-md
+  //         text-slate-500 dark:text-slate-400
+  //         hover:text-sky-700 dark:hover:text-sky-300
+  //         hover:bg-sky-50 dark:hover:bg-sky-950/50
+  //         transition-colors
+  //       "
+  //       >
+  //         <PanelRightClose className="size-4" />
+  //       </button>
+  //     </aside>
+  //   );
+  // }
   if (!visible) {
     return (
       <aside
         className="
         w-[40px] shrink-0
-        bg-[#F7FBF9] dark:bg-zinc-950
-        border-r border-emerald-100/80 dark:border-emerald-950/70
+        bg-transparent          {/* 👈 背景透明，去掉所有底色 */}
         flex flex-col items-center
       "
       >
@@ -175,207 +217,317 @@ export function Sessions({
           type="button"
           onClick={switchVisible}
           className="
-          mt-[76px]
+          mt-3                   {/* 👈 位置跟展开态对齐 */}
           inline-flex size-8 items-center justify-center
-          rounded-md
+          rounded-lg
           text-gray-500 dark:text-gray-400
-          hover:text-emerald-700 dark:hover:text-emerald-300
-          hover:bg-emerald-50 dark:hover:bg-emerald-950/50
+          hover:text-gray-900 dark:hover:text-white
+          hover:bg-gray-200/60 dark:hover:bg-zinc-800
           transition-colors
         "
         >
-          <PanelRightClose className="size-4" />
+          {/* 如果 PanelLeftOpen 报错，就用你项目里已有的 PanelRightClose 或 Menu */}
+          <PanelRightClose className="size-5" /> {/* 👈 统一 size-5 */}
         </button>
       </aside>
     );
   }
   return (
     <section
-      className="
-      pt-1 px-4 w-[266px] flex flex-col
-      bg-white/35 dark:bg-zinc-950/35
-      backdrop-blur-xl
-      border-r border-emerald-100/70 dark:border-emerald-950/60
-    "
+      className={cn(
+        'relative pt-3 px-3 w-[260px] flex flex-col',
+        isWelcomePage
+          ? 'bg-gradient-to-b from-[#9FB3D1] via-[#B7C5DE] to-[#D4DDE9] dark:from-[#1E2A38] dark:via-[#253445] dark:to-[#2F3E52] border-r border-[#B8C6D6]/40 dark:border-[#2F3E52]/60 backdrop-blur-sm'
+          : 'bg-[#f9f9f9] dark:bg-[#1a1a1a] border-r border-gray-200/60 dark:border-zinc-800',
+      )}
     >
-      {/* ===== Breadcrumb ===== */}
       <PageHeader>
-        <Breadcrumb>
-          <BreadcrumbList className="!items-start">
-            <BreadcrumbItem>
-              <BreadcrumbLink
-                onClick={navigateToChatList}
-                className="group relative inline-flex items-center"
-              >
-                <span
-                  className="
-                  text-2xl font-semibold
-                  text-[#064E3B]
-                  cursor-pointer
-                  transition-colors duration-200
-                  group-hover:text-[#047857]
-                "
+        <div className="flex items-center justify-between w-full gap-2">
+          {/* 左边：图标 + 标题 */}
+          <Breadcrumb className="min-w-0 flex-1">
+            <BreadcrumbList className="!flex-nowrap !items-center min-w-0">
+              <BreadcrumbItem className="min-w-0 flex-1">
+                <BreadcrumbLink
+                  onClick={navigateToChatList}
+                  className="group relative flex items-center gap-1 min-w-0 w-full"
                 >
-                  {t('chat.chat')}
-                </span>
+                  {/* 图标 —— 大小不变 */}
+                  <img
+                    src="/hf_pic.png"
+                    alt=""
+                    className="
+                h-10 w-10
+                object-contain
+                shrink-0
+                -ml-1
+                drop-shadow-[0_2px_4px_rgba(16,185,129,0.18)]
+              "
+                  />
 
-                <span
-                  className="
-                  absolute left-0 top-full mt-2
-                  rounded-md
-                  bg-white px-3 py-1.5
-                  text-xs text-[#064E3B]
-                  border border-emerald-100
-                  shadow-sm
-                  opacity-0
-                  translate-y-1
-                  transition-all duration-200
-                  pointer-events-none
-                  group-hover:opacity-100
-                  group-hover:translate-y-0
-                  z-50
-                "
-                >
-                  点击返回导航页面
-                </span>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+                  {/* 标题 —— 一行省略，hover 显示完整 */}
+                  <span
+                    className="
+                text-2xl font-semibold
+                text-[#064E3B]
+                cursor-pointer
+                truncate min-w-0
+                transition-colors duration-200
+                group-hover:text-[#047857]
+              "
+                  >
+                    {data.name}
+                  </span>
+
+                  {/* Tooltip —— hover 显示完整名称 */}
+                  <span
+                    className="
+                absolute left-0 top-full mt-2
+                rounded-md
+                bg-white px-3 py-1.5
+                text-xs text-[#064E3B]
+                border border-emerald-100
+                shadow-sm
+                opacity-0
+                translate-y-1
+                transition-all duration-200
+                pointer-events-none
+                group-hover:opacity-100
+                group-hover:translate-y-0
+                z-50
+                max-w-[260px]
+                break-all
+              "
+                  >
+                    {data.name}
+                  </span>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+
+          {/* 右边：收起按钮 */}
+          <button
+            type="button"
+            onClick={switchVisible}
+            className="
+        inline-flex size-8 shrink-0 items-center justify-center
+        rounded-lg
+        text-gray-500 dark:text-gray-400
+        hover:text-gray-900 dark:hover:text-white
+        hover:bg-gray-200/60 dark:hover:bg-zinc-800
+        transition-colors
+      "
+            title="收起侧边栏"
+          >
+            <PanelLeftClose className="size-5" />
+          </button>
+        </div>
       </PageHeader>
 
       {/* ===== Header ===== */}
-      <div className="flex items-center justify-between mt-6 pr-5">
-        <div className="flex gap-3 items-center min-w-0">
-          <RAGFlowAvatar
-            avatar={data.icon}
-            name={data.name}
-            className="size-8"
-          />
-          <span className="flex-1 truncate text-gray-900 dark:text-white">
+      {/* <div className="flex items-center gap-2.5 mt-4 px-1 min-w-0">
+        <RAGFlowAvatar
+          avatar={data.icon}
+          name={data.name}
+          className="size-8 shrink-0"
+        />
+        <div className="flex flex-col min-w-0">
+          <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-100">
             {data.name}
           </span>
+          <span className="text-[11px] text-gray-400 dark:text-gray-500">
+            智能助手
+          </span>
         </div>
-
-        <PanelLeftClose
-          className="cursor-pointer size-4 text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white"
-          onClick={switchVisible}
-        />
-      </div>
+      </div> */}
 
       {/* ===== New Chat Button ===== */}
-      <div className="flex flex-col gap-2 mb-0 pt-3 w-full">
+      <div className="pt-3 w-full">
         <button
-          onClick={addTemporaryConversation}
+          onClick={() => {
+            onExitSkill?.(); // 👈 加回来
+            addTemporaryConversation();
+          }}
           className="
-          flex items-center justify-center gap-2
-          h-[35px] w-full px-4
-          rounded-md
-          border border-gray-200 dark:border-zinc-700
-          bg-gray-100 dark:bg-zinc-800
-          text-gray-700 dark:text-gray-300
-          hover:bg-blue-50 dark:hover:bg-blue-950
-          hover:border-blue-300 dark:hover:border-blue-700
-          hover:text-blue-600 dark:hover:text-blue-400
-          hover:shadow-sm
-          transition-all duration-300
-        "
+      flex items-center justify-center
+      h-11 w-full px-4
+      rounded-full
+      bg-white dark:bg-zinc-800
+      border border-gray-200/70 dark:border-zinc-700/70
+      shadow-[0_2px_8px_rgba(0,0,0,0.04)]  /* 更高级的柔和阴影 */
+      hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]
+      hover:bg-gray-50 dark:hover:bg-zinc-700/80
+      active:scale-[0.98]
+      transition-all duration-150
+    "
         >
-          <svg
-            className="w-4 h-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <span className="text-sm font-medium">新建对话</span>
+          <div className="flex items-center gap-2.5">
+            {/* 带圈的加号图标 */}
+            <span
+              className="
+        inline-flex size-5 items-center justify-center
+        rounded-full border border-gray-400/80 dark:border-gray-500
+        text-gray-600 dark:text-gray-300
+      "
+            >
+              <svg
+                className="size-3"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5" /* 线加粗一点 */
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </span>
+
+            {/* 字体大气的关键：字号15px、加重字重、颜色加深 */}
+            <span className="text-[15px] font-medium tracking-wide text-gray-800 dark:text-gray-100">
+              开启新对话
+            </span>
+          </div>
         </button>
       </div>
 
+      {/* 👇 新增：agent 模式专属按钮 */}
+      {/* 👇 agent 模式专属按钮：技能 */}
+      {agentMod && (
+        <div className="pt-2 w-full">
+          <button
+            type="button"
+            onClick={onOpenSkill}
+            className={cn(
+              'group flex w-full items-center gap-2 px-3 py-2.5 rounded-lg transition-colors',
+              skillActive
+                ? 'bg-blue-50/80 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                : 'text-gray-800 dark:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-zinc-800/50',
+            )}
+          >
+            <Puzzle
+              className={cn(
+                'size-4 shrink-0',
+                skillActive
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-300',
+              )}
+              strokeWidth={2}
+            />
+            <span className="truncate text-[14px] tracking-wide">技能</span>
+          </button>
+        </div>
+      )}
+
       {/* ===== Search ===== */}
-      <div className="flex flex-col gap-2 mb-1 pt-3 w-full">
-        <SearchInput
-          onChange={handleInputChange}
-          value={searchString}
-          placeholder="搜索历史对话"
-        />
-      </div>
+      {showSearch && (
+        <div className="mt-3">
+          <SearchInput
+            onChange={handleInputChange}
+            value={searchString}
+            placeholder="搜索历史对话"
+            className="
+        !border-transparent
+        !bg-gray-100 dark:!bg-zinc-800
+        !rounded-lg
+        !h-9
+        focus:!ring-1 focus:!ring-gray-300
+      "
+          />
+        </div>
+      )}
 
       {/* ===== Conversation Title + Manage ===== */}
-      <div className="flex items-center justify-between mb-2 mt-4 px-1 w-full">
+      <div className="flex items-center justify-between mb-1 mt-4 px-3 pr-4 w-full">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
+          <span className="text-[14px] font-medium text-gray-400 dark:text-gray-500">
             {t('chat.conversations')}
           </span>
 
-          <span
-            className="
-            text-[11px] font-medium
-            text-blue-600 dark:text-blue-400
-            bg-blue-50 dark:bg-blue-950
-            px-2 py-0.5
-            rounded-full
-            border border-blue-100 dark:border-blue-800
-          "
-          >
+          <span className="text-[12px] text-gray-400/80 dark:text-gray-600">
             {conversationList.length}
           </span>
         </div>
 
-        {!batchMode ? (
+        <div className="flex items-center gap-1">
+          {/* 控制搜索框显隐 */}
           <button
             type="button"
+            title="搜索"
             className="
-      text-xs px-2 py-1 rounded-md
-      text-gray-500 dark:text-gray-400
-      hover:text-red-600 dark:hover:text-red-400
-      hover:bg-red-50 dark:hover:bg-red-950
-      transition-colors
-    "
-            onClick={() => {
-              setBatchMode(true);
-              setSelectedConversationIds([]);
-            }}
+        inline-flex items-center justify-center
+        p-1 rounded-md
+        text-gray-400 dark:text-gray-500
+        hover:text-gray-800 dark:hover:text-gray-200
+        hover:bg-gray-200/60 dark:hover:bg-zinc-800/80
+        transition-colors
+      "
+            onClick={() => setShowSearch((v) => !v)}
           >
-            管理
+            <Search className="size-4" />
           </button>
-        ) : (
-          <button
-            type="button"
-            className="
-      text-xs px-2 py-1 rounded-md
-      text-blue-600 dark:text-blue-400
-      hover:bg-blue-50 dark:hover:bg-blue-950
-    "
-            onClick={() => {
-              if (
-                conversationList.length > 0 &&
-                selectedConversationIds.length === conversationList.length
-              ) {
-                handleClearSelected();
-              } else {
-                handleSelectAll();
-              }
-            }}
-          >
-            {conversationList.length > 0 &&
-            selectedConversationIds.length === conversationList.length
-              ? '取消全选'
-              : '全选'}
-          </button>
-        )}
-      </div>
 
+          {!batchMode ? (
+            <button
+              type="button"
+              title="管理"
+              className="
+          inline-flex items-center justify-center
+          p-1 rounded-md
+          text-gray-400 dark:text-gray-500
+          hover:text-gray-800 dark:hover:text-gray-200
+          hover:bg-gray-200/60 dark:hover:bg-zinc-800/80
+          transition-colors
+        "
+              onClick={() => {
+                setBatchMode(true);
+                setSelectedConversationIds([]);
+              }}
+            >
+              <ListFilter className="size-4" strokeWidth={2} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="
+          inline-flex items-center justify-center
+          p-1 rounded-md
+          text-gray-400 dark:text-gray-500
+          hover:text-gray-800 dark:hover:text-gray-200
+          hover:bg-gray-200/60 dark:hover:bg-zinc-800/80
+          transition-colors
+        "
+              onClick={() => {
+                if (
+                  conversationList.length > 0 &&
+                  selectedConversationIds.length === conversationList.length
+                ) {
+                  handleClearSelected();
+                } else {
+                  handleSelectAll();
+                }
+              }}
+            >
+              {conversationList.length > 0 &&
+              selectedConversationIds.length === conversationList.length ? (
+                <CheckSquare className="size-4" />
+              ) : (
+                <Square className="size-4" />
+              )}
+            </button>
+          )}
+        </div>
+      </div>
       {/* ===== Conversation List ===== */}
-      <div className="space-y-1 flex-1 overflow-auto pr-1">
+      {/* ===== Conversation List ===== */}
+      <div className="space-y-1 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full">
         {conversationList.map((x) => {
           const checked = selectedConversationIds.includes(x.id);
           const isEditing = editingConversationId === x.id;
+          const isActive = !skillActive && conversationId === x.id;
 
           return (
-            <Card
+            <div
               key={x.id}
               onClick={
                 isEditing
@@ -385,93 +537,80 @@ export function Sessions({
                     : handleCardClick(x.id, x.is_new)
               }
               className={cn(
-                'cursor-pointer rounded-md border-none shadow-none transition-colors',
-                conversationId === x.id
-                  ? 'bg-[#E8F7F3] hover:bg-[#E0F2ED] dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60'
-                  : 'bg-transparent hover:bg-gray-100 dark:hover:bg-zinc-800',
+                // 1. 增大内边距，改为 py-2.5，增加间距 space-y-1
+                'group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
+                // 2. 优化选中态和默认态的颜色，使用更清晰的 text-gray-800
+                isActive
+                  ? 'bg-blue-50/80 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                  : 'text-gray-800 dark:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-zinc-800/50',
                 {
-                  '!bg-blue-50 dark:!bg-blue-950/40': batchMode && checked,
+                  '!bg-blue-50/80 dark:!bg-blue-900/30': batchMode && checked,
                 },
               )}
             >
-              <CardContent className="px-2 py-2 flex justify-between items-center group gap-2">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  {batchMode && (
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      className="
-                      h-3.5 w-3.5 shrink-0
-                      accent-blue-500
-                      cursor-pointer
-                    "
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                      onChange={() => {
-                        handleToggleSelectConversation(x.id);
-                      }}
-                    />
-                  )}
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {batchMode && (
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    className="size-4 shrink-0 accent-blue-500 rounded cursor-pointer"
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => handleToggleSelectConversation(x.id)}
+                  />
+                )}
 
-                  {isEditing ? (
-                    <input
-                      ref={renameInputRef}
-                      value={editingConversationName}
-                      className="
-                      flex-1 min-w-0 h-7 px-2
-                      rounded-md
-                      border border-blue-500
-                      bg-white dark:bg-zinc-900
-                      text-sm text-gray-900 dark:text-white
-                      outline-none
-                    "
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                      onChange={(e) => {
-                        setEditingConversationName(e.target.value);
-                      }}
-                      onBlur={() => {
+                {isEditing ? (
+                  <input
+                    ref={renameInputRef}
+                    value={editingConversationName}
+                    // 输入框也同步放大字号
+                    className="flex-1 min-w-0 h-7 px-2 rounded bg-white dark:bg-zinc-900 text-[14px] text-gray-900 dark:text-white outline-none ring-1 ring-blue-500"
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setEditingConversationName(e.target.value)}
+                    onBlur={() => handleSaveRename(x)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
                         handleSaveRename(x);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleSaveRename(x);
-                        }
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        handleCancelRename();
+                      }
+                    }}
+                  />
+                ) : (
+                  <Tooltip title={x.name} placement="topLeft">
+                    {/* 3. 字号从 13px 提升到 14px，增加右边距防止贴到按钮 */}
+                    <div className="truncate text-[14px] tracking-wide pr-2">
+                      {x.name}
+                    </div>
+                  </Tooltip>
+                )}
+              </div>
 
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          handleCancelRename();
-                        }
-                      }}
-                    />
-                  ) : (
-                    <Tooltip title={x.name} placement="topLeft">
-                      <div
-                        className={cn(
-                          'truncate text-sm text-gray-900 dark:text-white',
-                          batchMode ? 'max-w-[185px]' : 'max-w-[200px]',
-                        )}
-                      >
-                        {x.name}
-                      </div>
-                    </Tooltip>
+              {!batchMode && !isEditing && (
+                <div
+                  className={cn(
+                    'shrink-0 transition-opacity',
+                    isActive
+                      ? 'opacity-100'
+                      : 'opacity-0 group-hover:opacity-100',
                   )}
-                </div>
-
-                {!batchMode && !isEditing && (
+                >
                   <ConversationDropdown
                     conversation={x}
                     removeTemporaryConversation={removeTemporaryConversation}
                     onRename={handleStartRename}
                   >
-                    <MoreButton />
+                    {/* 4. 给 MoreButton 外层套一个带 hover 背景的容器，模拟 DeepSeek 的交互质感 */}
+                    <div className="p-1 rounded-md hover:bg-gray-200/80 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center">
+                      <MoreButton className="size-4.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200" />
+                    </div>
                   </ConversationDropdown>
-                )}
-              </CardContent>
-            </Card>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -535,19 +674,6 @@ export function Sessions({
           </div>
         </div>
       )}
-
-      {/* ===== Footer ===== */}
-      {/* <div className="py-2">
-        <Button
-          className="w-full"
-          type="button"
-          onClick={switchSettingVisible}
-          disabled={!hasSingleChatBox}
-          variant="outline"
-        >
-          {t('chat.chatSetting')}
-        </Button>
-      </div> */}
     </section>
   );
 }

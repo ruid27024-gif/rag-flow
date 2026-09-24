@@ -525,7 +525,7 @@ async def completion():
 
         answer = None
 
-        async for ans in async_chat(dia, msg, **chat_req):
+        async for ans in async_chat(dia, msg, False, **req):
             answer = structure_answer(
                 conv,
                 ans,

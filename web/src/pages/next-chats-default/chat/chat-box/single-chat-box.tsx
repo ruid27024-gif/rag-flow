@@ -1,5 +1,6 @@
 import { NextMessageInput } from '@/components/message-input/next';
 import MessageItem from '@/components/message-item';
+import { ModeToggleButtons } from '@/components/mode-toggle-buttons';
 import { MessageType } from '@/constants/chat';
 import {
   useFetchDialog,
@@ -9,6 +10,7 @@ import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { getAuthorization } from '@/utils/authorization-util';
 import { buildMessageUuidWithRole } from '@/utils/chat';
 import { message } from 'antd';
+import * as React from 'react';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams } from 'umi';
@@ -19,11 +21,8 @@ import {
 import { useCreateConversationBeforeUploadDocument } from '../../hooks/use-create-conversation';
 import { useSendMessage } from '../../hooks/use-send-chat-message';
 import { buildMessageItemReference } from '../../utils';
-// interface IProps {
-//   controller: AbortController;
-//   stopOutputMessage(): void;
-//   conversation: IClientConversation;
-// }
+import type { ComplianceTemplate } from './ComplianceTemplateDialog';
+import ComplianceTemplateDialog from './ComplianceTemplateDialog';
 
 interface IProps {
   controller: any;
@@ -43,10 +42,15 @@ interface IProps {
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
-
   onEnableProjectCompliance?: () => void | Promise<void>;
   onEnableExperimentReport?: () => void | Promise<void>;
   refreshConversation?: () => Promise<any>;
+  onOpenWorkspace?: () => void;
+  onWelcomePageChange?: (isWelcome: boolean) => void; // 👈 新增
+  isWorkspaceOpen?: boolean; // 👈 新增：从最外层传进来
+  forceHideWelcome?: boolean;
+  onClickSkill?: () => void; // 👈 新增
+  onSelectSkill?: (skill: any) => void; // 👈 新增
 }
 
 export function SingleChatBox({
@@ -62,9 +66,15 @@ export function SingleChatBox({
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
-  onEnableProjectCompliance, // ✅ 补上
-  onEnableExperimentReport, // ✅ 补上
+  onEnableProjectCompliance,
+  onEnableExperimentReport,
   refreshConversation,
+  onOpenWorkspace,
+  onWelcomePageChange, // 👈 新增
+  isWorkspaceOpen = false, // 👈 新增
+  forceHideWelcome = false,
+  onClickSkill, // 👈 新增
+  onSelectSkill, // 👈 新增
 }: IProps) {
   const {
     value,
@@ -82,6 +92,7 @@ export function SingleChatBox({
     removeFile,
     setDerivedMessages,
   } = useSendMessage(controller);
+
   const { data: userInfo } = useFetchUserInfo();
   const { data: currentDialog } = useFetchDialog();
   const { createConversationBeforeUploadDocument } =
@@ -91,26 +102,110 @@ export function SingleChatBox({
   const sendDisabled = useSendButtonDisabled(value);
   const navigate = useNavigate();
   const { id } = useParams();
-  const projectComplianceActive =
-    projectCompliance && !reasoning && !agentMod && !experimentReport;
-  const experimentReportActive =
-    experimentReport && !reasoning && !agentMod && !projectCompliance;
 
-  // const { visible, hideModal, documentId, selectedChunk, clickDocumentButton } =
-  //   useClickDrawer();
+  const authHeaders = React.useMemo(
+    () => ({
+      Authorization: getAuthorization() || '',
+      'Content-Type': 'application/json',
+    }),
+    [],
+  );
+
+  // ===================== 合规模板相关 =====================
+
+  const [templateDialogVisible, setTemplateDialogVisible] =
+    React.useState(false);
+  const [complianceTemplates, setComplianceTemplates] = React.useState<
+    ComplianceTemplate[]
+  >([]);
+  const [templateLoading, setTemplateLoading] = React.useState(false);
+  /** 打开大弹窗时默认选中的模板 id */
+  const [pendingTemplateId, setPendingTemplateId] = React.useState<
+    string | null
+  >(null);
+
+  /** 拉取模板列表（幂等，只拉一次） */
+  const loadComplianceTemplates = React.useCallback(async () => {
+    if (complianceTemplates.length > 0) return;
+    setTemplateLoading(true);
+    try {
+      const res = await fetch('/v1/file/templates', {
+        method: 'GET',
+        headers: authHeaders,
+        credentials: 'include',
+      });
+      const result = await res.json();
+      const list = Array.isArray(result) ? result : result.data ?? [];
+
+      setComplianceTemplates(
+        list.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          size: item.size,
+          updatedAt: item.updatedAt,
+        })),
+      );
+    } catch (err) {
+      console.error('拉取模板失败', err);
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, [authHeaders, complianceTemplates.length]);
+
+  /** 组件挂载时预加载一次，这样点模板按钮立即有小面板数据 */
+  React.useEffect(() => {
+    loadComplianceTemplates();
+  }, [loadComplianceTemplates]);
+
+  /** 点小面板某一项 / 点「查看模板」 */
+  const handleOpenComplianceTemplate = (tpl?: ComplianceTemplate) => {
+    setPendingTemplateId(tpl?.id || null);
+    setTemplateDialogVisible(true);
+  };
+
+  /** 工作区占位 */
+  const handleOpenComplianceFolder = () => {
+    onOpenWorkspace?.();
+  };
+
+  /** 下载模板 */
+  const handleDownloadTemplate = async (tpl: ComplianceTemplate) => {
+    try {
+      const res = await fetch(
+        `/v1/file/template-file?path=${encodeURIComponent(tpl.id)}&preview=0`,
+        {
+          method: 'GET',
+          headers: authHeaders,
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) throw new Error('下载失败');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = tpl.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      message.error('下载失败');
+    }
+  };
+
+  // ===================== 复制工具 =====================
+
   function fallbackCopyText(text: string) {
     const textarea = document.createElement('textarea');
     textarea.value = text;
-
     textarea.style.position = 'fixed';
     textarea.style.left = '-9999px';
     textarea.style.top = '-9999px';
     textarea.style.opacity = '0';
-
     document.body.appendChild(textarea);
     textarea.focus();
     textarea.select();
-
     try {
       const successful = document.execCommand('copy');
       document.body.removeChild(textarea);
@@ -120,56 +215,48 @@ export function SingleChatBox({
       return false;
     }
   }
-  // console.log('derivedMessages',derivedMessages);
+
+  // ===================== 消息相关副作用 =====================
+
   useEffect(() => {
     const messages = conversation?.message;
-
     if (Array.isArray(messages)) {
       const normalizedMessages = messages.map((item: any) => {
         const agentEvents =
           item.agentEvents ||
           item.agent_events ||
           (item.agent_event ? [item.agent_event] : []);
-
         return {
           ...item,
-
-          // 兼容有些历史消息只有 answer，没有 content
           content: item.content ?? item.answer ?? '',
-
-          // 统一前端字段
           agentEvents,
-
-          // 保留后端字段
           agent_events: item.agent_events || agentEvents,
         };
       });
-
       setDerivedMessages(normalizedMessages);
     }
   }, [conversation?.message, setDerivedMessages]);
 
   useEffect(() => {
-    // Clear the message list after deleting the conversation.
     if (conversationId === '') {
       setDerivedMessages([]);
     }
   }, [conversationId, setDerivedMessages]);
 
-  // ✅ 新增：处理建议列表点击的函数
-  // ✅ 修改：构造一个符合 ChangeEventHandler 的事件对象
+  // ===================== 建议点击 =====================
+
   const handleSuggestionClick = (suggestion: string) => {
     setValue(suggestion);
   };
 
-  // 双击：填入输入框并发送
   const handleSuggestionDoubleClick = (suggestion: string) => {
     flushSync(() => {
       setValue(suggestion);
     });
-
     handlePressEnter(suggestion);
   };
+
+  // ===================== 分享 =====================
 
   const handleShareMessage = async (targetMessageOrId: any) => {
     const currentConversationId = conversation?.id || conversationId;
@@ -178,18 +265,12 @@ export function SingleChatBox({
       message.error('conversation_id 不存在');
       return;
     }
-
     if (!targetMessageOrId) {
       message.error('message 不存在');
       return;
     }
 
     try {
-      /**
-       * 兼容两种调用方式：
-       * 1. handleShareMessage(item)
-       * 2. handleShareMessage(item.id)
-       */
       const targetMessage =
         typeof targetMessageOrId === 'string'
           ? { id: targetMessageOrId }
@@ -200,64 +281,29 @@ export function SingleChatBox({
       const targetContent =
         targetMessage?.content ?? targetMessage?.answer ?? '';
 
-      console.log('share targetMessage:', targetMessage);
-      console.log('share targetId:', targetId);
-      console.log('share targetRole:', targetRole);
-      console.log('share targetContent:', targetContent);
-
-      /**
-       * 分享前刷新 conversation
-       */
       const latestConversation = refreshConversation
         ? await refreshConversation(currentConversationId)
         : conversation;
 
-      console.log('latestConversation:', latestConversation);
-
       const latestMessages = latestConversation?.message || [];
-
-      console.log(
-        'latestMessages:',
-        latestMessages.map((item: any) => ({
-          id: item.id,
-          role: item.role,
-          content: String(item.content ?? item.answer ?? '').slice(0, 80),
-        })),
-      );
 
       let realMessage: any = null;
 
-      /**
-       * 1. 优先按 id 匹配
-       */
       if (targetId) {
         realMessage = latestMessages.find((item: any) => item.id === targetId);
       }
 
-      /**
-       * 2. id 匹配不到，再按 role + content 匹配
-       */
       if (!realMessage && targetContent) {
         realMessage = [...latestMessages].reverse().find((item: any) => {
           const itemContent = item.content ?? item.answer ?? '';
-
           if (!itemContent) return false;
-
           if (targetRole) {
             return item.role === targetRole && itemContent === targetContent;
           }
-
           return itemContent === targetContent;
         });
       }
 
-      /**
-       * 3. 仍然找不到，直接兜底取最后一条 assistant 消息
-       *
-       * 注意：
-       * 如果你的分享按钮只出现在 assistant 消息上，这个兜底是安全的。
-       * 如果 user 消息也有分享按钮，这里可能会分享最后一条 AI 回复。
-       */
       if (!realMessage) {
         realMessage = [...latestMessages].reverse().find((item: any) => {
           const content = item.content ?? item.answer ?? '';
@@ -269,8 +315,6 @@ export function SingleChatBox({
         message.error('消息还未同步完成，请稍后再试');
         return;
       }
-
-      console.log('realMessage for share:', realMessage);
 
       const response = await fetch('/v1/conversation/share', {
         method: 'POST',
@@ -286,18 +330,12 @@ export function SingleChatBox({
       });
 
       const result = await response.json();
-
-      console.log('share result:', result);
-
       if (result.code !== 0) {
         message.error(result.message || '创建分享失败');
         return;
       }
 
       const shareUrl = result.data?.url;
-
-      console.log('shareUrl:', shareUrl);
-
       if (!shareUrl) {
         message.error('后端未返回分享链接');
         return;
@@ -309,7 +347,6 @@ export function SingleChatBox({
           message.success('分享链接已复制');
         } else {
           const copied = fallbackCopyText(shareUrl);
-
           if (copied) {
             message.success('分享链接已复制');
           } else {
@@ -325,14 +362,14 @@ export function SingleChatBox({
       message.error('分享失败');
     }
   };
-  // import { SunIcon, SmileIcon, MoonIcon, StarIcon } from 'lucide-react';
+
+  // ===================== Rebase =====================
 
   const handleRebaseMessage = async (messageId: string) => {
     if (!conversationId) {
       message.error('conversation_id 不存在');
       return;
     }
-
     if (!messageId) {
       message.error('message_id 不存在');
       return;
@@ -353,137 +390,87 @@ export function SingleChatBox({
       });
 
       const result = await response.json();
-
       if (result.code !== 0) {
         message.error(result.message || '创建分支会话失败');
         return;
       }
 
       const newConversationId = result.data?.conversation_id || result.data?.id;
-
       if (!newConversationId) {
         message.error('后端未返回新的 conversation_id');
         return;
       }
 
       message.success('已创建新的分支会话');
-
       const currentPath = window.location.pathname;
-
       window.location.href = `${currentPath}?conversationId=${newConversationId}&isNew=false`;
     } catch (error) {
       console.error(error);
       message.error('创建分支会话失败');
     }
   };
-  // 或者用简单 SVG：
-  const SunIcon = () => (
-    <svg
-      className="w-6 h-6 text-yellow-500"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-      />
-    </svg>
-  );
 
-  const SmileIcon = () => (
-    <svg
-      className="w-6 h-6 text-blue-500"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-      />
-    </svg>
-  );
+  // ===================== 背景云 =====================
 
-  const MoonIcon = () => (
-    <svg
-      className="w-6 h-6 text-indigo-500"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-      />
-    </svg>
-  );
+  // 真实判断（用于上报父组件）
+  const internalWelcome = !conversationId || derivedMessages.length === 1;
 
-  const StarIcon = () => (
-    <svg
-      className="w-6 h-6 text-purple-500"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-      />
-    </svg>
-  );
+  // 实际渲染用：技能页打开时强制视为非欢迎页 → 云不渲染
+  const isWelcomePage = forceHideWelcome ? false : internalWelcome;
 
-  function useTime(updateInterval: number = 60000) {
-    const [time, setTime] = useState(() => new Date());
+  useEffect(() => {
+    onWelcomePageChange?.(internalWelcome);
+  }, [internalWelcome, onWelcomePageChange]);
+  const random = (min: number, max: number) =>
+    Math.random() * (max - min) + min;
 
-    useEffect(() => {
-      // ✅ 立即对齐当前时间
-      setTime(new Date());
+  const makeBlueClouds = () => {
+    const blueColors = [
+      [72, 111, 178],
+      [102, 138, 195],
+      [128, 162, 210],
+    ];
 
-      const timer = setInterval(() => {
-        setTime(new Date());
-      }, updateInterval);
+    const whiteColors = [
+      [245, 249, 254],
+      [235, 242, 252],
+      [252, 253, 255],
+    ];
 
-      return () => clearInterval(timer);
-    }, [updateInterval]);
+    return Array.from({ length: 20 }).map((_, index) => {
+      const isBaseCloud = index < 2;
+      const isBlue = isBaseCloud ? true : Math.random() < 0.85;
+      const palette = isBlue ? blueColors : whiteColors;
+      const color = palette[Math.floor(Math.random() * palette.length)];
 
-    return time;
-  }
+      const dir = Math.random() > 0.5 ? 'right' : 'left';
+      const duration = random(28, 45);
+      const delay = random(-duration, 0);
+      const scaleMax = random(1.15, 1.45);
+      const scaleMin = random(0.7, 0.9);
 
-  const time = useTime(60_000);
+      return {
+        top: isBaseCloud ? random(-10, 30) : random(-30, 90),
+        width: isBaseCloud ? random(60, 85) : random(28, 60),
+        height: isBaseCloud ? random(55, 75) : random(28, 60),
+        opacity: 1,
+        backgroundColor: `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${
+          isBlue ? random(0.35, 0.6) : random(0.5, 0.8)
+        })`,
+        dir,
+        duration,
+        delay,
+        scaleMax,
+        scaleMin,
+        isBaseCloud,
+        isBlue,
+      };
+    });
+  };
 
-  const hours = time.getHours();
-  const minutes = time.getMinutes().toString().padStart(2, '0');
+  const [blueClouds] = useState(makeBlueClouds);
 
-  let greeting = '';
-  if (hours < 12) greeting = '早上好';
-  else if (hours < 18) greeting = '下午好';
-  else greeting = '晚上好';
-
-  const TimeIcon =
-    hours >= 5 && hours < 12
-      ? SunIcon
-      : hours >= 12 && hours < 18
-        ? SmileIcon
-        : hours >= 18 && hours < 22
-          ? MoonIcon
-          : StarIcon;
-  //   useEffect(() => {
-  //   if (visible) {
-  //     console.log('PdfSheet documentId:', documentId);
-  //     console.log('PdfSheet selectedChunk:', selectedChunk);
-  //   }
-  // }, [visible, documentId, selectedChunk]);
-
-  const isWelcomePage = !conversationId || derivedMessages.length === 1;
+  // ===================== 输入框 =====================
 
   const inputBox = (
     <NextMessageInput
@@ -501,138 +488,251 @@ export function SingleChatBox({
       onUpload={handleUploadFile}
       isUploading={isUploading}
       removeFile={removeFile}
-      // 👇 状态传递
+      wrapperClassName={
+        isWelcomePage
+          ? 'border border-white/70 bg-slate-200/40 backdrop-blur-xl shadow-sm shadow-slate-300/20 focus-within:border-white/90 focus-within:bg-slate-100/50 focus-within:ring-0 dark:border-slate-700/60 dark:bg-slate-800/50 dark:focus-within:border-slate-600'
+          : ''
+      }
       reasoning={reasoning}
       agentMod={agentMod}
-      projectCompliance={projectCompliance} // ✅ 补上
-      experimentReport={experimentReport} // ✅ 补上
-      // 👇 回调函数传递
-      onEnableDeepReasoning={onEnableDeepReasoning}
-      onEnableMultiKbReasoning={onEnableMultiKbReasoning}
-      onEnableAgent={onEnableAgent}
-      onEnableProjectCompliance={onEnableProjectCompliance} // ✅ 补上
-      onEnableExperimentReport={onEnableExperimentReport} // ✅ 补上
+      projectCompliance={projectCompliance}
+      experimentReport={experimentReport}
+      // onResetMode={onEnableMultiKbReasoning}
+      onClickComplianceFolder={handleOpenComplianceFolder}
+      // ✅ 小面板要展示的数据
+      complianceTemplates={complianceTemplates}
+      complianceTemplatesLoading={templateLoading}
+      // ✅ 点小面板某一项 / 点「查看模板」都会走这个
+      onClickComplianceTemplate={handleOpenComplianceTemplate}
+      isComplianceFolderOpen={isWorkspaceOpen} // 👈 新增这一行
+      onClickSkill={onClickSkill}
+      onSelectSkill={onSelectSkill}
     />
   );
+
+  // ===================== 渲染 =====================
+
   return (
-    <section className="flex h-full min-h-0 w-full flex-col overflow-hidden">
-      {isWelcomePage ? (
-        /**
-         * 欢迎页：
-         * 图标 + 恒丰纸业 + 输入框 居中显示
-         */
-        <div className="flex flex-1 min-h-0 w-full items-center justify-center px-5">
-          <div className="w-full max-w-[860px] -translate-y-8">
-            {/* 简洁 Logo 标题 */}
-            <div className="mb-8 flex items-center justify-center gap-4 text-center">
-              <img
-                src="/hf_pic.png"
-                // alt="恒丰纸业"
-                className="
-    h-16
-    w-16
-    object-contain
-    drop-shadow-[0_10px_18px_rgba(16,185,129,0.18)]
-  "
+    <>
+      {isWelcomePage && (
+        <>
+          <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden dark:hidden">
+            <div className="absolute inset-0 bg-[#EDF2FA]" />
+
+            <div className="absolute inset-0 blur-[80px]">
+              {/* 👇 左上角专属蓝云（更蓝版） */}
+              <div
+                className="absolute rounded-full"
+                style={{
+                  top: '-15%',
+                  left: '-10%',
+                  width: '48%',
+                  height: '48%',
+                  backgroundColor: 'rgba(37, 99, 235, 0.65)',
+                  animation: 'breatheA 15s ease-in-out infinite',
+                }}
               />
+              {blueClouds.map((cloud, index) => {
+                if (cloud.isBaseCloud) {
+                  return (
+                    <div
+                      key={index}
+                      className="absolute rounded-full"
+                      style={{
+                        top: `${cloud.top}%`,
+                        left: index === 0 ? '25%' : '55%',
+                        width: `${cloud.width}%`,
+                        height: `${cloud.height}%`,
+                        opacity: cloud.opacity,
+                        backgroundColor: cloud.backgroundColor,
+                      }}
+                    />
+                  );
+                }
+
+                return (
+                  <div
+                    key={index}
+                    className="absolute rounded-full"
+                    style={
+                      {
+                        top: `${cloud.top}%`,
+                        left: 0,
+                        width: `${cloud.width}vw`,
+                        height: `${cloud.height}vw`,
+                        opacity: cloud.opacity,
+                        backgroundColor: cloud.backgroundColor,
+                        animation: `${
+                          cloud.dir === 'right' ? 'blowRight' : 'blowLeft'
+                        } ${cloud.duration}s linear infinite`,
+                        animationDelay: `${cloud.delay}s`,
+                        willChange: 'transform',
+                        '--scaleMin': cloud.scaleMin,
+                        '--scaleMax': cloud.scaleMax,
+                      } as React.CSSProperties
+                    }
+                  />
+                );
+              })}
 
               <div
-                className="
-                text-4xl
-                font-extrabold
-                tracking-tight
-                text-emerald-900
-                dark:text-emerald-100
-              "
-                style={{
-                  fontFamily: `"Ma Shan Zheng", KaiTi, STKaiti, FangSong, Georgia, "Times New Roman", serif`,
-                }}
-              >
-                恒丰纸业
-              </div>
+                className="absolute h-[65%] w-[55%] rounded-full bg-[#f3f8fe]/95 animate-[breatheA_14s_ease-in-out_infinite]"
+                style={{ top: '18%', left: '18%' }}
+              />
+              <div
+                className="absolute h-[45%] w-[42%] rounded-full bg-[#f5f9fe]/90 animate-[breatheB_18s_ease-in-out_infinite]"
+                style={{ top: '-8%', left: '-6%' }}
+              />
+              <div
+                className="absolute h-[50%] w-[50%] rounded-full bg-[#f5f9fe]/90 animate-[breatheA_16s_ease-in-out_infinite]"
+                style={{ bottom: '2%', right: '-4%' }}
+              />
             </div>
 
-            {/* 居中的输入框，外层更直角一点 */}
-            <div className="w-full">{inputBox}</div>
-          </div>
-        </div>
-      ) : (
-        /**
-         * 正常对话：
-         * 消息滚动区域 + 底部固定输入框
-         */
-        <>
-          {/* 消息滚动区域：这一层是全宽的，所以滚动条会在最右侧 */}
-          <div
-            ref={messageContainerRef}
-            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
-          >
-            {/* 内容居中区域：只控制内容宽度，不负责滚动 */}
-            <div className="mx-auto w-full max-w-[860px] px-5 pt-0 pb-4">
-              {derivedMessages?.map((message, i) => (
-                <MessageItem
-                  loading={
-                    message.role === MessageType.Assistant &&
-                    sendLoading &&
-                    derivedMessages.length - 1 === i
-                  }
-                  key={buildMessageUuidWithRole(message)}
-                  item={message}
-                  nickname={userInfo.nickname}
-                  avatar={userInfo.avatar}
-                  avatarDialog={currentDialog.icon}
-                  reference={buildMessageItemReference(
-                    {
-                      message: derivedMessages,
-                      reference: conversation.reference,
-                    },
-                    message,
-                  )}
-                  clickDocumentButton={clickDocumentButton}
-                  onOpenReferencePanel={onOpenReferencePanel}
-                  index={i}
-                  removeMessageById={removeMessageById}
-                  regenerateMessage={regenerateMessage}
-                  sendLoading={sendLoading}
-                  visibleAvatar={false}
-                  onSuggestionClick={handleSuggestionClick}
-                  onSuggestionDoubleClick={handleSuggestionDoubleClick}
-                  onShareMessage={handleShareMessage}
-                  onRebaseMessage={handleRebaseMessage}
-                  isLastMessage={derivedMessages.length - 1 === i}
-                />
-              ))}
-
-              {/* 用于滚动到底部的锚点 */}
-              <div ref={scrollRef} />
-            </div>
-          </div>
-
-          {/* 底部输入框：固定在底部，不参与滚动 */}
-          <div className="shrink-0 w-full px-5 pb-4">
             <div
-              className="
-              mx-auto
-              w-full
-              max-w-[860px]
-              rounded-xl
-            "
-            >
-              {inputBox}
-            </div>
+              className="absolute inset-0
+                bg-[repeating-linear-gradient(to_right,transparent_0,transparent_98px,rgba(119,151,199,0.08)_99px,transparent_100px),repeating-linear-gradient(to_bottom,transparent_0,transparent_98px,rgba(119,151,199,0.06)_99px,transparent_100px)]"
+            />
           </div>
+
+          <style>{`
+            @keyframes blowRight {
+              0%   { transform: translateX(-100vw) scale(var(--scaleMin, 0.85)); }
+              50%  { transform: translateX(50vw)   scale(var(--scaleMax, 1.25)); }
+              100% { transform: translateX(200vw)  scale(var(--scaleMin, 0.85)); }
+            }
+            @keyframes blowLeft {
+              0%   { transform: translateX(200vw)  scale(var(--scaleMin, 0.85)); }
+              50%  { transform: translateX(50vw)   scale(var(--scaleMax, 1.25)); }
+              100% { transform: translateX(-100vw) scale(var(--scaleMin, 0.85)); }
+            }
+            @keyframes breatheA {
+              0%   { transform: scale(1.15); }
+              50%  { transform: scale(0.9); }
+              100% { transform: scale(1.15); }
+            }
+            @keyframes breatheB {
+              0%   { transform: scale(0.92); }
+              50%  { transform: scale(1.15); }
+              100% { transform: scale(0.92); }
+            }
+          `}</style>
         </>
       )}
 
-      {/* PDF 预览弹窗 */}
-      {/* {visible && (
-      <PdfSheet
-        visible={visible}
-        hideModal={hideModal}
-        documentId={documentId}
-        chunk={selectedChunk}
+      <section className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+        {isWelcomePage ? (
+          <div className="flex flex-1 min-h-0 w-full items-center justify-center px-5">
+            <div className="w-full max-w-[860px] translate-y-0">
+              <div className="mb-12 flex items-center justify-center gap-6 text-center">
+                <img
+                  src="/hf_pic.png"
+                  className="
+                    h-[72px]
+                    w-[72px]
+                    object-contain
+                    drop-shadow-[0_10px_18px_rgba(16,185,129,0.18)]
+                  "
+                />
+
+                <div
+                  className="
+                    text-[48px]
+                    font-normal
+                    tracking-[0.18em]
+                    leading-none
+                    text-[#1a2c4a]
+                    dark:text-slate-100
+                  "
+                >
+                  恒丰纸业
+                </div>
+              </div>
+
+              <div className="w-full max-w-[1000px] mx-auto">{inputBox}</div>
+
+              <ModeToggleButtons
+                reasoning={reasoning}
+                agentMod={agentMod}
+                projectCompliance={projectCompliance}
+                experimentReport={experimentReport}
+                onEnableDeepReasoning={onEnableDeepReasoning}
+                onEnableMultiKbReasoning={onEnableMultiKbReasoning}
+                onEnableAgent={onEnableAgent}
+                onEnableProjectCompliance={onEnableProjectCompliance}
+                onEnableExperimentReport={onEnableExperimentReport}
+                disabled={disabled || sendLoading || isUploading}
+                className="mt-5 justify-center"
+              />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div
+              ref={messageContainerRef}
+              className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+            >
+              <div className="mx-auto w-full max-w-[800px] px-5 pt-0 pb-4">
+                {derivedMessages?.map((message, i) => (
+                  <MessageItem
+                    loading={
+                      message.role === MessageType.Assistant &&
+                      sendLoading &&
+                      derivedMessages.length - 1 === i
+                    }
+                    key={buildMessageUuidWithRole(message)}
+                    item={message}
+                    nickname={userInfo.nickname}
+                    avatar={userInfo.avatar}
+                    avatarDialog={currentDialog.icon}
+                    reference={buildMessageItemReference(
+                      {
+                        message: derivedMessages,
+                        reference: conversation.reference,
+                      },
+                      message,
+                    )}
+                    clickDocumentButton={clickDocumentButton}
+                    onOpenReferencePanel={onOpenReferencePanel}
+                    index={i}
+                    removeMessageById={removeMessageById}
+                    regenerateMessage={regenerateMessage}
+                    sendLoading={sendLoading}
+                    visibleAvatar={false}
+                    onSuggestionClick={handleSuggestionClick}
+                    onSuggestionDoubleClick={handleSuggestionDoubleClick}
+                    onShareMessage={handleShareMessage}
+                    onRebaseMessage={handleRebaseMessage}
+                    isLastMessage={derivedMessages.length - 1 === i}
+                  />
+                ))}
+
+                <div ref={scrollRef} />
+              </div>
+            </div>
+
+            <div className="shrink-0 w-full px-4 pb-2">
+              {/* 强制压缩 inputBox 内部所有元素的上下内边距 */}
+              <div className="mx-auto w-full max-w-[800px] rounded-xl [&_textarea]:py-2 [&_textarea]:min-h-[44px] [&>div]:py-1 [&>div]:pb-2">
+                {inputBox}
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* ✅ 合规模板大弹窗 */}
+      <ComplianceTemplateDialog
+        visible={templateDialogVisible}
+        onClose={() => {
+          setTemplateDialogVisible(false);
+          setPendingTemplateId(null);
+        }}
+        templates={complianceTemplates}
+        loading={templateLoading}
+        defaultSelectedId={pendingTemplateId}
+        onDownload={handleDownloadTemplate}
       />
-    )} */}
-    </section>
+    </>
   );
 }

@@ -112,7 +112,6 @@ export const useSendMessage = (controller: AbortController) => {
       if (res && (res?.response.status !== 200 || res?.data?.code !== 0)) {
         // cancel loading
         setValue(message.content);
-        console.info('removeLatestMessage111');
         removeLatestMessage();
         antdMessage.error(res?.data?.message || 'Send message failed');
       }
@@ -183,6 +182,7 @@ export const useSendMessage = (controller: AbortController) => {
   //   setValue,
   //   sendMessage,
   // ]);
+
   const handlePressEnter = useCallback(
     async (nextValue?: string) => {
       const text = typeof nextValue === 'string' ? nextValue : value;
@@ -245,23 +245,30 @@ export const useSendMessage = (controller: AbortController) => {
   //     addNewestAnswer(answer);
   //   }
   // }, [answer, addNewestAnswer, conversationId, isNew]);
+
   useEffect(() => {
     // #1289
-    if (!conversationId || isNew === 'true') {
+    const currentConversationId = conversationId || answer?.conversationId;
+
+    if (!currentConversationId) {
       return;
     }
 
-    if (
-      answer?.answer ||
-      answer?.content ||
-      answer?.agent_event ||
-      answer?.agentEvent ||
+    const hasAnswer =
+      typeof answer?.answer === 'string' || typeof answer?.content === 'string';
+
+    const hasAgentEvent =
+      !!answer?.agent_event ||
+      !!answer?.agentEvent ||
       Array.isArray(answer?.agent_events) ||
-      Array.isArray(answer?.agentEvents)
-    ) {
+      Array.isArray(answer?.agentEvents);
+
+    const hasReference = !!answer?.reference;
+
+    if (hasAnswer || hasAgentEvent || hasReference) {
       addNewestAnswer(answer);
     }
-  }, [answer, addNewestAnswer, conversationId, isNew]);
+  }, [answer, addNewestAnswer, conversationId]);
 
   return {
     handlePressEnter,

@@ -35,7 +35,6 @@ import { useParams } from 'umi';
 import { z } from 'zod';
 import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { ChatSettings } from './app-settings/chat-settings';
-import { SavingButton } from './app-settings/saving-button';
 import { useChatSettingSchema } from './app-settings/use-chat-setting-schema';
 import { MultipleChatBox } from './chat-box/multiple-chat-box';
 import { SingleChatBox } from './chat-box/single-chat-box';
@@ -45,6 +44,13 @@ import { useSwitchDebugMode } from './use-switch-debug-mode';
 
 import DocumentPreviewer from '@/components/pdf-previewer';
 import { message } from 'antd';
+// import WorkspacePanel from './WorkspacePanel';
+// console.log('WorkspacePanel =', WorkspacePanel);
+import { DocPreviewer } from '@/components/document-preview/doc-preview';
+import { getAuthorization } from '@/utils/authorization-util';
+import { ChevronLeft, Download, Eye, FileText, Loader2, X } from 'lucide-react';
+import * as React from 'react';
+import SkillPage from './skill-page';
 
 export default function Chat() {
   // 来源列表
@@ -58,6 +64,9 @@ export default function Chat() {
   const [sourcePreviewDocumentId, setSourcePreviewDocumentId] = useState('');
   const [sourcePreviewChunk, setSourcePreviewChunk] = useState<any>(null);
 
+  // ✅ 工作区侧边栏
+  const [workspaceVisible, setWorkspaceVisible] = useState(false);
+
   // 聊天设置
   const { visible: settingVisible, switchVisible: switchSettingVisible } =
     useSetModalState(false);
@@ -70,8 +79,29 @@ export default function Chat() {
       setSourcePreviewVisible(false);
       setSourcePreviewDocumentId('');
       setSourcePreviewChunk(null);
+      setWorkspaceVisible(false);
     }
   }, [settingVisible]);
+  const [showSkillPage, setShowSkillPage] = useState(false);
+  // 打开工作区：关掉其它右侧面板
+  const openWorkspace = useCallback(() => {
+    setWorkspaceVisible(true);
+
+    setReferenceVisible(false);
+    setSourcePreviewVisible(false);
+    setSourcePreviewDocumentId('');
+    setSourcePreviewChunk(null);
+    setShowSkillPage(false);
+
+    if (settingVisible) {
+      switchSettingVisible();
+    }
+  }, [settingVisible, switchSettingVisible]);
+
+  // 关闭工作区
+  const closeWorkspace = useCallback(() => {
+    setWorkspaceVisible(false);
+  }, []);
 
   // 打开来源列表
   const openReferencePanel = useCallback(
@@ -83,6 +113,8 @@ export default function Chat() {
       setSourcePreviewVisible(false);
       setSourcePreviewDocumentId('');
       setSourcePreviewChunk(null);
+      setWorkspaceVisible(false);
+      setShowSkillPage(false);
 
       // 打开来源列表时，关闭设置面板
       if (settingVisible) {
@@ -106,6 +138,8 @@ export default function Chat() {
 
       // 打开高亮预览后关闭来源列表
       setReferenceVisible(false);
+      setWorkspaceVisible(false);
+      setShowSkillPage(false);
 
       // 打开高亮预览时，关闭设置面板
       if (settingVisible) {
@@ -313,6 +347,50 @@ export default function Chat() {
     }
   }
 
+  // ===================== 全局自动保存 =====================
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAutoSavingRef = useRef(false);
+  const skipFirstWatchRef = useRef(true);
+
+  useEffect(() => {
+    const subscription = form.watch((values) => {
+      // 首次渲染 & 切换会话时的 form.reset 不触发保存
+      if (skipFirstWatchRef.current) return;
+      if (isAutoSavingRef.current) return;
+
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+      autoSaveTimerRef.current = setTimeout(async () => {
+        isAutoSavingRef.current = true;
+        try {
+          await onSubmit(values as FormSchemaType, { silent: true });
+        } catch (err) {
+          console.error('自动保存失败:', err);
+        } finally {
+          // 延迟解锁，避免 onSubmit 里的 form.reset 再触发一轮
+          setTimeout(() => {
+            isAutoSavingRef.current = false;
+          }, 600);
+        }
+      }, 500);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [form, onSubmit]);
+
+  // 表单回显完成后，才允许 watch 触发自动保存
+  useEffect(() => {
+    if (!data || isEmpty(data)) return;
+    // 等 form.reset 完成，下一帧再解除跳过
+    const timer = setTimeout(() => {
+      skipFirstWatchRef.current = false;
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [data]);
+
   const reasoning = !!form.watch('prompt_config.reasoning');
   const agentMod = !!form.watch('prompt_config.agent_mod');
   const projectCompliance = !!form.watch('prompt_config.project_compliance');
@@ -466,6 +544,7 @@ export default function Chat() {
 
   const handleSessionClick: typeof handleConversationCardClick = useCallback(
     (conversationId, isNew) => {
+      setShowSkillPage(false);
       handleConversationCardClick(conversationId, isNew);
       fetchConversation(conversationId, isNew);
     },
@@ -497,6 +576,7 @@ export default function Chat() {
     }
 
     switchSettingVisible();
+    setWorkspaceVisible(false);
   }, [settingVisible, switchSettingVisible, refetch, form]);
 
   useMount(() => {
@@ -527,104 +607,94 @@ export default function Chat() {
     );
   }
 
+  const [isWelcomePage, setIsWelcomePage] = useState(false);
+  const effectiveWelcome = isWelcomePage && !showSkillPage;
+
+  const openSkillPage = useCallback(() => {
+    setShowSkillPage(true);
+
+    // 关掉其它右侧面板，避免重叠
+    setReferenceVisible(false);
+    setSourcePreviewVisible(false);
+    setSourcePreviewDocumentId('');
+    setSourcePreviewChunk(null);
+    setWorkspaceVisible(false);
+
+    if (settingVisible) {
+      switchSettingVisible();
+    }
+  }, [settingVisible, switchSettingVisible]);
+
+  const closeSkillPage = useCallback(() => {
+    setShowSkillPage(false);
+  }, []);
+
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-        className="h-full flex flex-col pr-5"
+        className="flex h-full flex-col pr-5"
       >
-        {/* <div className="flex flex-1 min-h-0 pb-1">
+        {/* 最外层：左侧会话栏 + 右侧区域 */}
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+          {/* 左侧会话列表：始终保留 */}
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
             switchSettingVisible={openChatSettings}
+            isWelcomePage={effectiveWelcome}
+            agentMod={agentMod}
+            onOpenSkill={openSkillPage}
+            onExitSkill={closeSkillPage}
+            skillActive={showSkillPage}
           />
 
-          <Card className="flex-1 min-w-0 bg-transparent border h-full">
-
-            <CardContent className="flex p-0 h-full">
-              <Card className="flex flex-col flex-1 bg-transparent min-w-0">
-                <CardHeader className={cn('py-2 px-5')}>
-                  <CardTitle className="flex justify-between items-center text-base">
-                    <div className="flex items-center gap- flex-1 min-w-0 ml-[-8px]">
-                      <div
-                        className={cn('flex items-center gap-1', {
-                          hidden: settingVisible,
-                        })}
-                      >
-                        <div className="w-auto">
-                          <KnowledgeBaseFormField hideLabel />
-                        </div>
-
-                        <SavingButton
-                          loading={loading}
-                          className="bg-white text-black hover:bg-gray-100 border"
-                        />
-                      </div>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-
-                <CardContent className="flex-1 p-0 min-h-0">
-
-                  <SingleChatBox
-                    controller={controller}
-                    stopOutputMessage={stopOutputMessage}
-                    conversation={currentConversation}
-                  />
-                </CardContent>
-              </Card>
-
-              <ChatSettings
-                className={cn({ hidden: !settingVisible })}
-                switchSettingVisible={switchSettingVisible}
-                onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-                loading={loading}
-              />
-            </CardContent>
-          </Card>
-        </div> */}
-
-        {/* <div className="flex flex-1 min-h-0 pb-1 overflow-hidden"> */}
-        <div className="flex flex-1 min-h-0 pb-1 overflow-hidden bg-[radial-gradient(circle_at_0%_20%,rgba(214,240,252,0.38)_0%,rgba(232,246,252,0.26)_20%,rgba(249,252,253,0)_48%),linear-gradient(90deg,rgba(247,251,253,1)_0%,rgba(249,252,253,1)_38%,rgba(246,250,252,1)_100%)] dark:bg-none dark:bg-transparent">
-          {/* 左侧会话列表：自己内部滚动 */}
-          <Sessions
-            hasSingleChatBox={hasSingleChatBox}
-            handleConversationCardClick={handleSessionClick}
-            switchSettingVisible={openChatSettings}
-          />
-
-          <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
-            <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+          {/* 右侧区域 */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {/* 顶部知识库选择区域 */}
+            <div className="mt-2 flex shrink-0 items-center bg-transparent px-5 py-0">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <div
                   className={cn('flex items-center gap-1', {
                     hidden:
                       settingVisible ||
                       referenceVisible ||
-                      sourcePreviewVisible,
+                      sourcePreviewVisible ||
+                      workspaceVisible ||
+                      showSkillPage,
                   })}
                 >
-                  <div className="w-auto">
-                    <KnowledgeBaseFormField hideLabel />
-                  </div>
+                  <KnowledgeBaseFormField
+                    hideLabel
+                    onChange={async (kbIds) => {
+                      const values = form.getValues();
 
-                  <SavingButton
-                    loading={loading}
-                    className="bg-white text-black hover:bg-gray-100 border"
+                      await onSubmit(
+                        {
+                          ...values,
+                          kb_ids: kbIds,
+                        },
+                        { silent: true },
+                      );
+                    }}
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-1 min-h-0 overflow-hidden">
+            {/* 右侧主内容：必须是横向 flex */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
+              {/* 聊天区域 */}
               <div
                 id="chat-main-content"
                 className={cn(
-                  'min-w-0 min-h-0 overflow-hidden',
-                  sourcePreviewVisible ? 'basis-1/2 w-1/2 flex-none' : 'flex-1',
+                  'relative min-h-0 min-w-0 overflow-hidden',
+                  sourcePreviewVisible || workspaceVisible
+                    ? 'w-1/2 shrink-0'
+                    : 'flex-1',
                 )}
               >
+                {/* 聊天组件始终挂载 */}
                 <SingleChatBox
                   controller={controller}
                   stopOutputMessage={stopOutputMessage}
@@ -641,25 +711,57 @@ export default function Chat() {
                   onEnableProjectCompliance={onEnableProjectCompliance}
                   onEnableExperimentReport={onEnableExperimentReport}
                   refreshConversation={refreshCurrentConversation}
+                  onOpenWorkspace={openWorkspace}
+                  onWelcomePageChange={setIsWelcomePage}
+                  isWorkspaceOpen={workspaceVisible}
+                  forceHideWelcome={showSkillPage}
+                  onClickSkill={openSkillPage}
+                  onSelectSkill={(skill) => {
+                    console.log('selected skill:', skill);
+                  }}
                 />
+
+                {/* 重点：技能页展示区域，不能删 */}
+                {showSkillPage && (
+                  <div
+                    className="
+                    absolute inset-0 z-30
+                    overflow-hidden
+                    bg-white
+                    dark:bg-slate-950
+                  "
+                  >
+                    <SkillPage />
+                  </div>
+                )}
               </div>
 
+              {/* 溯源高亮预览 */}
               <SourcePreviewPanel
-                className={cn(
-                  'h-full min-h-0 min-w-0 flex-none basis-1/2 w-1/2',
-                  {
-                    hidden: !sourcePreviewVisible,
-                  },
-                )}
+                className={cn('h-full min-h-0 min-w-0 w-1/2 shrink-0', {
+                  hidden: !sourcePreviewVisible,
+                })}
                 documentId={sourcePreviewDocumentId}
                 chunk={sourcePreviewChunk}
                 visible={sourcePreviewVisible}
                 onClose={closeSourcePreviewPanel}
               />
 
-              {/* 右侧溯源来源列表 */}
+              {/* 工作区：和聊天区域左右各占一半 */}
+              <WorkspacePanel
+                className={cn('h-full min-h-0 min-w-0 w-1/2 shrink-0', {
+                  hidden: !workspaceVisible,
+                })}
+                visible={workspaceVisible}
+                onClose={closeWorkspace}
+                dialogId={id}
+                conversationId={conversationId}
+                isWelcomePage={effectiveWelcome}
+              />
+
+              {/* 来源列表 */}
               <ReferenceSourcePanel
-                className={cn('shrink-0', {
+                className={cn('h-full shrink-0', {
                   hidden: !referenceVisible,
                 })}
                 list={referenceList}
@@ -667,9 +769,9 @@ export default function Chat() {
                 onOpenSourcePreview={openSourcePreviewPanel}
               />
 
-              {/* 右侧设置面板 */}
+              {/* 设置面板 */}
               <ChatSettings
-                className={cn('shrink-0', {
+                className={cn('h-full shrink-0', {
                   hidden: !settingVisible,
                 })}
                 switchSettingVisible={switchSettingVisible}
@@ -680,6 +782,7 @@ export default function Chat() {
           </div>
         </div>
 
+        {/* 嵌入弹窗 */}
         {embedVisible && (
           <EmbedDialog
             visible={embedVisible}
@@ -691,6 +794,7 @@ export default function Chat() {
           />
         )}
 
+        {/* PDF 弹窗 */}
         {visible && (
           <PdfSheet
             visible={visible}
@@ -1005,15 +1109,6 @@ export function ReferenceSourcePanel({
                         {item.content.replace(/\n/g, ' ')}
                       </div>
                     )}
-
-                    {/* <div
-                      className="
-                        mt-1 truncate pl-7
-                        text-xs text-gray-400 dark:text-gray-500
-                      "
-                    >
-                      {documentUrl || '本地文档'}
-                    </div> */}
                   </div>
                 </div>
               );
@@ -1101,313 +1196,332 @@ function SourcePreviewPanel({
   );
 }
 
-// export default function Chat() {
-//   const { id } = useParams();
-//   const { navigateToChatList } = useNavigatePage();
-//   const { data } = useFetchDialog();
-//   const { t } = useTranslation();
+const WorkspacePanel: React.FC<{
+  className?: string;
+  visible: boolean;
+  onClose: () => void;
+  dialogId?: string;
+  conversationId?: string;
+  isWelcomePage?: boolean;
+}> = ({
+  className,
+  visible,
+  onClose,
+  dialogId,
+  conversationId,
+  isWelcomePage = false,
+}) => {
+  const [files, setFiles] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
 
-//   const [currentConversation, setCurrentConversation] =
-//     useState<IClientConversation>({} as IClientConversation);
+  // 👇 当前预览的文件（null 表示看列表）
+  const [previewFile, setPreviewFile] = React.useState<any>(null);
 
-//   // 保存后最新的 dialog，防止旧 data 覆盖表单
-//   const [latestDialog, setLatestDialog] = useState<any>(null);
+  React.useEffect(() => {
+    if (!visible) return;
+    if (!dialogId && !conversationId) return;
 
-//   // 保存后短时间内跳过旧 data reset
-//   const justSavedRef = useRef(false);
+    let cancelled = false;
 
-//   const { fetchConversationManually } = useFetchConversationManually();
+    (async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (dialogId) params.set('dialog_id', dialogId);
+        if (conversationId) params.set('conversation_id', conversationId);
 
-//   const { handleConversationCardClick, controller, stopOutputMessage } =
-//     useHandleClickConversationCard();
+        const res = await fetch(
+          `/v1/file/workspace-files?${params.toString()}`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: getAuthorization() || '',
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+          },
+        );
+        const result = await res.json();
+        const list = Array.isArray(result) ? result : result.data ?? [];
+        if (!cancelled) setFiles(list);
+      } catch (err) {
+        console.error('拉取工作区文件失败', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
-//   const { visible: settingVisible, switchVisible: switchSettingVisible } =
-//     useSetModalState(false);
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, dialogId, conversationId]);
 
-//   const { isDebugMode, switchDebugMode } = useSwitchDebugMode();
+  // 关闭工作区时清空预览状态
+  React.useEffect(() => {
+    if (!visible) setPreviewFile(null);
+  }, [visible]);
 
-//   const { removeChatBox, addChatBox, chatBoxIds, hasSingleChatBox } =
-//     useAddChatBox(isDebugMode);
+  if (!visible) return null;
 
-//   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
-//     useShowEmbedModal();
+  // 拼公共参数
+  const buildFileParams = (extra?: Record<string, string>) => {
+    const params = new URLSearchParams();
+    if (dialogId) params.set('dialog_id', dialogId);
+    if (conversationId) params.set('conversation_id', conversationId);
+    if (extra) {
+      Object.entries(extra).forEach(([k, v]) => params.set(k, v));
+    }
+    return params;
+  };
 
-//   const { conversationId, isNew } = useGetChatSearchParams();
+  // 预览：切换状态，不走 window.open
+  const handlePreviewFile = (file: any) => {
+    const params = buildFileParams({
+      path: String(file.id || file.path || file.name || ''), // 👈 优先 id / path
+      preview: '1',
+    });
+    const url = `/v1/file/workspace-file?${params.toString()}`;
+    setPreviewFile({ ...file, _url: url });
+  };
 
-//   const { data: dialogList } = useFetchConversationList();
+  // 下载
+  const handleDownloadFile = async (file: any) => {
+    try {
+      const params = buildFileParams({
+        path: String(file.id || file.path || file.name || ''), // 👈 优先 id / path
+        preview: '0',
+      });
+      const url = `/v1/file/workspace-file?${params.toString()}`;
 
-//   const currentConversationName = useMemo(() => {
-//     return dialogList.find((x) => x.id === conversationId)?.name;
-//   }, [conversationId, dialogList]);
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: getAuthorization() || '' },
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('下载失败');
 
-//   const formSchema = useChatSettingSchema();
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = file.name || 'download';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('下载失败', err);
+      message.error('下载失败');
+    }
+  };
 
-//   const { setDialog, loading } = useSetDialog();
+  return (
+    <>
+      <style>{`
+        .workspace-docx-preview {
+          font-family: "Microsoft YaHei", "PingFang SC", "SimSun", sans-serif;
+          color: #1f2328;
+          line-height: 1.75;
+          font-size: 14px;
+          word-break: break-word;
+        }
+        .workspace-docx-preview table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 14px 0;
+          table-layout: auto;
+        }
+        .workspace-docx-preview th,
+        .workspace-docx-preview td {
+          border: 1px solid #d0d7de;
+          padding: 8px 12px;
+          vertical-align: top;
+          text-align: left;
+        }
+        .workspace-docx-preview th {
+          background: #f6f8fa;
+          font-weight: 600;
+        }
+        .workspace-docx-preview tr:nth-child(even) td {
+          background: #fafbfc;
+        }
+        .workspace-docx-preview p { margin: 10px 0; }
+        .workspace-docx-preview h1 { font-size: 22px; font-weight: 700; margin: 20px 0 12px; }
+        .workspace-docx-preview h2 { font-size: 18px; font-weight: 700; margin: 18px 0 10px; }
+        .workspace-docx-preview h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; }
+        .workspace-docx-preview h4 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+        .workspace-docx-preview ul,
+        .workspace-docx-preview ol { padding-left: 24px; margin: 8px 0; }
+        .workspace-docx-preview li { margin: 4px 0; }
+        .workspace-docx-preview img { max-width: 100%; height: auto; display: block; margin: 8px 0; }
+        .workspace-docx-preview blockquote {
+          border-left: 3px solid #d0d7de;
+          padding-left: 12px;
+          color: #57606a;
+          margin: 12px 0;
+        }
+        .workspace-docx-preview hr { border: none; border-top: 1px solid #d0d7de; margin: 16px 0; }
+        .workspace-docx-preview strong { font-weight: 700; }
+        .workspace-docx-preview em { font-style: italic; }
+      `}</style>
+      <div className={cn('h-full min-h-0 p-2', className)}>
+        <div
+          className={cn(
+            'flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border',
+            isWelcomePage
+              ? 'border-[#8FC0E0]/40 dark:border-[#2F4A66]/60 bg-white dark:bg-[#0F2030]'
+              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900',
+          )}
+        >
+          {/* ============ 头部 ============ */}
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-700">
+            {previewFile ? (
+              // 预览模式：返回 + 文件名 + 下载 + 关闭
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPreviewFile(null)}
+                  className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  title="返回列表"
+                >
+                  <ChevronLeft size={16} />
+                  <span className="text-sm font-medium">返回</span>
+                </button>
 
-//   const [kbIds, setKbIds] = useState<string[]>([]);
+                <div
+                  className="mx-2 min-w-0 flex-1 truncate text-right text-xs text-slate-500 dark:text-slate-400"
+                  title={previewFile.name}
+                >
+                  {previewFile.name}
+                </div>
 
-//   type FormSchemaType = z.infer<typeof formSchema>;
+                <button
+                  type="button"
+                  onClick={() => handleDownloadFile(previewFile)}
+                  className="shrink-0 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  title="下载"
+                >
+                  <Download size={18} />
+                </button>
 
-//   const form = useForm<FormSchemaType>({
-//     resolver: zodResolver(formSchema),
-//     shouldUnregister: false,
-//     defaultValues: {
-//       name: '',
-//       icon: '',
-//       description: '',
-//       kb_ids: [],
-//       prompt_config: {
-//         quote: true,
-//         keyword: false,
-//         tts: false,
-//         use_kg: false,
-//         refine_multiturn: true,
-//         system: '',
-//         prologue: '',
-//         empty_response: '',
-//         parameters: [],
-//         reasoning: false,
-//         cross_languages: [],
-//         toc_enhance: false,
-//       },
-//       top_n: 8,
-//       similarity_threshold: 0.2,
-//       vector_similarity_weight: 0.2,
-//       top_k: 1024,
-//       meta_data_filter: {
-//         method: DatasetMetadata.Disabled,
-//         manual: [],
-//       },
-//     },
-//   });
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="shrink-0 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                  title="关闭"
+                >
+                  <X size={18} />
+                </button>
+              </>
+            ) : (
+              // 列表模式：标题 + 关闭
+              <>
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  工作区 ({files.length})
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+                >
+                  <X size={18} />
+                </button>
+              </>
+            )}
+          </div>
 
-//   async function onSubmit(values: FormSchemaType) {
-//     const nextValues: Record<string, any> = removeUselessFieldsFromValues(
-//       values,
-//       'llm_setting.',
-//     );
+          {/* ============ 内容：列表 or 预览 ============ */}
+          {previewFile ? (
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-200 dark:bg-slate-950">
+              <div className="mx-auto my-4 max-w-[880px] rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900">
+                <DocPreviewer
+                  url={previewFile._url}
+                  className="
+          workspace-docx-preview
+          !h-auto
+          !min-h-0
+          !w-full
+          !overflow-visible
+          !rounded-none
+          !border-0
+          !bg-transparent
+          !p-0
+        "
+                />
+              </div>
+            </div>
+          ) : (
+            // 列表
+            <div className="flex-1 overflow-auto p-3">
+              {loading ? (
+                <div className="flex items-center justify-center py-8 text-slate-400">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  加载中…
+                </div>
+              ) : files.length === 0 ? (
+                <div className="py-8 text-center text-sm text-slate-400">
+                  暂无文件
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {files.map((file: any) => (
+                    <li
+                      key={file.id}
+                      onClick={() => handlePreviewFile(file)}
+                      className="
+                      group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2
+                      transition-colors hover:bg-slate-100 dark:hover:bg-slate-800
+                    "
+                    >
+                      <FileText size={16} className="shrink-0 text-slate-400" />
 
-//     const payload = {
-//       ...omit(data, 'operator_permission'),
-//       ...nextValues,
-//       dialog_id: id,
-//     };
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="truncate text-[13px] text-slate-700 dark:text-slate-200"
+                          title={file.name}
+                        >
+                          {file.name}
+                        </div>
+                        {file.size != null && (
+                          <div className="text-[11px] text-slate-400">
+                            {(file.size / 1024).toFixed(1)} KB
+                          </div>
+                        )}
+                      </div>
 
-//     console.log('====== submit payload ======');
-//     console.log('submit prologue:', payload.prompt_config?.prologue);
-//     console.log('submit empty_response:', payload.prompt_config?.empty_response);
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePreviewFile(file);
+                          }}
+                          title="预览"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        >
+                          <Eye size={14} />
+                        </button>
 
-//     const savedDialog = await setDialog(payload);
-
-//     console.log('====== setDialog return ======');
-//     console.log('savedDialog:', savedDialog);
-//     console.log('saved prologue:', savedDialog?.prompt_config?.prologue);
-//     console.log(
-//       'saved empty_response:',
-//       savedDialog?.prompt_config?.empty_response,
-//     );
-
-//     if (!savedDialog) return;
-
-//     const nextDialog = {
-//       ...savedDialog,
-//       prompt_config: {
-//         ...savedDialog.prompt_config,
-//         ...nextValues.prompt_config,
-//       },
-//     };
-
-//     justSavedRef.current = true;
-//     setLatestDialog(nextDialog);
-
-//     setCurrentConversation((prev) => ({
-//       ...prev,
-//       ...nextDialog,
-//     }));
-
-//     const llmSettingEnabledValues = setLLMSettingEnabledValues(
-//       nextDialog.llm_setting,
-//     );
-
-//     form.reset({
-//       ...nextDialog,
-//       ...llmSettingEnabledValues,
-//     } as FormSchemaType);
-
-//     console.log('====== after submit form.reset ======');
-//     console.log(
-//       'form prologue:',
-//       form.getValues('prompt_config.prologue'),
-//     );
-//     console.log(
-//       'form empty_response:',
-//       form.getValues('prompt_config.empty_response'),
-//     );
-
-//     setTimeout(() => {
-//       justSavedRef.current = false;
-//     }, 1000);
-//   }
-
-//   function onInvalid(errors: any) {
-//     console.log('Form validation failed:', errors);
-//   }
-
-//   // 切换会话时清空保存后的本地数据，避免串数据
-//   useEffect(() => {
-//     setLatestDialog(null);
-//     justSavedRef.current = false;
-//   }, [conversationId]);
-
-//   // 表单回显：优先使用保存后的 latestDialog，避免旧 data 覆盖
-//   useEffect(() => {
-//     if (!data || isEmpty(data)) return;
-
-//     if (justSavedRef.current && latestDialog) {
-//       console.log('====== skip old data reset after save ======');
-//       console.log(
-//         'latestDialog empty_response:',
-//         latestDialog?.prompt_config?.empty_response,
-//       );
-//       return;
-//     }
-
-//     const sourceData = latestDialog ?? data;
-
-//     console.log('====== form reset by useEffect ======');
-//     console.log('reset source:', latestDialog ? 'latestDialog' : 'data');
-//     console.log('reset prologue:', sourceData?.prompt_config?.prologue);
-//     console.log(
-//       'reset empty_response:',
-//       sourceData?.prompt_config?.empty_response,
-//     );
-
-//     const llmSettingEnabledValues = setLLMSettingEnabledValues(
-//       sourceData.llm_setting,
-//     );
-
-//     form.reset({
-//       ...sourceData,
-//       ...llmSettingEnabledValues,
-//     } as FormSchemaType);
-//   }, [data, latestDialog, form]);
-
-//   const fetchConversation: typeof handleConversationCardClick = useCallback(
-//     async (conversationId, isNew) => {
-//       if (conversationId && !isNew) {
-//         const conversation = await fetchConversationManually(conversationId);
-
-//         if (!isEmpty(conversation)) {
-//           setCurrentConversation(conversation);
-//         }
-//       }
-//     },
-//     [fetchConversationManually],
-//   );
-
-//   const handleSessionClick: typeof handleConversationCardClick = useCallback(
-//     (conversationId, isNew) => {
-//       handleConversationCardClick(conversationId, isNew);
-//       fetchConversation(conversationId, isNew);
-//     },
-//     [fetchConversation, handleConversationCardClick],
-//   );
-
-//   useMount(() => {
-//     fetchConversation(conversationId, isNew === 'true');
-//   });
-
-//   if (isDebugMode) {
-//     return (
-//       <section className="pt-14 h-[100vh] pb-24">
-//         <div className="flex items-center justify-between px-10 pb-5">
-//           <span className="text-2xl">
-//             {t('chat.multipleModels')} ({chatBoxIds.length}/3)
-//           </span>
-//           <Button variant={'ghost'} onClick={switchDebugMode}>
-//             {t('chat.exit')} <LogOut />
-//           </Button>
-//         </div>
-
-//         <MultipleChatBox
-//           chatBoxIds={chatBoxIds}
-//           controller={controller}
-//           removeChatBox={removeChatBox}
-//           addChatBox={addChatBox}
-//           stopOutputMessage={stopOutputMessage}
-//           conversation={currentConversation}
-//         />
-//       </section>
-//     );
-//   }
-
-//   return (
-//     <Form {...form}>
-//       <form
-//         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-//         className="h-full flex flex-col pr-5"
-//       >
-//         <div className="flex flex-1 min-h-0 pb-9">
-//           <Sessions
-//             hasSingleChatBox={hasSingleChatBox}
-//             handleConversationCardClick={handleSessionClick}
-//             switchSettingVisible={switchSettingVisible}
-//           />
-
-//           <Card className="flex-1 min-w-0 bg-transparent border h-full">
-//             <CardContent className="flex p-0 h-full">
-//               <Card className="flex flex-col flex-1 bg-transparent min-w-0">
-//                 <CardHeader className={cn('py-2 px-5')}>
-//                   <CardTitle className="flex justify-between items-center text-base">
-//                     <div className="flex items-center gap-4 flex-1 min-w-0 ml-[-8px]">
-//                       <div
-//                         className={cn('flex items-center gap-2', {
-//                           hidden: settingVisible,
-//                         })}
-//                       >
-//                         <div className="w-[240px]">
-//                           <KnowledgeBaseFormField hideLabel />
-//                         </div>
-
-//                         <SavingButton
-//                           loading={loading}
-//                           className="bg-white text-black hover:bg-gray-100 border"
-//                         />
-//                       </div>
-//                     </div>
-//                   </CardTitle>
-//                 </CardHeader>
-
-//                 <CardContent className="flex-1 p-0 min-h-[300px] pt-0">
-//                   <SingleChatBox
-//                     controller={controller}
-//                     stopOutputMessage={stopOutputMessage}
-//                     conversation={currentConversation}
-//                   />
-//                 </CardContent>
-//               </Card>
-
-//               <ChatSettings
-//                 className={cn({ hidden: !settingVisible })}
-//                 switchSettingVisible={switchSettingVisible}
-//                 onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-//                 loading={loading}
-//               />
-//             </CardContent>
-//           </Card>
-//         </div>
-
-//         {embedVisible && (
-//           <EmbedDialog
-//             visible={embedVisible}
-//             hideModal={hideEmbedModal}
-//             token={id!}
-//             from={SharedFrom.Chat}
-//             beta={beta}
-//             isAgent={false}
-//           />
-//         )}
-//       </form>
-//     </Form>
-//   );
-// }
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadFile(file);
+                          }}
+                          title="下载"
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        >
+                          <Download size={14} />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+};

@@ -113,13 +113,11 @@ export function ConversationDropdown({
   const conversationHasId = Boolean(conversation?.id);
   const isTemporary = Boolean((conversation as any)?.is_new);
   const canRename = conversationHasId && !isTemporary;
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
 
       <DropdownMenuContent>
-        {/* 重命名 */}
         {canRename && (
           <DropdownMenuItem
             onSelect={(e) => {
@@ -131,7 +129,6 @@ export function ConversationDropdown({
           </DropdownMenuItem>
         )}
 
-        {/* 删除 */}
         <ConfirmDeleteDialog onOk={handleDelete}>
           <DropdownMenuItem
             className="text-state-error"
