@@ -48,7 +48,18 @@ import { message } from 'antd';
 // console.log('WorkspacePanel =', WorkspacePanel);
 import { DocPreviewer } from '@/components/document-preview/doc-preview';
 import { getAuthorization } from '@/utils/authorization-util';
-import { ChevronLeft, Download, Eye, FileText, Loader2, X } from 'lucide-react';
+import {
+  ChevronLeft,
+  Download,
+  Eye,
+  File, // 👈 新增：表格
+  FileArchive, // 已有：文本类
+  FileImage, // 👈 新增：图片
+  FileSpreadsheet, // 👈 新增：通用文件
+  FileText,
+  Loader2,
+  X,
+} from 'lucide-react';
 import * as React from 'react';
 
 export default function Chat() {
@@ -1166,6 +1177,136 @@ function SourcePreviewPanel({
   );
 }
 
+// 文件类型徽标：彩色圆角块 + 白色图形/文字
+const FileBadge: React.FC<{ name: string; size?: number }> = ({
+  name,
+  size = 32,
+}) => {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+
+  const base =
+    'flex shrink-0 items-center justify-center rounded-[7px] text-white';
+
+  const style: React.CSSProperties = {
+    width: size,
+    height: size,
+    fontSize: size * 0.4,
+    fontWeight: 700,
+    lineHeight: 1,
+  };
+
+  // Word / 文档
+  if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#2B579A' }}>
+        W
+      </div>
+    );
+  }
+
+  // PDF
+  if (ext === 'pdf') {
+    return (
+      <div className={base} style={{ ...style, background: '#E5484D' }}>
+        PDF
+      </div>
+    );
+  }
+
+  // 表格
+  if (['xls', 'xlsx', 'csv'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#217346' }}>
+        X
+      </div>
+    );
+  }
+
+  // PPT
+  if (['ppt', 'pptx'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#D24726' }}>
+        P
+      </div>
+    );
+  }
+
+  // 图片：橙色块 + 白色山形/太阳（内联 SVG，和截图一致）
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#F5A623' }}>
+        <svg
+          width={size * 0.6}
+          height={size * 0.6}
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <rect
+            x="3"
+            y="4"
+            width="18"
+            height="16"
+            rx="2"
+            stroke="#fff"
+            strokeWidth="1.8"
+          />
+          <circle cx="8.5" cy="9.5" r="1.6" fill="#fff" />
+          <path
+            d="M4 17l4.5-4.5 3.5 3.5 3-3L20 17"
+            stroke="#fff"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  // 压缩包
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#8E7CC3' }}>
+        ZIP
+      </div>
+    );
+  }
+
+  // 文本 / Markdown
+  if (['txt', 'md', 'log'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#6B7280' }}>
+        T
+      </div>
+    );
+  }
+
+  // 默认
+  return (
+    <div className={base} style={{ ...style, background: '#94A3B8' }}>
+      <svg
+        width={size * 0.55}
+        height={size * 0.55}
+        viewBox="0 0 24 24"
+        fill="none"
+      >
+        <path
+          d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"
+          stroke="#fff"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M14 3v5h5"
+          stroke="#fff"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+};
+
 const WorkspacePanel: React.FC<{
   className?: string;
   visible: boolean;
@@ -1283,6 +1424,25 @@ const WorkspacePanel: React.FC<{
       console.error('下载失败', err);
       message.error('下载失败');
     }
+  };
+  // 根据文件名后缀返回对应图标
+  const getFileIcon = (name: string) => {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const cls = 'shrink-0 text-slate-400';
+
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+      return <FileImage size={16} className={cls} />;
+    }
+    if (['xls', 'xlsx', 'csv'].includes(ext)) {
+      return <FileSpreadsheet size={16} className={cls} />;
+    }
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+      return <FileArchive size={16} className={cls} />;
+    }
+    if (['txt', 'md', 'doc', 'docx', 'pdf', 'ppt', 'pptx'].includes(ext)) {
+      return <FileText size={16} className={cls} />;
+    }
+    return <File size={16} className={cls} />;
   };
 
   return (
@@ -1433,17 +1593,19 @@ const WorkspacePanel: React.FC<{
                   暂无文件
                 </div>
               ) : (
-                <ul className="flex flex-col gap-1">
+                <ul className="flex flex-col">
                   {files.map((file: any) => (
                     <li
                       key={file.id}
                       onClick={() => handlePreviewFile(file)}
                       className="
-                      group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2
-                      transition-colors hover:bg-slate-100 dark:hover:bg-slate-800
-                    "
+    group flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2
+    border-b border-slate-100 last:border-b-0
+    dark:border-slate-800
+    transition-colors hover:bg-slate-100 dark:hover:bg-slate-800
+  "
                     >
-                      <FileText size={16} className="shrink-0 text-slate-400" />
+                      <FileBadge name={file.name} size={32} />
 
                       <div className="min-w-0 flex-1">
                         <div

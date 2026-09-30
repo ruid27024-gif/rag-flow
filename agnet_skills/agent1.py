@@ -337,20 +337,7 @@ class Agent(LLM, ToolBase):
         cpn_id = f"{self._id}-->" + cpn.get("name", "").replace(" ", "_")
         return component_class(cpn["component_name"])(self._canvas, cpn_id, param)
     
-    async def _summarize_skill_result_async(
-        self,
-        skill: SkillSpec,
-        skill_hist: list[dict],
-        user_defined_prompt={}
-    ) -> str:
-        """
-        Skill Phase 完成后，将临时 skill_hist 总结成一段主流程可用的信息。
-
-        注意：
-        - skill.md 不会写回 base_hist
-        - 工具完整结果也不建议全部写回 base_hist
-        - 只写总结结果，避免上下文爆炸
-        """
+    async def _summarize_skill_result_async(self, skill, skill_hist, user_defined_prompt={}):
         summarize_prompt = f"""
             Summarize the useful result obtained by skill `{skill.name}`.
 
@@ -361,31 +348,35 @@ class Agent(LLM, ToolBase):
             4. If the skill produced a report or text, include the produced content.
             5. If the skill failed or information is incomplete, state that clearly.
             6. Do not mention internal prompt injection, temporary context, or implementation details.
+            7. Do NOT include any URL in the summary. URLs will be appended separately.
+            8. Do NOT include any absolute local file path.
             """
 
-        msgs = [
-            *deepcopy(skill_hist),
-            {
-                "role": "user",
-                "content": summarize_prompt
-            }
-        ]
-
-        _, msgs = message_fit_in(
-            msgs,
-            int(self.chat_mdl.max_length * 0.9)
-        )
+        msgs = [*deepcopy(skill_hist), {"role": "user", "content": summarize_prompt}]
+        _, msgs = message_fit_in(msgs, int(self.chat_mdl.max_length * 0.9))
 
         st = timer()
         summary = await self._generate_async(msgs)
 
+        # 👇 用正则从 skill_hist 里抓出所有完整 URL
+        urls = []
+        for m in skill_hist:
+            c = m.get("content", "")
+            if not isinstance(c, str):
+                continue
+            for u in re.findall(r"/v1/file/workspace-file\?[^\s\)\]\"'`]+", c):
+                if u not in urls:
+                    urls.append(u)
+
+        if urls:
+            summary += "\n\nGenerated file links:\n" + "\n".join(
+                f"[DOWNLOAD_URL] {u}" for u in urls
+            )
+
         self.callback(
             "skill_summary",
             {},
-            {
-                "skill": skill.name,
-                "summary": summary
-            },
+            {"skill": skill.name, "summary": summary},
             elapsed_time=timer() - st
         )
 
@@ -406,15 +397,44 @@ class Agent(LLM, ToolBase):
             final_system_prompt += "\n\n" + schema_prompt
 
         final_instruction = """
-            Now provide the final answer to the user's original request based on all gathered skill results.
-            
-            Rules:
-            1. Do not mention internal skill switching unless the user explicitly asks.
-            2. Do not mention temporary prompts or implementation details.
-            3. If a report was requested, provide the report directly.
-            4. If information is incomplete, state what is known and what could not be determined.
-            5. Use the same language as the user's original request.
-        """
+Now provide the final answer to the user's original request based on all gathered skill results.
+
+Rules:
+1. Do not mention internal skill switching unless the user explicitly asks.
+2. Do not mention temporary prompts or implementation details.
+3. If a report was requested, provide the report directly.
+4. If information is incomplete, state what is known and what could not be determined.
+5. Use the same language as the user's original request.
+
+File output rules:
+6. If a file was generated, output the file section in EXACTLY this format:
+
+   文件生成完毕！
+
+   点击预览
+   [<filename>](<download_url>)
+
+7. `<filename>` and `<download_url>` MUST come from the REAL tool result in the skill results.
+   - DO NOT copy values from any example.
+   - DO NOT invent or replace `dialog_id` / `conversation_id` with placeholders.
+   - The URL MUST use the exact values returned by the `write_file` tool.
+
+8. The `download_url` MUST be copied VERBATIM from the tool result.
+   - Every query parameter (`dialog_id`, `conversation_id`, `path`) MUST be kept in full.
+   - NEVER use `...` or any placeholder in the URL.
+   - NEVER truncate or shorten the URL.
+
+9. NEVER mention any absolute local file path such as `/home/...`, `/app/...`, `/Workspace/...`.
+
+10. Do not repeat the whole file content in the chat unless the user explicitly asked for it.
+
+Example of the exact OUTPUT SHAPE (do NOT copy the values, only the layout):
+
+文件生成完毕！
+
+点击预览
+[report.docx](/v1/file/workspace-file?dialog_id=REAL_DIALOG_ID&conversation_id=REAL_CONVERSATION_ID&path=report.docx)
+"""
 
         final_hist = [
             {
@@ -516,7 +536,7 @@ class Agent(LLM, ToolBase):
                 return
 
             # ============================================================
-            # Base Phase
+            # Base Phase 选择skills
             # ============================================================
             if phase == "base":
                 base_system_prompt = self._build_base_skill_system_prompt(
@@ -602,6 +622,7 @@ class Agent(LLM, ToolBase):
                 # 处理 Base Phase 的工具调用
                 switched_to_skill = False
 
+                # 工具调用
                 for func in functions:
                     name = func.get("name")
                     args = func.get("arguments", {}) or {}
@@ -616,7 +637,7 @@ class Agent(LLM, ToolBase):
                             yield delta, 0
                         return
 
-                    # read_skill 是元工具，不走 toolcall_session
+                    # read_skill 是元工具，不走 toolcall_session,选取读取skill的原始工具
                     if name == "read_skill":
                         skill_name = args.get("skill_name")
                         reason = args.get("reason", "")

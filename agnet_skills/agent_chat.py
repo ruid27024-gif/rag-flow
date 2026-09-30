@@ -20,44 +20,63 @@ from typing import Any
 from rag.app.tag import label_question
 from rag.prompts.generator import kb_prompt
 
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import re
+
 
 class SimpleWriteFileTool:
-    """
-    一个简单的写文件工具。
-
-    工具名：write_file
-
-    LLM 调用格式大概是：
-    {
-      "name": "write_file",
-      "arguments": {
-        "filename": "agent_report.md",
-        "content": "xxx"
-      }
-    }
-    """
-
-    def __init__(self, base_dir="./agent_outputs"):
+    def __init__(
+        self,
+        base_dir="../Workspace",
+        dialog_id: str = "",
+        conversation_id: str = "",
+    ):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.dialog_id = dialog_id or ""
+        self.conversation_id = conversation_id or ""
         self._output = {}
+
+    def _build_url(self, filename: str, preview: bool = False) -> str:
+        from urllib.parse import urlencode
+        params = {
+            "dialog_id": self.dialog_id,
+            "conversation_id": self.conversation_id,
+            "path": filename,
+        }
+        if preview:
+            params["preview"] = "1"
+        params = {k: v for k, v in params.items() if v}
+        return f"/v1/file/workspace-file?{urlencode(params)}"
 
     def get_meta(self):
         return {
             "type": "function",
             "function": {
                 "name": "write_file",
-                "description": "Write text content to a local file.",
+                "description": (
+                    "Write text content to a local file. "
+                    "If the filename ends with .docx, a real Word document will be generated."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "filename": {
                             "type": "string",
-                            "description": "The file name to write, for example report.md or result.txt."
+                            "description": (
+                                "The file name to write, for example report.docx, result.txt, "
+                                "or plan.md. Use .docx if the user wants a Word document."
+                            )
                         },
                         "content": {
                             "type": "string",
-                            "description": "The text content to write into the file."
+                            "description": (
+                                "The text content to write. "
+                                "Use markdown-style headings (# ## ###) if you want "
+                                "the generated docx to have heading styles."
+                            )
                         }
                     },
                     "required": ["filename", "content"]
@@ -66,34 +85,89 @@ class SimpleWriteFileTool:
         }
 
     def _safe_path(self, filename: str) -> Path:
-        """
-        防止模型传 ../../xxx 这种路径。
-        只允许写入 base_dir 下面。
-        """
         filename = filename.strip() or "output.txt"
-
-        # 去掉危险路径，只保留文件名
         safe_name = Path(filename).name
-
         if not safe_name:
             safe_name = "output.txt"
-
         return self.base_dir / safe_name
+
+    def _write_docx(self, file_path: Path, content: str):
+        """
+        把文本写成真正的 docx。
+        简单支持 markdown 的 # / ## / ### 作为标题。
+        """
+        doc = Document()
+
+        # 默认正文字体
+        style = doc.styles['Normal']
+        style.font.name = 'Calibri'
+        style.font.size = Pt(11)
+
+        lines = content.replace('\r\n', '\n').split('\n')
+
+        for raw_line in lines:
+            line = raw_line.rstrip()
+
+            if not line.strip():
+                doc.add_paragraph('')
+                continue
+
+            # 简单识别 markdown 标题
+            m = re.match(r'^(#{1,6})\s+(.*)$', line)
+            if m:
+                level = min(len(m.group(1)), 4)
+                doc.add_heading(m.group(2).strip(), level=level)
+                continue
+
+            # 简单识别无序列表
+            if re.match(r'^\s*[-*+]\s+', line):
+                text = re.sub(r'^\s*[-*+]\s+', '', line)
+                doc.add_paragraph(text, style='List Bullet')
+                continue
+
+            # 简单识别有序列表
+            if re.match(r'^\s*\d+\.\s+', line):
+                text = re.sub(r'^\s*\d+\.\s+', '', line)
+                doc.add_paragraph(text, style='List Number')
+                continue
+
+            doc.add_paragraph(line)
+
+        doc.save(str(file_path))
+
+    def _write_text(self, file_path: Path, content: str):
+        file_path.write_text(content, encoding='utf-8')
 
     async def _invoke_async(self, **kwargs):
         filename = kwargs.get("filename", "output.txt")
         content = kwargs.get("content", "")
 
         file_path = self._safe_path(filename)
+        suffix = file_path.suffix.lower()
 
-        file_path.write_text(content, encoding="utf-8")
+        if suffix in ('.docx', '.doc'):
+            self._write_docx(file_path, content)
+        else:
+            self._write_text(file_path, content)
+
+        try:
+            size = file_path.stat().st_size
+        except Exception:
+            size = len(content.encode('utf-8'))
+
+        # 👇 关键：返回一个前端能访问的 URL
+        # 文件相对于 output_dir 的路径
+        download_url = self._build_url(file_path.name, preview=False)
+        preview_url = self._build_url(file_path.name, preview=True)
 
         result = {
             "ok": True,
             "filename": file_path.name,
-            "path": str(file_path.resolve()),
-            "bytes": len(content.encode("utf-8")),
-            "message": f"File written successfully: {file_path.resolve()}"
+            "path": str(file_path.resolve()),      # 本地绝对路径（调试用）
+            "download_url": download_url,          # 前端「下载」
+            "preview_url": preview_url,            # 前端「预览」
+            "bytes": size,
+            "message": f"File written successfully: {file_path.name}"
         }
 
         self._output["content"] = result
@@ -765,7 +839,7 @@ def build_agent_step_display(event: dict) -> str:
             return (
                 f"Agent 完成文件写入：{filename}\n"
                 f"- ok: {result.get('ok')}\n"
-                f"- path: {result.get('path')}\n"
+                f"- download_url: {result.get('download_url')}\n"
             )
 
         return f"Agent 正在写入文件：{filename}\n"
@@ -789,7 +863,7 @@ def build_agent_step_display(event: dict) -> str:
                 text += "\n工具结果：\n"
                 text += f"- ok: {result.get('ok')}\n"
                 text += f"- filename: {result.get('filename')}\n"
-                text += f"- path: {result.get('path')}\n"
+                text += f"- download_url: {result.get('download_url')}\n"   # 👈 换成这个
                 text += f"- bytes: {result.get('bytes')}\n"
 
             elif tool == "search_my_dateset":
@@ -1109,10 +1183,14 @@ async def async_chat_agent_mode(
     )
 
     # 6. 注入写文件工具
-    output_dir = Path("./agent_outputs") / str(dialog.tenant_id) / str(conversation_id)
+    output_dir = Path("./Workspace") / str(dialog.id) / str(conversation_id)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    write_file_tool = SimpleWriteFileTool(base_dir=str(output_dir))
+    write_file_tool = SimpleWriteFileTool(
+        base_dir=str(output_dir),
+        dialog_id=str(dialog.id),
+        conversation_id=str(conversation_id),
+    )
 
     # agent.tools["search_my_dateset"] = search_tool
     # agent.tools["write_file"] = write_file_tool

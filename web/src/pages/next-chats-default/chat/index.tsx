@@ -1432,8 +1432,8 @@ const WorkspacePanel: React.FC<{
 
           {/* ============ 内容：列表 or 预览 ============ */}
           {previewFile ? (
-            <div className="min-h-0 flex-1 overflow-auto bg-slate-200 dark:bg-slate-950">
-              <div className="mx-auto my-4 max-w-[880px] rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900">
+            <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-slate-900">
+              <div className="w-full px-10 py-8">
                 <DocPreviewer
                   url={previewFile._url}
                   className="

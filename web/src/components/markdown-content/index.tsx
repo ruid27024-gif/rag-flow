@@ -5,9 +5,22 @@ import { getExtension } from '@/utils/document-util';
 import DOMPurify from 'dompurify';
 import {
   AlertCircle,
+  BadgeCheck,
+  BookOpenCheck,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
+  Crosshair,
+  DoorOpen,
+  FileOutput,
+  FileText,
+  Lightbulb,
+  Loader2,
+  MessageSquare,
+  MousePointerClick,
+  Rocket,
+  Search,
   Wrench,
 } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
@@ -32,7 +45,6 @@ import {
   FileArchive,
   FileImage,
   FileSpreadsheet,
-  FileText,
   Presentation,
 } from 'lucide-react';
 
@@ -336,20 +348,17 @@ function formatAgentElapsedTime(seconds?: number | null) {
 
   return `${seconds.toFixed(2)}s`;
 }
-
 function getAgentEventTitle(event: AgentEvent) {
-  if (event.title) {
-    return event.title;
-  }
+  if (event.title) return event.title;
 
   const name = event.name || event.type || '';
 
   if (name === 'agent_start') return 'Agent 启动';
   if (name === 'base_next_step') return '分析任务';
-  if (name === 'before_read_skill') return '准备读取 Skill';
+  if (name === 'before_read_skill') return '选择 Skill';
   if (name === 'read_skill') return '阅读 Skill';
   if (name === 'read_skill_error') return '读取 Skill 失败';
-  if (name === 'enter_skill_phase') return '进入 Skill';
+  if (name === 'enter_skill_phase') return '选择工具';
   if (name === 'skill_next_step') return 'Skill 决策';
   if (name === 'before_skill_tool_call') return '准备调用工具';
   if (name === 'skill_tool_call') return '工具调用';
@@ -363,7 +372,6 @@ function getAgentEventTitle(event: AgentEvent) {
 
   return 'Agent 步骤';
 }
-
 function getAgentEventSummary(event: AgentEvent) {
   if (event.summary) {
     return event.summary;
@@ -405,6 +413,387 @@ function getAgentFileInfo(event: AgentEvent) {
     filename,
   };
 }
+
+// ============ 新增：把事件翻译成人话 ============
+function getAgentTraceText(event: AgentEvent): string {
+  const args = event.arguments || {};
+  const result = event.result || {};
+  const isRunning = result?.status === 'running';
+  const name = event.name || '';
+  const type = event.type || '';
+
+  // ===== 1. 前端强制定制的展示文案（优先于后端 display） =====
+  if (name === 'before_read_skill') {
+    return `选择 Skill：${args.skill_name || ''}`;
+  }
+
+  if (name === 'read_skill') {
+    const skill = result?.skill || args.skill_name || '';
+    return `已加载技能：${skill}`;
+  }
+
+  if (name === 'enter_skill_phase') {
+    const skill = result?.skill || '';
+    const tools = result?.tools || [];
+    const toolsText = tools.length ? tools.join('、') : '';
+    return toolsText
+      ? `选择工具：${toolsText}（Skill: ${skill}）`
+      : `进入 Skill ${skill}，选择工具`;
+  }
+  // 👇 新增这个分支
+  if (name === 'before_skill_tool_call') {
+    const tool = args.tool || '';
+    const skill = args.skill || '';
+    return skill ? `选择工具：${tool}（Skill: ${skill}）` : `选择工具：${tool}`;
+  }
+
+  // ===== 2. 其他事件优先用后端 display =====
+  if (event.display) return event.display;
+
+  // ===== 3. 兜底：本地翻译 =====
+  if (name === 'search_my_dateset') {
+    const query = args.query || '';
+    return isRunning ? `正在搜索：${query}` : `已完成搜索：${query}`;
+  }
+
+  if (name === 'write_file') {
+    const filename = args.filename || '';
+    return isRunning ? `正在写入文件：${filename}` : `已完成写入：${filename}`;
+  }
+
+  if (name === 'skill_tool_call') {
+    const tool = args.tool || '';
+    const skill = args.skill || '';
+    return isRunning
+      ? `正在调用工具 ${tool}`
+      : `已执行工具 ${tool}` + (skill ? `（Skill: ${skill}）` : '');
+  }
+
+  if (name === 'skill_reflection') {
+    return '正在整理结果...';
+  }
+
+  if (name === 'skill_summary') {
+    return `已总结技能：${result?.skill || ''}`;
+  }
+
+  if (name === 'skill_no_tool_answer') {
+    return `正在生成回答...`;
+  }
+
+  if (type === 'agent_start') {
+    return '已启动 Agent';
+  }
+
+  if (type === 'agent_error') {
+    return `执行异常：${event.error || ''}`;
+  }
+
+  if (type === 'agent_done') {
+    return '任务执行完成';
+  }
+
+  return event.title || name || 'Agent 步骤';
+}
+
+// ============ 新增：判断是否需要隐藏 ============
+function isTraceVisibleEvent(event: AgentEvent): boolean {
+  if (!event) return false;
+  if (event.type === 'answer_delta') return false;
+  // 这三个是内部 JSON 输出，用户看不懂，隐藏
+  if (event.name === 'base_next_step') return false;
+  if (event.name === 'skill_next_step') return false;
+  if (event.name === 'agent_done') return false;
+  if (event.name === 'agent_start') return false;
+  return true;
+}
+
+// ============ 给同一个工具调用生成去重用的 key ============
+function getTraceDedupeKey(event: AgentEvent): string {
+  const name = event.name || '';
+  const args = event.arguments || {};
+
+  let toolName = '';
+  let toolArgs: any = {};
+
+  // skill_tool_call 是包装事件，真实工具名和参数在 arguments.tool / arguments.arguments 里
+  if (name === 'skill_tool_call') {
+    toolName = args.tool || '';
+    toolArgs = args.arguments || {};
+  }
+  // StreamingToolWrapper 直接发出来的 running 事件
+  else if (name === 'write_file' || name === 'search_my_dateset') {
+    toolName = name;
+    toolArgs = args;
+  }
+
+  if (toolName) {
+    // 用工具名 + 关键参数做签名，避免不同 query / filename 被错误合并
+    const argSig =
+      toolName === 'search_my_dateset'
+        ? String(toolArgs.query || '')
+        : toolName === 'write_file'
+          ? String(toolArgs.filename || '')
+          : JSON.stringify(toolArgs);
+
+    return `tool:${toolName}:${argSig}`;
+  }
+
+  // 其他事件：用 name + 参数签名做 key，避免误合并
+  return `${name}:${JSON.stringify(args)}`;
+}
+
+type TraceIconConfig = {
+  Icon: React.ComponentType<{ className?: string }>;
+  colorClass: string;
+  spin?: boolean;
+};
+
+function getAgentTraceIcon(event: AgentEvent): TraceIconConfig {
+  const name = event.name || '';
+  const type = event.type || '';
+
+  const isError =
+    event.status === 'error' ||
+    type === 'agent_error' ||
+    name === 'read_skill_error' ||
+    name === 'agent_error';
+
+  const isRunning =
+    event.status === 'running' ||
+    (event.result && event.result.status === 'running');
+
+  // 错误最优先
+  if (isError) {
+    return { Icon: AlertCircle, colorClass: 'text-red-500' };
+  }
+
+  // 运行中一律转圈
+  if (isRunning) {
+    return { Icon: Loader2, colorClass: 'text-blue-500', spin: true };
+  }
+
+  switch (name) {
+    // ===== 启动 =====
+    case 'agent_start':
+      return { Icon: Rocket, colorClass: 'text-amber-500' };
+
+    // ===== Skill：选择 → 加载 → 进入 =====
+    case 'before_read_skill':
+      return { Icon: MousePointerClick, colorClass: 'text-indigo-400' };
+    case 'read_skill':
+      return { Icon: BookOpenCheck, colorClass: 'text-indigo-500' };
+    case 'enter_skill_phase':
+      return { Icon: DoorOpen, colorClass: 'text-purple-500' };
+
+    // ===== Tool：选择 → 执行 =====
+    case 'before_skill_tool_call':
+      return { Icon: Crosshair, colorClass: 'text-blue-400' };
+    case 'skill_tool_call':
+      return { Icon: Wrench, colorClass: 'text-blue-500' };
+
+    // ===== 具体业务工具 =====
+    case 'search_my_dateset':
+      return { Icon: Search, colorClass: 'text-cyan-500' };
+    case 'write_file':
+      return { Icon: FileOutput, colorClass: 'text-emerald-500' };
+
+    // ===== 反思 / 总结 / 回答 =====
+    case 'skill_reflection':
+      return { Icon: Lightbulb, colorClass: 'text-amber-500' };
+    case 'skill_summary':
+      return { Icon: ClipboardCheck, colorClass: 'text-teal-500' };
+    case 'skill_no_tool_answer':
+      return { Icon: MessageSquare, colorClass: 'text-gray-500' };
+
+    // ===== 完成 =====
+    case 'agent_done':
+      return { Icon: BadgeCheck, colorClass: 'text-emerald-500' };
+
+    default:
+      return { Icon: CheckCircle2, colorClass: 'text-gray-400' };
+  }
+}
+
+const AgentTrace = ({ events }: { events?: AgentEvent[] }) => {
+  const list = useMemo(() => {
+    const visible = (events || [])
+      .filter(isTraceVisibleEvent)
+      .filter((event) => {
+        // 👇 过滤掉 running 状态的事件
+        const isRunning =
+          event.status === 'running' ||
+          (event.result && event.result.status === 'running');
+        return !isRunning;
+      });
+
+    // 按 key 去重，保留最后一条
+    const lastIndexByKey = new Map<string, number>();
+    visible.forEach((event, index) => {
+      const key = getTraceDedupeKey(event);
+      lastIndexByKey.set(key, index);
+    });
+
+    const keepIndexes = new Set(lastIndexByKey.values());
+
+    const result: AgentEvent[] = [];
+    visible.forEach((event, index) => {
+      if (keepIndexes.has(index)) {
+        result.push(event);
+      }
+    });
+
+    return result;
+  }, [events]);
+
+  if (!list.length) return null;
+
+  return (
+    <div className="space-y-1.5 text-[13px] leading-6 text-gray-500 dark:text-gray-400">
+      {list.map((event, index) => {
+        const isError =
+          event.status === 'error' ||
+          event.type === 'agent_error' ||
+          event.name === 'read_skill_error';
+
+        const isRunning =
+          event.status === 'running' ||
+          (event.result && event.result.status === 'running');
+
+        const text = getAgentTraceText(event);
+
+        // 复杂事件（display 长、或含详细 JSON）可折叠
+        const detail = event.display || '';
+        const canExpand = detail.length > 60;
+
+        return (
+          <div key={`${event.name}-${index}`} className="flex gap-1.5">
+            {/* 状态图标 */}
+            <span className="mt-[6px] shrink-0">
+              {(() => {
+                const { Icon, colorClass, spin } = getAgentTraceIcon(event);
+                return (
+                  <Icon
+                    className={classNames(
+                      'h-3.5 w-3.5',
+                      colorClass,
+                      spin && 'animate-spin',
+                    )}
+                  />
+                );
+              })()}
+            </span>
+
+            {/* 文本 */}
+            <div className="min-w-0 flex-1">
+              {canExpand ? (
+                <details className="group/trace">
+                  <summary
+                    className="
+                      flex cursor-pointer list-none items-center gap-1
+                      hover:text-gray-700 dark:hover:text-gray-200
+                      [&::-webkit-details-marker]:hidden
+                    "
+                  >
+                    <span className="truncate">{text.split('\n')[0]}</span>
+                    <ChevronRight
+                      className="
+                        h-3 w-3 shrink-0 transition-transform
+                        group-open/trace:rotate-90
+                      "
+                    />
+                  </summary>
+                  <pre
+                    className="
+                      mt-1 whitespace-pre-wrap break-words
+                      border-l-2 border-gray-200 pl-3
+                      text-[12px] text-gray-400
+                      dark:border-gray-700 dark:text-gray-500
+                    "
+                  >
+                    {detail}
+                  </pre>
+                </details>
+              ) : (
+                <span className="break-words">{text}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const AgentTracePanel = ({
+  events,
+  isRunning,
+  elapsedTime,
+}: {
+  events?: AgentEvent[];
+  isRunning: boolean;
+  elapsedTime: number;
+}) => {
+  const [manualOpen, setManualOpen] = useState(true);
+
+  const hasEvents = useMemo(
+    () => (events || []).some(isTraceVisibleEvent),
+    [events],
+  );
+
+  if (!hasEvents) return null;
+
+  // 运行中强制展开；完成后跟随手动
+  const open = isRunning ? true : manualOpen;
+
+  return (
+    <div className="my-3">
+      <button
+        type="button"
+        onClick={() => {
+          if (isRunning) return; // 运行中不允许折叠
+          setManualOpen((v) => !v);
+        }}
+        className="
+          flex w-full items-center gap-2
+          text-[14px] font-medium
+          text-gray-600 dark:text-gray-300
+        "
+      >
+        {isRunning ? (
+          <span
+            className="
+              h-4 w-4 shrink-0 animate-spin
+              rounded-full border-2 border-blue-500 border-t-transparent
+            "
+          />
+        ) : (
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+        )}
+
+        <span>
+          {isRunning
+            ? '正在执行工作...'
+            : `已完成工作 用时${Math.max(1, Math.round(elapsedTime))}秒`}
+        </span>
+
+        <ChevronRight
+          className={`
+            h-4 w-4 shrink-0 text-gray-400
+            transition-transform duration-200
+            ${open ? 'rotate-90' : 'rotate-0'}
+          `}
+        />
+      </button>
+
+      {open && (
+        <div className="mt-2 pl-1">
+          <AgentTrace events={events} />
+        </div>
+      )}
+    </div>
+  );
+};
 
 const AgentToolCalls = ({ events }: { events?: AgentEvent[] }) => {
   const [open, setOpen] = useState(true);
@@ -988,6 +1377,11 @@ const MarkdownContent = ({
   const { setDocumentIds, data: fileThumbnails } =
     useFetchDocumentThumbnailsByIds();
 
+  // 👇 提前到这里，因为它要被 contentWithCursor 用到
+  const hasAgentEvents = useMemo(() => {
+    return (agentEvents || []).some(isTraceVisibleEvent);
+  }, [agentEvents]);
+
   // think 外的正文替换
   const replaceSourceHeading = useCallback((text: string) => {
     const replaceHeadingOutsideThink = (segment: string) => {
@@ -1160,9 +1554,18 @@ const MarkdownContent = ({
   const contentWithCursor = useMemo(() => {
     let text = content || '';
 
-    if (text === '') {
-      text = t('chat.searching');
+    // 👇 只有非 Agent 模式才 fallback 到"搜索中"
+    // Agent 模式时，content 为空就是空，不要强行显示"搜索中"
+    if (text === '' && !hasAgentEvents) {
+      // text = t('chat.searching');
+      text = '';
     }
+
+    // if (text === '') {
+    //   text = t('chat.searching');
+    // }
+
+    if (text === '') return '';
 
     // 先整理标题和正文段落
     text = normalizeIndentedTextToMarkdown(text);
@@ -1182,7 +1585,13 @@ const MarkdownContent = ({
      * 否则 <think> 会被提前转成别的标签，后面就无法折叠处理
      */
     return preprocessLaTeX(nextText);
-  }, [content, t, normalizeIndentedTextToMarkdown, replaceSourceHeading]);
+  }, [
+    content,
+    t,
+    normalizeIndentedTextToMarkdown,
+    replaceSourceHeading,
+    hasAgentEvents,
+  ]);
 
   const segments = useMemo(() => {
     return splitThinkContent(contentWithCursor);
@@ -1191,6 +1600,51 @@ const MarkdownContent = ({
   const showAgentToolCalls = useMemo(() => {
     return (agentEvents || []).some(isVisibleAgentEvent);
   }, [agentEvents]);
+
+  // ============ Agent 相关，必须放在 segments 之后 ============
+
+  // // 有 Agent 事件 → 走新路径（实时 Trace + 纯正文）
+  // const hasAgentEvents = useMemo(() => {
+  //   return (agentEvents || []).some(isTraceVisibleEvent);
+  // }, [agentEvents]);
+
+  // Agent 是否还在运行
+  const isAgentRunning = useMemo(() => {
+    if (!agentEvents?.length) return false;
+
+    // 明确收到 agent_done / agent_error → 停止
+    const hasDone = agentEvents.some(
+      (e) => e.type === 'agent_done' || e.type === 'agent_error',
+    );
+    if (hasDone) return false;
+
+    // 看最后一条事件是否是 running 状态
+    const last = agentEvents[agentEvents.length - 1];
+    const lastIsRunning =
+      last?.status === 'running' ||
+      (last?.result && last.result.status === 'running');
+
+    return lastIsRunning;
+  }, [agentEvents]);
+
+  // 累计耗时
+  const agentTotalElapsed = useMemo(() => {
+    return (agentEvents || []).reduce(
+      (acc, e) => acc + (e.elapsed_time || 0),
+      0,
+    );
+  }, [agentEvents]);
+
+  // Agent 模式：只取 content 里的正文
+  // 非 Agent 模式：直接返回原 content（不剥离 think）
+  const textOnlyContent = useMemo(() => {
+    if (!hasAgentEvents) return contentWithCursor;
+
+    return segments
+      .filter((s) => s.type === 'text')
+      .map((s) => s.content)
+      .join('');
+  }, [hasAgentEvents, segments, contentWithCursor]);
 
   useEffect(() => {
     const docAggs = reference?.doc_aggs;
@@ -1884,172 +2338,183 @@ const MarkdownContent = ({
     [renderReference],
   );
 
-  return (
-    <div className={styles.markdownContentWrapper}>
-      {showAgentToolCalls && <AgentToolCalls events={agentEvents} />}
-
-      {segments.map((segment, index) => {
-        if (segment.type === 'think') {
-          const hasAnswerAfterThink = segments
-            .slice(index + 1)
-            .some(
-              (item) => item.type === 'text' && item.content.trim().length > 0,
-            );
-
-          /**
-           * 规则：
-           * 有 </think>，并且 </think> 后面有正式文字 => 思考完成
-           * 其他情况 => 正在思考
-           */
-          const isThinking = !(segment.done && hasAnswerAfterThink);
-
-          return (
-            <details
-              open={true}
-              key={`think-${index}`}
-              className="
-                group
-                my-2
-                text-sm
-                text-gray-400
-                dark:text-gray-500
-              "
-            >
-              <summary
-                className="
-                  flex
-                  cursor-pointer
-                  select-none
-                  list-none
-                  items-center
-                  gap-1
-                  text-sm
-                  font-normal
-                  text-gray-400
-                  dark:text-gray-500
-                  [&::-webkit-details-marker]:hidden
-                "
-              >
-                <span className="flex items-center gap-1.5">
-                  <svg
-                    className={`h-5 w-5 text-blue-600 dark:text-blue-400 ${
-                      isThinking ? 'animate-[spin_2.6s_linear_infinite]' : ''
-                    }`}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    {/* 第一条对角线 */}
-                    <ellipse
-                      cx="12"
-                      cy="12"
-                      rx="8"
-                      ry="3.2"
-                      stroke="currentColor"
-                      strokeWidth="1.7"
-                      transform="rotate(45 12 12)"
-                    />
-                    {/* 第二条对角线 */}
-                    <ellipse
-                      cx="12"
-                      cy="12"
-                      rx="8"
-                      ry="3.2"
-                      stroke="currentColor"
-                      strokeWidth="1.7"
-                      transform="rotate(-45 12 12)"
-                    />
-                    {/* 中心圆点 */}
-                    <circle cx="12" cy="12" r="1.8" fill="currentColor" />
-                  </svg>
-
-                  <span className="text-[15px] font-medium text-gray-400 dark:text-gray-500">
-                    {isThinking ? '正在思考' : '思考完成'}
-                  </span>
-                </span>
-
-                {isThinking && (
-                  <span className="ml-1 inline-flex gap-0.5">
-                    <span className="animate-bounce">.</span>
-                    <span className="animate-bounce [animation-delay:150ms]">
-                      .
-                    </span>
-                    <span className="animate-bounce [animation-delay:300ms]">
-                      .
-                    </span>
-                  </span>
-                )}
-
-                <ChevronRight
-                  className="
-                    h-4 w-4
-                    text-text-secondary
-                    transition-transform duration-300 ease-out
-                    group-open:rotate-90
-                  "
-                />
-              </summary>
-
-              <div
-                className="
-                  mt-3
-                  whitespace-pre-wrap
-                  leading-7
-                  text-gray-400
-                  dark:text-gray-500
-                "
-              >
-                {segment.content}
-              </div>
-            </details>
+  // ============ 老路径：segments.map 原样保留，其他模式全走这里 ============
+  const renderLegacyContent = () => {
+    return segments.map((segment, index) => {
+      if (segment.type === 'think') {
+        const hasAnswerAfterThink = segments
+          .slice(index + 1)
+          .some(
+            (item) => item.type === 'text' && item.content.trim().length > 0,
           );
-        }
 
-        // ====== 关键：text 段按 source-heading 二次切分 ======
-        const sourceGroups = splitBySourceHeading(segment.content);
+        const isThinking = !(segment.done && hasAnswerAfterThink);
 
         return (
-          <Fragment key={`text-${index}`}>
-            {sourceGroups.map((group, gi) => {
-              if (group.type === 'plain') {
-                return (
-                  <Markdown
-                    key={`plain-${gi}`}
-                    rehypePlugins={[
-                      rehypeWrapReference,
-                      rehypeKatex,
-                      rehypeRaw,
-                    ]}
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    components={markdownComponents}
-                  >
-                    {group.content}
-                  </Markdown>
-                );
-              }
-
-              return (
-                <CollapsibleSourceSection
-                  key={`heading-${gi}`}
-                  heading={group.heading}
+          <details
+            open={true}
+            key={`think-${index}`}
+            className="
+            group
+            my-2
+            text-sm
+            text-gray-400
+            dark:text-gray-500
+          "
+          >
+            <summary
+              className="
+              flex
+              cursor-pointer
+              select-none
+              list-none
+              items-center
+              gap-1
+              text-sm
+              font-normal
+              text-gray-400
+              dark:text-gray-500
+              [&::-webkit-details-marker]:hidden
+            "
+            >
+              <span className="flex items-center gap-1.5">
+                <svg
+                  className={`h-5 w-5 text-blue-600 dark:text-blue-400 ${
+                    isThinking ? 'animate-[spin_2.6s_linear_infinite]' : ''
+                  }`}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
                 >
-                  <Markdown
-                    rehypePlugins={[
-                      rehypeWrapReference,
-                      rehypeKatex,
-                      rehypeRaw,
-                    ]}
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    components={markdownComponents}
-                  >
-                    {group.content}
-                  </Markdown>
-                </CollapsibleSourceSection>
-              );
-            })}
-          </Fragment>
+                  <ellipse
+                    cx="12"
+                    cy="12"
+                    rx="8"
+                    ry="3.2"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    transform="rotate(45 12 12)"
+                  />
+                  <ellipse
+                    cx="12"
+                    cy="12"
+                    rx="8"
+                    ry="3.2"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    transform="rotate(-45 12 12)"
+                  />
+                  <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                </svg>
+
+                <span className="text-[15px] font-medium text-gray-400 dark:text-gray-500">
+                  {isThinking ? '正在思考' : '思考完成'}
+                </span>
+              </span>
+
+              {isThinking && (
+                <span className="ml-1 inline-flex gap-0.5">
+                  <span className="animate-bounce">.</span>
+                  <span className="animate-bounce [animation-delay:150ms]">
+                    .
+                  </span>
+                  <span className="animate-bounce [animation-delay:300ms]">
+                    .
+                  </span>
+                </span>
+              )}
+
+              <ChevronRight
+                className="
+                h-4 w-4
+                text-text-secondary
+                transition-transform duration-300 ease-out
+                group-open:rotate-90
+              "
+              />
+            </summary>
+
+            <div
+              className="
+              mt-3
+              whitespace-pre-wrap
+              leading-7
+              text-gray-400
+              dark:text-gray-500
+            "
+            >
+              {segment.content}
+            </div>
+          </details>
         );
-      })}
+      }
+
+      const sourceGroups = splitBySourceHeading(segment.content);
+
+      return (
+        <Fragment key={`text-${index}`}>
+          {sourceGroups.map((group, gi) => {
+            if (group.type === 'plain') {
+              return (
+                <Markdown
+                  key={`plain-${gi}`}
+                  rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  components={markdownComponents}
+                >
+                  {group.content}
+                </Markdown>
+              );
+            }
+
+            return (
+              <CollapsibleSourceSection
+                key={`heading-${gi}`}
+                heading={group.heading}
+              >
+                <Markdown
+                  rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  components={markdownComponents}
+                >
+                  {group.content}
+                </Markdown>
+              </CollapsibleSourceSection>
+            );
+          })}
+        </Fragment>
+      );
+    });
+  };
+
+  // ============ 新路径：Agent 模式，实时 Trace 面板 + 纯正文 ============
+  const renderAgentContent = () => {
+    return (
+      <>
+        <AgentTracePanel
+          events={agentEvents}
+          isRunning={isAgentRunning}
+          elapsedTime={agentTotalElapsed}
+        />
+
+        {/* 👇 只有有正文才渲染 Markdown，避免空白块 */}
+        {textOnlyContent.trim() && (
+          <Markdown
+            rehypePlugins={[rehypeWrapReference, rehypeKatex, rehypeRaw]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            components={markdownComponents}
+          >
+            {textOnlyContent}
+          </Markdown>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div className={styles.markdownContentWrapper}>
+      {/* 有 agentEvents → 新路径；否则 → 老路径 */}
+      {hasAgentEvents ? renderAgentContent() : renderLegacyContent()}
 
       <AgentFileDownloads events={agentEvents} />
     </div>
