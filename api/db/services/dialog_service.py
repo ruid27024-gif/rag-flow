@@ -14,9 +14,12 @@
 #  limitations under the License.
 #
 import binascii
+import json
 import logging
+import os
 import re
 import time
+import uuid
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
@@ -47,6 +50,13 @@ from rag.utils.tavily_conn import Tavily
 from common.string_utils import remove_redundant_spaces
 from common import settings
 import asyncio
+from pathlib import Path
+from docx import Document as WordDocument
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
+from docx.oxml.ns import qn
+from common.file_utils import get_project_base_directory
 
 import asyncio
 import json
@@ -72,25 +82,12 @@ COMPLIANCE_FLOW_AND_FILL = "flow_and_fill"
 COMPLIANCE_NONE = "none"
 
 
-# APPLICATION_TEMPLATE_DIR = Path(
-#     "/home/zyb/rag-flow/Application_Template"
-# ).resolve()
+_PROJECT_ROOT = Path(get_project_base_directory()).resolve()
 
-# WORKSPACE_ROOT = Path(
-#     "/home/zyb/rag-flow/Workspace"
-# ).resolve()
 
-from pathlib import Path
+APPLICATION_TEMPLATE_DIR = _PROJECT_ROOT / "Application_Template"
 
-# 当前文件: /home/zyb/rag-flow/api/db/services/xxx.py
-# parents[0] = .../services
-# parents[1] = .../db
-# parents[2] = .../api
-# parents[3] = .../rag-flow   ← 我们要的根目录
-RAG_FLOW_ROOT = Path(__file__).resolve().parents[3]
-
-APPLICATION_TEMPLATE_DIR = (RAG_FLOW_ROOT / "Application_Template").resolve()
-WORKSPACE_ROOT = (RAG_FLOW_ROOT / "Workspace").resolve()
+WORKSPACE_ROOT = _PROJECT_ROOT / "Workspace"
 
 TEMPLATE_FILE_API = "/v1/file/template"
 
@@ -1861,7 +1858,7 @@ def repair_bad_citation_formats(answer: str, kbinfos: dict, idx: set):
 
     return answer, idx
 
-from api.apps import login_required, current_user
+
 from api.db.db_models import AdminUser
 from api.db.db_models import User, Role, SyncDept,PermissionApplication,RoleUser,StagedFileTag,Document,StagedFile
 class FilePermissionLevel:
@@ -1937,6 +1934,516 @@ def get_public_doc_ids_by_kb(kb_id):
 
     return [str(row.id) for row in query]
 
+def _experiment_default_template():
+    return {
+        "title": "实验报告",
+        "sections": [
+            {"name": "实验目的", "required": True, "content_type": "text"},
+            {"name": "实验参数", "required": True, "content_type": "table"},
+            {"name": "实验设备与材料", "required": False, "content_type": "list"},
+            {"name": "实验过程", "required": True, "content_type": "ordered_list"},
+            {"name": "实验结果", "required": True, "content_type": "table_and_text"},
+            {"name": "数据分析与讨论", "required": False, "content_type": "text"},
+            {"name": "实验结论", "required": False, "content_type": "text"},
+            {"name": "误差与局限性", "required": False, "content_type": "text"},
+        ],
+        "formatting_rules": [
+            "保留用户提供的数值、单位和精度",
+            "实验参数使用表格表示",
+            "实验过程使用有序列表表示",
+            "缺失的可选信息标记为待补充",
+        ],
+    }
+
+
+def _experiment_env_float(name, default, minimum):
+    try:
+        return max(minimum, float(os.environ.get(name, str(default))))
+    except (TypeError, ValueError):
+        logging.warning("Invalid experiment report setting: %s; using default", name)
+        return default
+
+
+def _experiment_env_int(name, default, minimum):
+    try:
+        return max(minimum, int(os.environ.get(name, str(default))))
+    except (TypeError, ValueError):
+        logging.warning("Invalid experiment report setting: %s; using default", name)
+        return default
+
+
+def _parse_json_response(text):
+    """Parse a model response containing a JSON object."""
+    if not isinstance(text, str):
+        return None
+
+    cleaned = text.lstrip("﻿").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, count=1, flags=re.I)
+        cleaned = re.sub(r"\s*```$", "", cleaned, count=1)
+        cleaned = cleaned.strip()
+
+    decoder = json.JSONDecoder()
+    try:
+        value, _ = decoder.raw_decode(cleaned)
+    except json.JSONDecodeError:
+        value = None
+        # Models sometimes add a short explanation before/after the JSON.
+        # Decode from each opening brace instead of using a greedy regex so
+        # nested objects and braces inside quoted strings remain valid.
+        for index, char in enumerate(cleaned):
+            if char != "{":
+                continue
+            try:
+                value, _ = decoder.raw_decode(cleaned[index:])
+                break
+            except json.JSONDecodeError:
+                continue
+
+    return value if isinstance(value, dict) else None
+
+
+def _normalize_experiment_value(value):
+    """Convert extracted values to stable text while preserving structure."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (dict, list)):
+        if not value:
+            return ""
+        return json.dumps(value, ensure_ascii=False)
+    return str(value).strip()
+
+
+def _merge_experiment_messages(messages):
+    """Keep non-empty user-provided experiment facts in conversation order."""
+    parts = []
+    for message in messages or []:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            parts.append(content.strip())
+        elif content is not None:
+            logging.warning(
+                "Skipping non-text experiment message content: type=%s",
+                type(content).__name__,
+            )
+    return "\n\n--- 用户补充信息 ---\n\n".join(parts)
+
+
+async def _extract_experiment_info(chat_mdl, user_text):
+    extraction_prompt = """你是实验信息整理助手。请从用户提供的实验信息总结中提取 JSON。
+只提取用户明确提供的事实，不要补充、推测或使用历史知识。字段含义：
+- title: 实验名称，可为空
+- experiment_type: 实验类型；用户明确写出时优先，否则根据实验对象、目的、方法推断
+- subject: 实验对象、材料或样品
+- method: 实验方法、测试方法或关键设备
+- parameters: 实验参数、条件和数值，必须返回字符串
+- purpose: 实验目的，必须返回字符串
+- process: 实验过程，必须返回字符串
+- results: 实验结果、测量数据和观察现象，必须返回字符串
+
+四个核心字段必须完整保留用户明确提供的内容；缺失时返回空字符串。
+只返回顶层 JSON 对象，不要 Markdown、解释文字或额外字段：
+{"title":"","experiment_type":"","subject":"","method":"","parameters":"","purpose":"","process":"","results":""}
+"""
+    max_input_chars = _experiment_env_int(
+        "EXPERIMENT_REPORT_MAX_INPUT_CHARS", 24000, 1000
+    )
+    input_text = user_text or ""
+    was_truncated = len(input_text) > max_input_chars
+    if was_truncated:
+        input_text = input_text[:max_input_chars]
+        logging.warning(
+            "Experiment extraction input truncated: original_length=%s limit=%s",
+            len(user_text or ""), max_input_chars,
+        )
+
+    started = time.monotonic()
+    logging.info(
+        "Experiment information extraction started: input_length=%s truncated=%s",
+        len(input_text), was_truncated,
+    )
+    response = None
+    extraction_error = None
+    timeout_seconds = _experiment_env_float(
+        "EXPERIMENT_REPORT_LLM_TIMEOUT", 90.0, 1.0
+    )
+    try:
+        response = await asyncio.wait_for(
+            chat_mdl.async_chat(
+                extraction_prompt,
+                [{"role": "user", "content": input_text}],
+                {"temperature": 0.0, "max_tokens": 1600},
+            ),
+            timeout=timeout_seconds,
+        )
+        logging.info(
+            "Experiment information extraction finished: elapsed_ms=%s response_type=%s response_length=%s",
+            int((time.monotonic() - started) * 1000), type(response).__name__,
+            len(response) if isinstance(response, str) else 0,
+        )
+        info = _parse_json_response(response)
+        if info is None:
+            extraction_error = "invalid_json_response"
+            logging.warning(
+                "Experiment information extraction returned invalid JSON: response_type=%s response_length=%s input_length=%s",
+                type(response).__name__, len(response) if isinstance(response, str) else 0, len(input_text),
+            )
+            info = {}
+    except asyncio.TimeoutError:
+        extraction_error = "llm_timeout"
+        logging.error(
+            "Experiment information extraction timed out: timeout_seconds=%s input_length=%s elapsed_ms=%s",
+            timeout_seconds, len(input_text), int((time.monotonic() - started) * 1000),
+        )
+        info = {}
+    except Exception as exc:
+        extraction_error = "llm_error"
+        logging.exception(
+            "Experiment information extraction failed: input_length=%s error_type=%s elapsed_ms=%s",
+            len(input_text), type(exc).__name__, int((time.monotonic() - started) * 1000),
+        )
+        info = {}
+
+    fields = ("parameters", "purpose", "process", "results")
+    normalized = {
+        key: _normalize_experiment_value(info.get(key, ""))
+        for key in ("title", "experiment_type", "subject", "method", *fields)
+    }
+    missing = [field for field in fields if not normalized[field]]
+    normalized["missing_fields"] = missing
+    normalized["is_complete"] = not missing
+    normalized["extraction_error"] = extraction_error
+    normalized["clarification_question"] = _normalize_experiment_value(
+        info.get("clarification_question", "")
+    )
+    if extraction_error:
+        normalized["clarification_question"] = (
+            "实验信息整理失败，请确认内容已完整发送后重试。"
+        )
+    elif missing and not normalized["clarification_question"]:
+        labels = {
+            "parameters": "实验参数",
+            "purpose": "实验目的",
+            "process": "实验过程",
+            "results": "实验结果",
+        }
+        missing_labels = "、".join(labels[field] for field in missing)
+        normalized["clarification_question"] = (
+            f"为了生成完整的实验报告，请补充以下信息：{missing_labels}。"
+        )
+    return normalized
+
+
+def _experiment_report_storage_root():
+    configured = os.environ.get("EXPERIMENT_REPORT_STORAGE_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path(get_project_base_directory()) / "storage" / "experiment_reports").resolve()
+
+
+def _normalize_report_structure(value):
+    """Validate and normalize the model's structured report response."""
+    if not isinstance(value, dict) or not isinstance(value.get("sections"), list):
+        raise ValueError("报告内容格式无效：缺少章节列表。")
+
+    sections = []
+    for section in value["sections"]:
+        if not isinstance(section, dict):
+            continue
+        name = _normalize_experiment_value(section.get("name"))
+        if not name:
+            continue
+        raw_blocks = section.get("blocks")
+        if raw_blocks is None and isinstance(section.get("content"), str):
+            raw_blocks = [{"type": "paragraph", "text": section["content"]}]
+        if not isinstance(raw_blocks, list):
+            raw_blocks = []
+
+        blocks = []
+        for block in raw_blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+            if block_type == "paragraph":
+                text = _normalize_experiment_value(block.get("text"))
+                if text:
+                    blocks.append({"type": block_type, "text": text})
+            elif block_type in ("bullet_list", "ordered_list"):
+                items = block.get("items")
+                if isinstance(items, list):
+                    items = [_normalize_experiment_value(item) for item in items]
+                    items = [item for item in items if item]
+                    if items:
+                        blocks.append({"type": block_type, "items": items})
+            elif block_type == "table":
+                headers = block.get("headers")
+                rows = block.get("rows")
+                if not isinstance(headers, list) or not isinstance(rows, list):
+                    continue
+                headers = [_normalize_experiment_value(item) for item in headers]
+                if not headers or not all(headers):
+                    continue
+                normalized_rows = []
+                for row in rows:
+                    if not isinstance(row, list):
+                        continue
+                    cells = [_normalize_experiment_value(cell) for cell in row[:len(headers)]]
+                    cells.extend([""] * (len(headers) - len(cells)))
+                    normalized_rows.append(cells)
+                blocks.append({"type": block_type, "headers": headers, "rows": normalized_rows})
+
+        if not blocks:
+            blocks.append({"type": "paragraph", "text": "待补充"})
+        sections.append({"name": name, "blocks": blocks})
+
+    if not sections:
+        raise ValueError("报告内容格式无效：没有可用章节。")
+    return {
+        "title": _normalize_experiment_value(value.get("title")) or "实验报告",
+        "sections": sections,
+    }
+
+def _apply_east_asian_font(element, font_name: str) -> None:
+    """
+    安全地把 element（style._element 或 run._element）的东亚字体设为 font_name。
+    用 get_or_add_rPr / get_or_add_rFonts，兼容 rPr 或 rFonts 为 None 的情况。
+    """
+    rpr = element.get_or_add_rPr()
+    rfonts = rpr.get_or_add_rFonts()
+    rfonts.set(qn("w:eastAsia"), font_name)
+
+def _create_word_document(report, report_title="实验报告"):
+    """Build a DOCX from validated report blocks without parsing Markdown."""
+    doc = WordDocument()
+
+    normal = doc.styles["Normal"]
+    normal.font.name = "宋体"
+    normal.font.size = Pt(11)
+    normal.font.color.rgb = RGBColor(40, 40, 40)
+    _apply_east_asian_font(normal._element, "宋体")   # 原来：normal._element.rPr.rFonts.set(...)
+
+    for style_name, size in (("Heading 1", 16), ("Heading 2", 13)):
+        style = doc.styles[style_name]
+        style.font.name = "黑体"
+        style.font.size = Pt(size)
+        style.font.bold = True
+        _apply_east_asian_font(style._element, "黑体")  # 原来：style._element.rPr.rFonts.set(...)
+
+    title = doc.add_heading(report_title, level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in title.runs:
+        run.font.name = "黑体"
+        run.font.size = Pt(22)
+        run.font.bold = True
+        _apply_east_asian_font(run._element, "黑体")     # 原来：run._element.rPr.rFonts.set(...)
+
+    for section in report["sections"]:
+        doc.add_heading(section["name"], level=1)
+        for block in section["blocks"]:
+            if block["type"] == "paragraph":
+                doc.add_paragraph(block["text"])
+            elif block["type"] in ("bullet_list", "ordered_list"):
+                style = "List Bullet" if block["type"] == "bullet_list" else "List Number"
+                for item in block["items"]:
+                    doc.add_paragraph(item, style=style)
+            elif block["type"] == "table":
+                table = doc.add_table(rows=1, cols=len(block["headers"]))
+                table.style = "Table Grid"
+                table.alignment = WD_TABLE_ALIGNMENT.CENTER
+                table.autofit = True
+                for index, header in enumerate(block["headers"]):
+                    cell = table.rows[0].cells[index]
+                    cell.text = header
+                    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.bold = True
+                for row in block["rows"]:
+                    cells = table.add_row().cells
+                    for index, text in enumerate(row):
+                        cells[index].text = text
+                        cells[index].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+
+    return doc
+
+
+async def _generate_experiment_report(dialog, chat_mdl, rerank_mdl, embd_mdl,
+                                      retriever, messages, attachments, stream,
+                                      tts_mdl, user_id, **kwargs):
+    """Generate a structured experiment report and native Word document."""
+    user_text = _merge_experiment_messages(messages)
+    info = await _extract_experiment_info(chat_mdl, user_text)
+    if info.get("extraction_error") or not info["is_complete"]:
+        yield {
+            "answer": info["clarification_question"],
+            "reference": {},
+            "suggestions": [],
+            "need_more_experiment_info": True,
+            "extraction_error": info.get("extraction_error"),
+            "missing_fields": info["missing_fields"],
+            "created_at": time.time(),
+        }
+        return
+
+    if not dialog.kb_ids or not embd_mdl:
+        yield {
+            "answer": "实验报告模式需要配置至少一个知识库及其嵌入模型。",
+            "reference": {},
+            "suggestions": [],
+            "created_at": time.time(),
+        }
+        return
+
+    query = "\n".join(part for part in (
+        info["experiment_type"], info["subject"], info["method"], info["purpose"]
+    ) if part)
+    historical_reports = []
+    kbinfos = {"total": 0, "chunks": [], "doc_aggs": []}
+    try:
+        kbs = KnowledgebaseService.get_by_ids(dialog.kb_ids)
+        result = await asyncio.to_thread(
+            retriever.retrieval,
+            query,
+            embd_mdl,
+            list({kb.tenant_id for kb in kbs}),
+            dialog.kb_ids,
+            1,
+            8,
+            dialog.similarity_threshold,
+            dialog.vector_similarity_weight,
+            doc_ids=attachments,
+            top=dialog.top_k,
+            aggs=True,
+            rerank_mdl=rerank_mdl,
+            rank_feature=label_question(query, kbs),
+        )
+        kbinfos = result or kbinfos
+        grouped = {}
+        for chunk in kbinfos.get("chunks", []):
+            doc_id = str(chunk.get("doc_id") or chunk.get("id") or len(grouped))
+            grouped.setdefault(doc_id, []).append(
+                chunk.get("content_with_weight") or chunk.get("content_ltks") or ""
+            )
+        historical_reports = ["\n".join(parts) for parts in list(grouped.values())[:3] if any(parts)]
+    except Exception:
+        logging.exception("Experiment report retrieval failed")
+
+    template = _experiment_default_template()
+    if historical_reports:
+        template_prompt = """请分析以下同类型报告，只提取章节结构和格式，不提取具体事实。
+返回 JSON，包含 title 和 sections（name、required、content_type）。
+历史报告：\n""" + "\n\n=== 历史报告 ===\n\n".join(historical_reports)
+        try:
+            response = await chat_mdl.async_chat(
+                "你是实验报告模板分析专家。只参考结构，不要复述报告事实。",
+                [{"role": "user", "content": template_prompt}],
+                {"temperature": 0.2, "max_tokens": 2000},
+            )
+            template = _parse_json_response(response) or template
+        except Exception:
+            logging.exception("Experiment report template extraction failed")
+
+    references = deepcopy(kbinfos)
+    for chunk in references.get("chunks", []):
+        chunk.pop("vector", None)
+    reference_context = "\n\n--- 历史报告仅供结构参考 ---\n\n".join(historical_reports)
+    generation_prompt = """你是专业的实验报告撰写助手。请根据下方事实和章节模板，生成严格符合指定 JSON Schema 的报告。
+实验信息是报告唯一事实来源，历史报告只能参考章节组织和表格形式。不得从历史报告复制任何实验数值、结果、现象或结论，不得编造用户未提供的信息。保留原始数值、单位、精度和不确定性。缺失的可选信息写“待补充”。
+只返回一个 JSON 对象，不要 Markdown 代码围栏和解释。Schema 示例：
+{"title":"实验报告标题","sections":[{"name":"实验参数","blocks":[{"type":"table","headers":["参数","数值"],"rows":[["温度","25 ℃"]]}]},{"name":"实验过程","blocks":[{"type":"ordered_list","items":["步骤一"]}]},{"name":"说明","blocks":[{"type":"paragraph","text":"正文"},{"type":"bullet_list","items":["项目"]}]}]}
+允许 block type 仅为 paragraph(text)、bullet_list(items)、ordered_list(items)、table(headers, rows)。"""
+    generation_message = f"""【用户提供的实验事实】
+{user_text}
+
+【已提取的实验信息】
+{json.dumps(info, ensure_ascii=False, indent=2)}
+
+【章节模板】
+{json.dumps(template, ensure_ascii=False, indent=2)}
+
+【历史报告结构参考，不可复用其中事实】
+{reference_context or "无，使用默认模板"}
+
+生成完整报告 JSON。"""
+
+    response = await chat_mdl.async_chat(
+        generation_prompt,
+        [{"role": "user", "content": generation_message}],
+        {"temperature": 0.3, "max_tokens": 5000},
+    )
+    try:
+        report = _normalize_report_structure(_parse_json_response(response))
+    except ValueError:
+        logging.warning(
+            "Experiment report generation returned invalid structure: response_type=%s response_length=%s",
+            type(response).__name__, len(response) if isinstance(response, str) else 0,
+        )
+        yield {
+            "answer": "报告内容生成失败，请检查实验信息后重试。",
+            "reference": references,
+            "suggestions": [],
+            "report_generation_error": "invalid_report_structure",
+            "created_at": time.time(),
+        }
+        return
+
+    requested_name = _normalize_experiment_value(kwargs.get("report_filename")) or report["title"]
+    requested_name = Path(requested_name).name.replace("\\", "_").replace("/", "_")
+    if requested_name.lower().endswith(".docx"):
+        requested_name = requested_name[:-5]
+    requested_name = re.sub(r"[\x00-\x1f\x7f]", "", requested_name).strip(" .")[:100]
+    report_filename = f"{requested_name or '实验报告'}.docx"
+
+    # 与合规模式保持一致：缺失时兜底为 "default"，
+    # 不再抛 ValueError，避免整个请求 500。
+    # 工作区路径是 WORKSPACE_ROOT/{dialog.id}/{conversation_id}，
+    # dialog.id 已做隔离，多个会话落到同一个 "default" 也不会串。
+    conversation_id = str(kwargs.get("conversation_id") or "default").strip() or "default"
+
+    # ★ 关键点1：落到与合规模式一致的工作区结构
+    #    WORKSPACE_ROOT/{dialog_id}/{conversation_id}/{filename}
+    workspace_dir = WORKSPACE_ROOT / str(dialog.id) / conversation_id
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    # 若同名文件已存在，加短 uuid 避免覆盖
+    output_file = workspace_dir / report_filename
+    if output_file.exists():
+        stem = Path(report_filename).stem
+        output_file = workspace_dir / f"{stem}_{uuid.uuid4().hex[:8]}.docx"
+
+    doc = _create_word_document(report, report["title"])
+    doc.save(str(output_file))
+
+# ★ 关键点2：用与合规模式相同的函数构造链接
+    workspace_link = build_workspace_file_markdown(
+        str(output_file),
+        WORKSPACE_ROOT,
+)
+
+    answer = f"实验报告“{report['title']}”已生成。"
+
+    if workspace_link:
+        answer += (
+            "\n\n"
+            '<span class="md-blue-text">文件生成完毕，点击下方文件即可预览下载。</span>'
+            "\n\n"
+            f"{workspace_link}"
+        )
+
+# ★ 关键点3：不再返回 attachment，而是直接拼在 answer 里
+    yield {
+        "answer": answer,
+        "reference": references,
+        "prompt": "实验报告生成模式",
+        "suggestions": [],
+        "created_at": time.time(),
+    }
+
+
 async def async_chat(dialog, messages, stream=True, **kwargs):
     # 获取当前用户的id
     user_id = kwargs["user_id"]
@@ -1958,8 +2465,15 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     experiment_report_mod_enabled = prompt_config.get("experiment_report", False) or kwargs.get("experiment_report", False)
     project_compliance_mod_enabled = prompt_config.get("project_compliance", False) or kwargs.get("project_compliance", False)
 
-    # 无 kb 且非 Agent 模式，才走纯对话
-    if not agent_mod_enabled and not dialog.kb_ids and not prompt_config.get("tavily_api_key"):
+    # 无 kb 且非 Agent、合规或实验报告模式，才走纯对话。
+    # 专用模式必须先加载模型并进入各自分支，否则开关会被短路逻辑绕过。
+    if (
+        not agent_mod_enabled
+        and not experiment_report_mod_enabled
+        and not project_compliance_mod_enabled
+        and not dialog.kb_ids
+        and not prompt_config.get("tavily_api_key")
+    ):
         async for ans in async_chat_solo(dialog, messages, stream):
             yield ans
         return
@@ -2012,6 +2526,26 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     # 上传的文件内容拼接到 system promp
     if "files" in messages[-1]:
         attachments_ = "\n\n".join(FileService.get_files(messages[-1]["files"]))
+
+    # 实验报告模式独立于普通 RAG 检索，避免被 knowledge 参数分支截获。
+    # 无知识库时仍由上面的普通聊天兜底逻辑处理。
+    if experiment_report_mod_enabled:
+        async for ans in _generate_experiment_report(
+            dialog=dialog,
+            chat_mdl=chat_mdl,
+            rerank_mdl=rerank_mdl,
+            embd_mdl=embd_mdl,
+            retriever=retriever,
+            messages=messages,
+            attachments=attachments,
+            stream=stream,
+            tts_mdl=tts_mdl,
+            user_id=user_id,
+            conversation_id=kwargs.get("conversation_id"),
+            report_filename=kwargs.get("report_filename"),
+        ):
+            yield ans
+        return
 
     # Prompt 参数处理
     # prompt_config = dialog.prompt_config
