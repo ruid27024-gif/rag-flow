@@ -490,7 +490,7 @@ export function SingleChatBox({
       removeFile={removeFile}
       wrapperClassName={
         isWelcomePage
-          ? 'border border-white/70 bg-slate-200/40 backdrop-blur-xl shadow-sm shadow-slate-300/20 focus-within:border-white/90 focus-within:bg-slate-100/50 focus-within:ring-0 dark:border-slate-700/60 dark:bg-slate-800/50 dark:focus-within:border-slate-600'
+          ? 'border border-white/70 bg-slate-200/40 backdrop-blur-xl shadow-sm shadow-slate-300/20 focus-within:border-white/90 focus-within:bg-slate-100/50 focus-within:ring-0 dark:border-slate-700/60 dark:bg-transparent dark:focus-within:border-slate-600 dark:focus-within:bg-transparent'
           : ''
       }
       reasoning={reasoning}

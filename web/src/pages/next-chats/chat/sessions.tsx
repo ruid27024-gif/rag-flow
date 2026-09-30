@@ -6,7 +6,6 @@ import {
   BreadcrumbLink,
   BreadcrumbList,
 } from '@/components/ui/breadcrumb';
-import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/input';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
@@ -23,9 +22,11 @@ import { useHandleClickConversationCard } from '../hooks/use-click-card';
 import { useSelectDerivedConversationList } from '../hooks/use-select-conversation-list';
 import { ConversationDropdown } from './conversation-dropdown';
 
+import { Button } from '@/components/ui/button';
 import {
   CheckSquare,
   ListFilter,
+  Puzzle,
   Search,
   SettingsIcon,
   Square,
@@ -46,12 +47,20 @@ type SessionProps = Pick<
   switchSettingVisible(): void;
   hasSingleChatBox: boolean;
   isWelcomePage: boolean; // 👈 必传
+  agentMod?: boolean;
+  onOpenSkill?: () => void;
+  onExitSkill?: () => void; // 👈 加回来
+  skillActive?: boolean; // 👈 加回来
 };
 export function Sessions({
   hasSingleChatBox,
   handleConversationCardClick,
   switchSettingVisible,
   isWelcomePage = true, // 👈 新增
+  agentMod = false,
+  onOpenSkill,
+  onExitSkill, // 👈 加回来
+  skillActive = false, // 👈 加回来
 }: SessionProps) {
   const { t } = useTranslation();
   const {
@@ -236,8 +245,8 @@ export function Sessions({
       className={cn(
         'relative pt-3 px-3 w-[260px] flex flex-col',
         isWelcomePage
-          ? 'bg-gradient-to-b from-[#9FB3D1] via-[#B7C5DE] to-[#D4DDE9] dark:from-[#1E2A38] dark:via-[#253445] dark:to-[#2F3E52] border-r border-[#B8C6D6]/40 dark:border-[#2F3E52]/60 backdrop-blur-sm'
-          : 'bg-[#f9f9f9] dark:bg-[#1a1a1a] border-r border-gray-200/60 dark:border-zinc-800',
+          ? 'bg-gradient-to-b from-[#9FB3D1] via-[#B7C5DE] to-[#D4DDE9] dark:bg-none dark:bg-transparent border-r border-[#B8C6D6]/40 dark:border-[#2F3E52]/60 backdrop-blur-sm'
+          : 'bg-[#f9f9f9] dark:bg-transparent border-r border-gray-200/60 dark:border-zinc-800',
       )}
     >
       <PageHeader>
@@ -343,7 +352,10 @@ export function Sessions({
       {/* ===== New Chat Button ===== */}
       <div className="pt-3 w-full">
         <button
-          onClick={addTemporaryConversation}
+          onClick={() => {
+            onExitSkill?.(); // 👈 加回来
+            addTemporaryConversation();
+          }}
           className="
       flex items-center justify-center
       h-11 w-full px-4
@@ -387,6 +399,34 @@ export function Sessions({
         </button>
       </div>
 
+      {/* 👇 新增：agent 模式专属按钮 */}
+      {/* 👇 agent 模式专属按钮：技能 */}
+      {agentMod && (
+        <div className="pt-2 w-full">
+          <button
+            type="button"
+            onClick={onOpenSkill}
+            className={cn(
+              'group flex w-full items-center gap-2 px-3 py-2.5 rounded-lg transition-colors',
+              skillActive
+                ? 'bg-blue-50/80 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium'
+                : 'text-gray-800 dark:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-zinc-800/50',
+            )}
+          >
+            <Puzzle
+              className={cn(
+                'size-4 shrink-0',
+                skillActive
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-300',
+              )}
+              strokeWidth={2}
+            />
+            <span className="truncate text-[14px] tracking-wide">技能</span>
+          </button>
+        </div>
+      )}
+
       {/* ===== Search ===== */}
       {showSearch && (
         <div className="mt-3">
@@ -408,11 +448,10 @@ export function Sessions({
       {/* ===== Conversation Title + Manage ===== */}
       <div className="flex items-center justify-between mb-1 mt-4 px-3 pr-4 w-full">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[14px] font-medium text-gray-400 dark:text-gray-500">
+          <span className="text-[14px] font-semibold text-gray-700 dark:text-gray-200">
             {t('chat.conversations')}
           </span>
-
-          <span className="text-[12px] text-gray-400/80 dark:text-gray-600">
+          <span className="text-[12px] font-medium text-gray-500 dark:text-gray-400">
             {conversationList.length}
           </span>
         </div>
@@ -423,16 +462,16 @@ export function Sessions({
             type="button"
             title="搜索"
             className="
-        inline-flex items-center justify-center
-        p-1 rounded-md
-        text-gray-400 dark:text-gray-500
-        hover:text-gray-800 dark:hover:text-gray-200
-        hover:bg-gray-200/60 dark:hover:bg-zinc-800/80
-        transition-colors
-      "
+    inline-flex items-center justify-center
+    p-1.5 rounded-md
+    text-gray-600 dark:text-gray-300
+    hover:text-gray-900 dark:hover:text-white
+    hover:bg-gray-200/70 dark:hover:bg-zinc-800
+    transition-colors
+  "
             onClick={() => setShowSearch((v) => !v)}
           >
-            <Search className="size-4" />
+            <Search className="size-4" strokeWidth={2.2} />
           </button>
 
           {!batchMode ? (
@@ -440,19 +479,19 @@ export function Sessions({
               type="button"
               title="管理"
               className="
-          inline-flex items-center justify-center
-          p-1 rounded-md
-          text-gray-400 dark:text-gray-500
-          hover:text-gray-800 dark:hover:text-gray-200
-          hover:bg-gray-200/60 dark:hover:bg-zinc-800/80
-          transition-colors
-        "
+    inline-flex items-center justify-center
+    p-1.5 rounded-md
+    text-gray-600 dark:text-gray-300
+    hover:text-gray-900 dark:hover:text-white
+    hover:bg-gray-200/70 dark:hover:bg-zinc-800
+    transition-colors
+  "
               onClick={() => {
                 setBatchMode(true);
                 setSelectedConversationIds([]);
               }}
             >
-              <ListFilter className="size-4" strokeWidth={2} />
+              <ListFilter className="size-4" strokeWidth={2.2} />
             </button>
           ) : (
             <button
@@ -492,7 +531,7 @@ export function Sessions({
         {conversationList.map((x) => {
           const checked = selectedConversationIds.includes(x.id);
           const isEditing = editingConversationId === x.id;
-          const isActive = conversationId === x.id;
+          const isActive = !skillActive && conversationId === x.id;
 
           return (
             <div
@@ -643,7 +682,6 @@ export function Sessions({
         </div>
       )}
 
-      {/* ===== Footer ===== */}
       <div className="p-4 mt-auto border-t border-gray-100 dark:border-gray-800">
         <Button
           type="button"

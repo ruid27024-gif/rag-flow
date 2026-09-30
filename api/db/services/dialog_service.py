@@ -72,13 +72,25 @@ COMPLIANCE_FLOW_AND_FILL = "flow_and_fill"
 COMPLIANCE_NONE = "none"
 
 
-APPLICATION_TEMPLATE_DIR = Path(
-    "/home/zyb/rag-flow/Application_Template"
-).resolve()
+# APPLICATION_TEMPLATE_DIR = Path(
+#     "/home/zyb/rag-flow/Application_Template"
+# ).resolve()
 
-WORKSPACE_ROOT = Path(
-    "/home/zyb/rag-flow/Workspace"
-).resolve()
+# WORKSPACE_ROOT = Path(
+#     "/home/zyb/rag-flow/Workspace"
+# ).resolve()
+
+from pathlib import Path
+
+# 当前文件: /home/zyb/rag-flow/api/db/services/xxx.py
+# parents[0] = .../services
+# parents[1] = .../db
+# parents[2] = .../api
+# parents[3] = .../rag-flow   ← 我们要的根目录
+RAG_FLOW_ROOT = Path(__file__).resolve().parents[3]
+
+APPLICATION_TEMPLATE_DIR = (RAG_FLOW_ROOT / "Application_Template").resolve()
+WORKSPACE_ROOT = (RAG_FLOW_ROOT / "Workspace").resolve()
 
 TEMPLATE_FILE_API = "/v1/file/template"
 

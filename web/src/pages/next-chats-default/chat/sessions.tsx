@@ -237,8 +237,8 @@ export function Sessions({
       className={cn(
         'relative pt-3 px-3 w-[260px] flex flex-col',
         isWelcomePage
-          ? 'bg-gradient-to-b from-[#9FB3D1] via-[#B7C5DE] to-[#D4DDE9] dark:from-[#1E2A38] dark:via-[#253445] dark:to-[#2F3E52] border-r border-[#B8C6D6]/40 dark:border-[#2F3E52]/60 backdrop-blur-sm'
-          : 'bg-[#f9f9f9] dark:bg-[#1a1a1a] border-r border-gray-200/60 dark:border-zinc-800',
+          ? 'bg-gradient-to-b from-[#9FB3D1] via-[#B7C5DE] to-[#D4DDE9] dark:bg-none dark:bg-transparent border-r border-[#B8C6D6]/40 dark:border-[#2F3E52]/60 backdrop-blur-sm'
+          : 'bg-[#f9f9f9] dark:bg-transparent border-r border-gray-200/60 dark:border-zinc-800',
       )}
     >
       <PageHeader>

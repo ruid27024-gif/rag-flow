@@ -191,7 +191,7 @@ const AgentFileDownloads = ({ events }: { events?: AgentEvent[] }) => {
               text-emerald-700
               hover:bg-emerald-50
               dark:border-emerald-800
-              dark:bg-slate-950
+              dark:bg-transparent
               dark:text-emerald-300
               dark:hover:bg-emerald-950/40
             "
@@ -1250,8 +1250,8 @@ function MarkdownFileLink({
       no-underline
       transition-colors
       hover:border-slate-300 hover:bg-slate-50
-      dark:border-slate-700 dark:bg-slate-900
-      dark:hover:border-slate-600 dark:hover:bg-slate-800
+      dark:border-slate-700 dark:bg-transparent
+       dark:hover:border-slate-600 dark:hover:bg-white/5
     "
         >
           {/* 文件图标 */}
@@ -2111,20 +2111,20 @@ const MarkdownContent = ({
         // ====== H2：主标题，字重最大，颜色最深 ======
         // ====== H2：主标题，字号最大，特粗，颜色稳重但不过黑 ======
         // ====== H2：主标题，20px，特粗，纯黑 ======
-        h2: ({ children }: { children: React.ReactNode }) => (
-          <h2
-            className="
-            mt-6 mb-3
-            text-xl font-extrabold leading-8     /* 20px，字重最高 */
-            text-black dark:text-white           /* 关键：纯黑（暗黑模式纯白） */
-            indent-0
-            [&_*]:indent-0
-          "
-            style={{ textIndent: 0 }}
-          >
-            {children}
-          </h2>
-        ),
+        // h2: ({ children }: { children: React.ReactNode }) => (
+        //   <h2
+        //     className="
+        //     mt-6 mb-3
+        //     text-xl font-extrabold leading-8     /* 20px，字重最高 */
+        //     text-black dark:text-white           /* 关键：纯黑（暗黑模式纯白） */
+        //     indent-0
+        //     [&_*]:indent-0
+        //   "
+        //     style={{ textIndent: 0 }}
+        //   >
+        //     {children}
+        //   </h2>
+        // ),
 
         // ====== H3：副标题，17px，粗体，纯黑 ======
         h3: ({ children }: { children: React.ReactNode }) => (
@@ -2160,20 +2160,15 @@ const MarkdownContent = ({
           );
         },
 
-        p: ({ children }: { children: React.ReactNode }) => (
-          <p
-            className="
-            my-4
-            text-[15px]
-            leading-7
-            text-gray-800
-            dark:text-gray-200
-            indent-0
-          "
-            style={{ textIndent: 0 }}
-          >
+        p: ({ children }) => (
+          <p className="my-0" style={{ textIndent: 0 }}>
             {children}
           </p>
+        ),
+        h2: ({ children }) => (
+          <h2 className="indent-0 [&_*]:indent-0" style={{ textIndent: 0 }}>
+            {children}
+          </h2>
         ),
 
         ul: ({ children }: { children: React.ReactNode }) => (

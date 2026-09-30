@@ -48,7 +48,7 @@ import { message } from 'antd';
 // console.log('WorkspacePanel =', WorkspacePanel);
 import { DocPreviewer } from '@/components/document-preview/doc-preview';
 import { getAuthorization } from '@/utils/authorization-util';
-import { ChevronLeft, Download, Eye, FileText, Loader2, X } from 'lucide-react';
+import { ChevronLeft, Download, Eye, Loader2, X } from 'lucide-react';
 import * as React from 'react';
 import SkillPage from './skill-page';
 
@@ -633,7 +633,7 @@ export default function Chat() {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-        className="flex h-full flex-col pr-5"
+        className="flex h-full flex-col -mt-2 -mb-4"
       >
         {/* 最外层：左侧会话栏 + 右侧区域 */}
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -652,7 +652,18 @@ export default function Chat() {
           {/* 右侧区域 */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {/* 顶部知识库选择区域 */}
-            <div className="mt-2 flex shrink-0 items-center bg-transparent px-5 py-0">
+            <div
+              className={cn(
+                'flex shrink-0 items-center bg-transparent px-5 py-0',
+                workspaceVisible ||
+                  sourcePreviewVisible ||
+                  settingVisible ||
+                  referenceVisible ||
+                  showSkillPage
+                  ? 'hidden'
+                  : 'mt-2',
+              )}
+            >
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <div
                   className={cn('flex items-center gap-1', {
@@ -1196,6 +1207,136 @@ function SourcePreviewPanel({
   );
 }
 
+// 文件类型徽标：彩色圆角块 + 白色图形/文字
+const FileBadge: React.FC<{ name: string; size?: number }> = ({
+  name,
+  size = 32,
+}) => {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+
+  const base =
+    'flex shrink-0 items-center justify-center rounded-[7px] text-white';
+
+  const style: React.CSSProperties = {
+    width: size,
+    height: size,
+    fontSize: size * 0.4,
+    fontWeight: 700,
+    lineHeight: 1,
+  };
+
+  // Word / 文档
+  if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#2B579A' }}>
+        W
+      </div>
+    );
+  }
+
+  // PDF
+  if (ext === 'pdf') {
+    return (
+      <div className={base} style={{ ...style, background: '#E5484D' }}>
+        PDF
+      </div>
+    );
+  }
+
+  // 表格
+  if (['xls', 'xlsx', 'csv'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#217346' }}>
+        X
+      </div>
+    );
+  }
+
+  // PPT
+  if (['ppt', 'pptx'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#D24726' }}>
+        P
+      </div>
+    );
+  }
+
+  // 图片：橙色块 + 白色山形/太阳（内联 SVG，和截图一致）
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#F5A623' }}>
+        <svg
+          width={size * 0.6}
+          height={size * 0.6}
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <rect
+            x="3"
+            y="4"
+            width="18"
+            height="16"
+            rx="2"
+            stroke="#fff"
+            strokeWidth="1.8"
+          />
+          <circle cx="8.5" cy="9.5" r="1.6" fill="#fff" />
+          <path
+            d="M4 17l4.5-4.5 3.5 3.5 3-3L20 17"
+            stroke="#fff"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  // 压缩包
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#8E7CC3' }}>
+        ZIP
+      </div>
+    );
+  }
+
+  // 文本 / Markdown
+  if (['txt', 'md', 'log'].includes(ext)) {
+    return (
+      <div className={base} style={{ ...style, background: '#6B7280' }}>
+        T
+      </div>
+    );
+  }
+
+  // 默认
+  return (
+    <div className={base} style={{ ...style, background: '#94A3B8' }}>
+      <svg
+        width={size * 0.55}
+        height={size * 0.55}
+        viewBox="0 0 24 24"
+        fill="none"
+      >
+        <path
+          d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"
+          stroke="#fff"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M14 3v5h5"
+          stroke="#fff"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+};
+
 const WorkspacePanel: React.FC<{
   className?: string;
   visible: boolean;
@@ -1363,14 +1504,43 @@ const WorkspacePanel: React.FC<{
         .workspace-docx-preview hr { border: none; border-top: 1px solid #d0d7de; margin: 16px 0; }
         .workspace-docx-preview strong { font-weight: 700; }
         .workspace-docx-preview em { font-style: italic; }
+        /* ============ 暗色模式适配 ============ */
+        .dark .workspace-docx-preview {
+          color: #e5e7eb;
+        }
+        .dark .workspace-docx-preview h1,
+        .dark .workspace-docx-preview h2,
+        .dark .workspace-docx-preview h3,
+        .dark .workspace-docx-preview h4,
+        .dark .workspace-docx-preview strong {
+          color: #f3f4f6;
+        }
+        .dark .workspace-docx-preview th,
+        .dark .workspace-docx-preview td {
+          border-color: #374151;
+        }
+        .dark .workspace-docx-preview th {
+          background: #1f2937;
+          color: #e5e7eb;
+        }
+        .dark .workspace-docx-preview tr:nth-child(even) td {
+          background: #111827;
+        }
+        .dark .workspace-docx-preview blockquote {
+          border-left-color: #374151;
+          color: #9ca3af;
+        }
+        .dark .workspace-docx-preview hr {
+          border-top-color: #374151;
+        }
       `}</style>
-      <div className={cn('h-full min-h-0 p-2', className)}>
+      <div className={cn('h-full min-h-0 w-full', className)}>
         <div
           className={cn(
-            'flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border',
+            'flex h-full min-h-0 w-full flex-col overflow-hidden border-t',
             isWelcomePage
-              ? 'border-[#8FC0E0]/40 dark:border-[#2F4A66]/60 bg-white dark:bg-[#0F2030]'
-              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900',
+              ? 'border-[#8FC0E0]/40 dark:border-[#2F4A66]/60 bg-white dark:bg-transparent'
+              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent',
           )}
         >
           {/* ============ 头部 ============ */}
@@ -1432,8 +1602,8 @@ const WorkspacePanel: React.FC<{
 
           {/* ============ 内容：列表 or 预览 ============ */}
           {previewFile ? (
-            <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-slate-900">
-              <div className="w-full px-10 py-8">
+            <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-transparent">
+              <div className="w-full px-4 py-3">
                 <DocPreviewer
                   url={previewFile._url}
                   className="
@@ -1452,7 +1622,7 @@ const WorkspacePanel: React.FC<{
             </div>
           ) : (
             // 列表
-            <div className="flex-1 overflow-auto p-3">
+            <div className="flex-1 overflow-auto py-1">
               {loading ? (
                 <div className="flex items-center justify-center py-8 text-slate-400">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1463,17 +1633,19 @@ const WorkspacePanel: React.FC<{
                   暂无文件
                 </div>
               ) : (
-                <ul className="flex flex-col gap-1">
+                <ul className="flex flex-col">
                   {files.map((file: any) => (
                     <li
                       key={file.id}
                       onClick={() => handlePreviewFile(file)}
                       className="
-                      group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2
-                      transition-colors hover:bg-slate-100 dark:hover:bg-slate-800
-                    "
+    group flex cursor-pointer items-center gap-3 px-2.5 py-2
+    border-b border-slate-100 last:border-b-0
+    dark:border-slate-800
+    transition-colors hover:bg-slate-100 dark:hover:bg-slate-800
+  "
                     >
-                      <FileText size={16} className="shrink-0 text-slate-400" />
+                      <FileBadge name={file.name} size={32} />
 
                       <div className="min-w-0 flex-1">
                         <div
