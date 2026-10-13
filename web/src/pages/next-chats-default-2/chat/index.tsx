@@ -259,6 +259,7 @@ export default function Chat() {
         agent_mod: false,
         project_compliance: false,
         experiment_report: false,
+        customer_complaint: false,
         cross_languages: [],
         toc_enhance: false,
       },
@@ -324,7 +325,7 @@ export default function Chat() {
       options, // 透传给 setDialog
     );
 
-    if (result !== 0) return;
+    if (result !== 0) return result;
 
     const { data: latestData } = await refetch();
     if (latestData && !isEmpty(latestData)) {
@@ -333,6 +334,10 @@ export default function Chat() {
       );
       form.reset({
         ...latestData,
+        prompt_config: {
+          ...latestData.prompt_config,
+          ...values.prompt_config,
+        },
         ...llmSettingEnabledValues,
       } as FormSchemaType);
     }
@@ -341,12 +346,15 @@ export default function Chat() {
     if (settingVisible) {
       switchSettingVisible();
     }
+
+    return result;
   }
 
   const reasoning = !!form.watch('prompt_config.reasoning');
   const agentMod = !!form.watch('prompt_config.agent_mod');
   const projectCompliance = !!form.watch('prompt_config.project_compliance');
   const experimentReport = !!form.watch('prompt_config.experiment_report');
+  const customerComplaint = !!form.watch('prompt_config.customer_complaint');
 
   const setMode = useCallback(
     async (
@@ -354,6 +362,7 @@ export default function Chat() {
       nextAgentMod: boolean,
       nextProjectCompliance: boolean,
       nextExperimentReport: boolean,
+      nextCustomerComplaint: boolean,
     ) => {
       const values = form.getValues();
 
@@ -363,6 +372,7 @@ export default function Chat() {
         agent_mod: nextAgentMod,
         project_compliance: nextProjectCompliance,
         experiment_report: nextExperimentReport,
+        customer_complaint: nextCustomerComplaint,
       };
 
       const currentPromptConfig = values.prompt_config;
@@ -371,7 +381,8 @@ export default function Chat() {
         !!currentPromptConfig.reasoning === nextReasoning &&
         !!currentPromptConfig.agent_mod === nextAgentMod &&
         !!currentPromptConfig.project_compliance === nextProjectCompliance &&
-        !!currentPromptConfig.experiment_report === nextExperimentReport
+        !!currentPromptConfig.experiment_report === nextExperimentReport &&
+        !!currentPromptConfig.customer_complaint === nextCustomerComplaint
       ) {
         return;
       }
@@ -400,6 +411,12 @@ export default function Chat() {
         shouldValidate: true,
       });
 
+      form.setValue('prompt_config.customer_complaint', nextCustomerComplaint, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+
       const success = await onSubmit(
         {
           ...values,
@@ -416,23 +433,27 @@ export default function Chat() {
   );
 
   const onEnableDeepReasoning = useCallback(() => {
-    return setMode(true, false, false, false);
+    return setMode(true, false, false, false, false);
   }, [setMode]);
 
   const onEnableMultiKbReasoning = useCallback(() => {
-    return setMode(false, false, false, false);
+    return setMode(false, false, false, false, false);
   }, [setMode]);
 
   const onEnableAgent = useCallback(() => {
-    return setMode(false, true, false, false);
+    return setMode(false, true, false, false, false);
   }, [setMode]);
 
   const onEnableProjectCompliance = useCallback(() => {
-    return setMode(false, false, true, false);
+    return setMode(false, false, true, false, false);
   }, [setMode]);
 
   const onEnableExperimentReport = useCallback(() => {
-    return setMode(false, false, false, true);
+    return setMode(false, false, false, true, false);
+  }, [setMode]);
+
+  const onEnableCustomerComplaint = useCallback(() => {
+    return setMode(false, false, false, false, true);
   }, [setMode]);
 
   function onInvalid(errors: any) {
@@ -626,11 +647,13 @@ export default function Chat() {
                   agentMod={agentMod}
                   projectCompliance={projectCompliance}
                   experimentReport={experimentReport}
+                  customerComplaint={customerComplaint}
                   onEnableDeepReasoning={onEnableDeepReasoning}
                   onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                   onEnableAgent={onEnableAgent}
                   onEnableProjectCompliance={onEnableProjectCompliance}
                   onEnableExperimentReport={onEnableExperimentReport}
+                  onEnableCustomerComplaint={onEnableCustomerComplaint}
                   refreshConversation={refreshCurrentConversation}
                   // ✅ 新增：点「工作区」按钮时触发
                   onOpenWorkspace={openWorkspace}
@@ -1126,7 +1149,7 @@ const WorkspacePanel: React.FC<{
           },
         );
         const result = await res.json();
-        const list = Array.isArray(result) ? result : result.data ?? [];
+        const list = Array.isArray(result) ? result : (result.data ?? []);
         if (!cancelled) setFiles(list);
       } catch (err) {
         console.error('拉取工作区文件失败', err);

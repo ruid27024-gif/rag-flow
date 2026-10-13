@@ -23,6 +23,7 @@ import {
   FileText,
   Folder,
   Layers3,
+  MessageSquareWarning,
   Paperclip,
   Puzzle,
   Send,
@@ -61,6 +62,7 @@ interface IProps {
   agentMod?: boolean;
   projectCompliance?: boolean;
   experimentReport?: boolean;
+  customerComplaint?: boolean;
 
   // 👇 允许外部覆盖最外层输入框样式（首页用来改圆角/高度）
   wrapperClassName?: string;
@@ -96,6 +98,7 @@ export function NextMessageInput({
   agentMod = false,
   projectCompliance = false,
   experimentReport = false,
+  customerComplaint = false,
   wrapperClassName,
   onClickComplianceFolder,
   onClickComplianceTemplate,
@@ -230,13 +233,27 @@ export function NextMessageInput({
           'border-cyan-300 bg-cyan-50 text-cyan-600 dark:border-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400',
       };
     }
+    if (customerComplaint) {
+      return {
+        label: '客诉问题',
+        Icon: MessageSquareWarning,
+        className:
+          'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-400',
+      };
+    }
     return {
       label: '多库并行',
       Icon: Layers3,
       className:
         'border-emerald-300 bg-emerald-50 text-emerald-600 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
     };
-  }, [reasoning, agentMod, projectCompliance, experimentReport]);
+  }, [
+    reasoning,
+    agentMod,
+    projectCompliance,
+    experimentReport,
+    customerComplaint,
+  ]);
 
   const ActiveIcon = activeMode.Icon;
 
@@ -313,7 +330,11 @@ export function NextMessageInput({
         <Textarea
           value={value}
           onChange={onInputChange}
-          placeholder={t('chat.messagePlaceholder')}
+          placeholder={
+            customerComplaint
+              ? '请描述客户反馈、发生时间、涉及产品及期望处理方式'
+              : t('chat.messagePlaceholder')
+          }
           className="
             min-h-10 flex-1 w-full resize-none overflow-y-auto border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 dark:bg-transparent
             placeholder:text-[15px] placeholder:text-gray-500 dark:placeholder:text-gray-400

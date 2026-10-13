@@ -39,18 +39,17 @@ interface IProps {
   agentMod: boolean;
   projectCompliance?: boolean;
   experimentReport?: boolean;
+  customerComplaint?: boolean;
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
   onEnableProjectCompliance?: () => void | Promise<void>;
   onEnableExperimentReport?: () => void | Promise<void>;
+  onEnableCustomerComplaint?: () => void | Promise<void>;
   refreshConversation?: () => Promise<any>;
   onOpenWorkspace?: () => void;
   onWelcomePageChange?: (isWelcome: boolean) => void; // 👈 新增
   isWorkspaceOpen?: boolean; // 👈 新增：从最外层传进来
-  forceHideWelcome?: boolean;
-  onClickSkill?: () => void; // 👈 新增
-  onSelectSkill?: (skill: any) => void; // 👈 新增
 }
 
 export function SingleChatBox({
@@ -63,18 +62,17 @@ export function SingleChatBox({
   agentMod,
   projectCompliance,
   experimentReport,
+  customerComplaint,
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
   onEnableProjectCompliance,
   onEnableExperimentReport,
+  onEnableCustomerComplaint,
   refreshConversation,
   onOpenWorkspace,
   onWelcomePageChange, // 👈 新增
   isWorkspaceOpen = false, // 👈 新增
-  forceHideWelcome = false,
-  onClickSkill, // 👈 新增
-  onSelectSkill, // 👈 新增
 }: IProps) {
   const {
     value,
@@ -135,7 +133,7 @@ export function SingleChatBox({
         credentials: 'include',
       });
       const result = await res.json();
-      const list = Array.isArray(result) ? result : result.data ?? [];
+      const list = Array.isArray(result) ? result : (result.data ?? []);
 
       setComplianceTemplates(
         list.map((item: any) => ({
@@ -412,15 +410,11 @@ export function SingleChatBox({
 
   // ===================== 背景云 =====================
 
-  // 真实判断（用于上报父组件）
-  const internalWelcome = !conversationId || derivedMessages.length === 1;
-
-  // 实际渲染用：技能页打开时强制视为非欢迎页 → 云不渲染
-  const isWelcomePage = forceHideWelcome ? false : internalWelcome;
-
+  const isWelcomePage = !conversationId || derivedMessages.length === 1;
+  // 👇 通知父组件 isWelcomePage 变化
   useEffect(() => {
-    onWelcomePageChange?.(internalWelcome);
-  }, [internalWelcome, onWelcomePageChange]);
+    onWelcomePageChange?.(isWelcomePage);
+  }, [isWelcomePage, onWelcomePageChange]);
   const random = (min: number, max: number) =>
     Math.random() * (max - min) + min;
 
@@ -490,13 +484,14 @@ export function SingleChatBox({
       removeFile={removeFile}
       wrapperClassName={
         isWelcomePage
-          ? 'border border-white/70 bg-slate-200/40 backdrop-blur-xl shadow-sm shadow-slate-300/20 focus-within:border-white/90 focus-within:bg-slate-100/50 focus-within:ring-0 dark:border-slate-700/60 dark:bg-transparent dark:focus-within:border-slate-600 dark:focus-within:bg-transparent'
+          ? 'border border-white/70 bg-slate-200/40 backdrop-blur-xl shadow-sm shadow-slate-300/20 focus-within:border-white/90 focus-within:bg-slate-100/50 focus-within:ring-0 dark:border-slate-700/60 dark:bg-slate-800/50 dark:focus-within:border-slate-600'
           : ''
       }
       reasoning={reasoning}
       agentMod={agentMod}
       projectCompliance={projectCompliance}
       experimentReport={experimentReport}
+      customerComplaint={customerComplaint}
       // onResetMode={onEnableMultiKbReasoning}
       onClickComplianceFolder={handleOpenComplianceFolder}
       // ✅ 小面板要展示的数据
@@ -505,8 +500,6 @@ export function SingleChatBox({
       // ✅ 点小面板某一项 / 点「查看模板」都会走这个
       onClickComplianceTemplate={handleOpenComplianceTemplate}
       isComplianceFolderOpen={isWorkspaceOpen} // 👈 新增这一行
-      onClickSkill={onClickSkill}
-      onSelectSkill={onSelectSkill}
     />
   );
 
@@ -656,11 +649,13 @@ export function SingleChatBox({
                 agentMod={agentMod}
                 projectCompliance={projectCompliance}
                 experimentReport={experimentReport}
+                customerComplaint={customerComplaint}
                 onEnableDeepReasoning={onEnableDeepReasoning}
                 onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                 onEnableAgent={onEnableAgent}
                 onEnableProjectCompliance={onEnableProjectCompliance}
                 onEnableExperimentReport={onEnableExperimentReport}
+                onEnableCustomerComplaint={onEnableCustomerComplaint}
                 disabled={disabled || sendLoading || isUploading}
                 className="mt-5 justify-center"
               />

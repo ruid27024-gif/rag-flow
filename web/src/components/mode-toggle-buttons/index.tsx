@@ -5,6 +5,7 @@ import {
   FileText,
   HelpCircle,
   Layers3,
+  MessageSquareWarning,
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
@@ -15,11 +16,13 @@ export interface ModeToggleButtonsProps {
   agentMod: boolean;
   projectCompliance?: boolean;
   experimentReport?: boolean;
+  customerComplaint?: boolean;
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
   onEnableProjectCompliance?: () => void | Promise<void>;
   onEnableExperimentReport?: () => void | Promise<void>;
+  onEnableCustomerComplaint?: () => void | Promise<void>;
   disabled?: boolean;
   className?: string;
 }
@@ -55,6 +58,12 @@ const HELP_ITEMS = [
     desc: '根据上下文自动生成实验报告',
     color: 'text-cyan-400',
   },
+  {
+    icon: MessageSquareWarning,
+    name: '客诉问题',
+    desc: '基于知识库分析客户投诉并给出处置建议',
+    color: 'text-rose-400',
+  },
 ];
 
 export function ModeToggleButtons({
@@ -62,26 +71,54 @@ export function ModeToggleButtons({
   agentMod,
   projectCompliance,
   experimentReport,
+  customerComplaint,
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
   onEnableProjectCompliance,
   onEnableExperimentReport,
+  onEnableCustomerComplaint,
   disabled,
   className,
 }: ModeToggleButtonsProps) {
   const [showHelp, setShowHelp] = React.useState(false);
 
   const isMultiKbMode =
-    !reasoning && !agentMod && !projectCompliance && !experimentReport;
+    !reasoning &&
+    !agentMod &&
+    !projectCompliance &&
+    !experimentReport &&
+    !customerComplaint;
   const isDeepReasoningMode =
-    reasoning && !agentMod && !projectCompliance && !experimentReport;
+    reasoning &&
+    !agentMod &&
+    !projectCompliance &&
+    !experimentReport &&
+    !customerComplaint;
   const isAgentMode =
-    !reasoning && agentMod && !projectCompliance && !experimentReport;
+    !reasoning &&
+    agentMod &&
+    !projectCompliance &&
+    !experimentReport &&
+    !customerComplaint;
   const isProjectComplianceMode =
-    !reasoning && !agentMod && projectCompliance && !experimentReport;
+    !reasoning &&
+    !agentMod &&
+    projectCompliance &&
+    !experimentReport &&
+    !customerComplaint;
   const isExperimentReportMode =
-    !reasoning && !agentMod && !projectCompliance && experimentReport;
+    !reasoning &&
+    !agentMod &&
+    !projectCompliance &&
+    experimentReport &&
+    !customerComplaint;
+  const isCustomerComplaintMode =
+    !reasoning &&
+    !agentMod &&
+    !projectCompliance &&
+    !experimentReport &&
+    customerComplaint;
 
   const stop = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -191,6 +228,22 @@ export function ModeToggleButtons({
       >
         <FileText className="h-4 w-4 shrink-0" />
         实验报告
+      </Button>
+
+      <Button
+        type="button"
+        title="基于知识库分析客户投诉"
+        size="sm"
+        variant="outline"
+        onClick={(e) => {
+          stop(e);
+          onEnableCustomerComplaint?.();
+        }}
+        disabled={disabled}
+        className={cn(baseBtn, isCustomerComplaintMode && activeBtn)}
+      >
+        <MessageSquareWarning className="h-4 w-4 shrink-0" />
+        客诉问题
       </Button>
 
       {/* 帮助 */}

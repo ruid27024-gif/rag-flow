@@ -12,6 +12,9 @@ export interface PromptConfig {
   refine_multiturn: boolean;
   use_kg: boolean;
   reasoning?: boolean;
+  project_compliance?: boolean;
+  experiment_report?: boolean;
+  customer_complaint?: boolean;
   cross_languages?: Array<string>;
 }
 

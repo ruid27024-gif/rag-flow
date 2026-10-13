@@ -38,6 +38,7 @@ export function useChatSettingSchema() {
     agent_mod: z.boolean().optional().default(false),
     project_compliance: z.boolean().optional().default(false),
     experiment_report: z.boolean().optional().default(false),
+    customer_complaint: z.boolean().optional().default(false),
     cross_languages: z.array(z.string()).optional(),
     toc_enhance: z.boolean().optional(),
   });

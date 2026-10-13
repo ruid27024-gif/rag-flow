@@ -48,9 +48,19 @@ import { message } from 'antd';
 // console.log('WorkspacePanel =', WorkspacePanel);
 import { DocPreviewer } from '@/components/document-preview/doc-preview';
 import { getAuthorization } from '@/utils/authorization-util';
-import { ChevronLeft, Download, Eye, Loader2, X } from 'lucide-react';
+import {
+  ChevronLeft,
+  Download,
+  Eye,
+  File, // 👈 新增：表格
+  FileArchive, // 已有：文本类
+  FileImage, // 👈 新增：图片
+  FileSpreadsheet, // 👈 新增：通用文件
+  FileText,
+  Loader2,
+  X,
+} from 'lucide-react';
 import * as React from 'react';
-import SkillPage from './skill-page';
 
 export default function Chat() {
   // 来源列表
@@ -82,7 +92,7 @@ export default function Chat() {
       setWorkspaceVisible(false);
     }
   }, [settingVisible]);
-  const [showSkillPage, setShowSkillPage] = useState(false);
+
   // 打开工作区：关掉其它右侧面板
   const openWorkspace = useCallback(() => {
     setWorkspaceVisible(true);
@@ -91,7 +101,6 @@ export default function Chat() {
     setSourcePreviewVisible(false);
     setSourcePreviewDocumentId('');
     setSourcePreviewChunk(null);
-    setShowSkillPage(false);
 
     if (settingVisible) {
       switchSettingVisible();
@@ -114,7 +123,6 @@ export default function Chat() {
       setSourcePreviewDocumentId('');
       setSourcePreviewChunk(null);
       setWorkspaceVisible(false);
-      setShowSkillPage(false);
 
       // 打开来源列表时，关闭设置面板
       if (settingVisible) {
@@ -139,7 +147,6 @@ export default function Chat() {
       // 打开高亮预览后关闭来源列表
       setReferenceVisible(false);
       setWorkspaceVisible(false);
-      setShowSkillPage(false);
 
       // 打开高亮预览时，关闭设置面板
       if (settingVisible) {
@@ -263,6 +270,7 @@ export default function Chat() {
         agent_mod: false,
         project_compliance: false,
         experiment_report: false,
+        customer_complaint: false,
         cross_languages: [],
         toc_enhance: false,
       },
@@ -328,7 +336,7 @@ export default function Chat() {
       options, // 透传给 setDialog
     );
 
-    if (result !== 0) return;
+    if (result !== 0) return result;
 
     const { data: latestData } = await refetch();
     if (latestData && !isEmpty(latestData)) {
@@ -337,6 +345,10 @@ export default function Chat() {
       );
       form.reset({
         ...latestData,
+        prompt_config: {
+          ...latestData.prompt_config,
+          ...values.prompt_config,
+        },
         ...llmSettingEnabledValues,
       } as FormSchemaType);
     }
@@ -345,6 +357,8 @@ export default function Chat() {
     if (settingVisible) {
       switchSettingVisible();
     }
+
+    return result;
   }
 
   // ===================== 全局自动保存 =====================
@@ -395,6 +409,7 @@ export default function Chat() {
   const agentMod = !!form.watch('prompt_config.agent_mod');
   const projectCompliance = !!form.watch('prompt_config.project_compliance');
   const experimentReport = !!form.watch('prompt_config.experiment_report');
+  const customerComplaint = !!form.watch('prompt_config.customer_complaint');
 
   const setMode = useCallback(
     async (
@@ -402,6 +417,7 @@ export default function Chat() {
       nextAgentMod: boolean,
       nextProjectCompliance: boolean,
       nextExperimentReport: boolean,
+      nextCustomerComplaint: boolean,
     ) => {
       const values = form.getValues();
 
@@ -411,6 +427,7 @@ export default function Chat() {
         agent_mod: nextAgentMod,
         project_compliance: nextProjectCompliance,
         experiment_report: nextExperimentReport,
+        customer_complaint: nextCustomerComplaint,
       };
 
       const currentPromptConfig = values.prompt_config;
@@ -419,7 +436,8 @@ export default function Chat() {
         !!currentPromptConfig.reasoning === nextReasoning &&
         !!currentPromptConfig.agent_mod === nextAgentMod &&
         !!currentPromptConfig.project_compliance === nextProjectCompliance &&
-        !!currentPromptConfig.experiment_report === nextExperimentReport
+        !!currentPromptConfig.experiment_report === nextExperimentReport &&
+        !!currentPromptConfig.customer_complaint === nextCustomerComplaint
       ) {
         return;
       }
@@ -448,6 +466,12 @@ export default function Chat() {
         shouldValidate: true,
       });
 
+      form.setValue('prompt_config.customer_complaint', nextCustomerComplaint, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+
       const success = await onSubmit(
         {
           ...values,
@@ -464,23 +488,27 @@ export default function Chat() {
   );
 
   const onEnableDeepReasoning = useCallback(() => {
-    return setMode(true, false, false, false);
+    return setMode(true, false, false, false, false);
   }, [setMode]);
 
   const onEnableMultiKbReasoning = useCallback(() => {
-    return setMode(false, false, false, false);
+    return setMode(false, false, false, false, false);
   }, [setMode]);
 
   const onEnableAgent = useCallback(() => {
-    return setMode(false, true, false, false);
+    return setMode(false, true, false, false, false);
   }, [setMode]);
 
   const onEnableProjectCompliance = useCallback(() => {
-    return setMode(false, false, true, false);
+    return setMode(false, false, true, false, false);
   }, [setMode]);
 
   const onEnableExperimentReport = useCallback(() => {
-    return setMode(false, false, false, true);
+    return setMode(false, false, false, true, false);
+  }, [setMode]);
+
+  const onEnableCustomerComplaint = useCallback(() => {
+    return setMode(false, false, false, false, true);
   }, [setMode]);
 
   function onInvalid(errors: any) {
@@ -544,7 +572,6 @@ export default function Chat() {
 
   const handleSessionClick: typeof handleConversationCardClick = useCallback(
     (conversationId, isNew) => {
-      setShowSkillPage(false);
       handleConversationCardClick(conversationId, isNew);
       fetchConversation(conversationId, isNew);
     },
@@ -608,104 +635,88 @@ export default function Chat() {
   }
 
   const [isWelcomePage, setIsWelcomePage] = useState(false);
-  const effectiveWelcome = isWelcomePage && !showSkillPage;
+  // 👇 新增：侧边栏已激活的技能
+  const [activeSkills, setActiveSkills] = useState<SkillItem[]>([]);
+  const [activeSkillId, setActiveSkillId] = useState<string | null>(null);
 
-  const openSkillPage = useCallback(() => {
-    setShowSkillPage(true);
+  // 👇 新增：子组件往上传的加技能回调
+  const handleAddSkillToSidebar = (skill: SkillItem) => {
+    setActiveSkills((prev) =>
+      prev.find((s) => s.id === skill.id) ? prev : [...prev, skill],
+    );
+  };
 
-    // 关掉其它右侧面板，避免重叠
-    setReferenceVisible(false);
-    setSourcePreviewVisible(false);
-    setSourcePreviewDocumentId('');
-    setSourcePreviewChunk(null);
-    setWorkspaceVisible(false);
-
-    if (settingVisible) {
-      switchSettingVisible();
-    }
-  }, [settingVisible, switchSettingVisible]);
-
-  const closeSkillPage = useCallback(() => {
-    setShowSkillPage(false);
-  }, []);
+  // 👇 新增：从侧边栏移除
+  const handleRemoveSkill = (skillId: string) => {
+    setActiveSkills((prev) => prev.filter((s) => s.id !== skillId));
+    setActiveSkillId((cur) => (cur === skillId ? null : cur));
+  };
 
   return (
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-        className="flex h-full flex-col -mt-2 -mb-4"
+        className="h-full flex flex-col pr-5"
       >
-        {/* 最外层：左侧会话栏 + 右侧区域 */}
-        <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          {/* 左侧会话列表：始终保留 */}
+        {/* <div className="flex flex-1 min-h-0 pb-1 overflow-hidden"> */}
+        <div className="relative flex flex-1 min-h-0 pb-1 overflow-hidden">
+          {/* <div
+  className="
+    relative flex flex-1 min-h-0 pb-1 overflow-hidden
+    bg-[#F5FAFF]
+    bg-[radial-gradient(ellipse_48%_105%_at_52%_62%,rgba(143,174,225,0.68)_0%,rgba(170,195,235,0.48)_38%,rgba(220,232,248,0.25)_68%,rgba(247,251,255,0)_100%),radial-gradient(ellipse_34%_75%_at_83%_10%,rgba(132,162,215,0.58)_0%,rgba(180,201,235,0.35)_42%,rgba(241,247,254,0)_100%),radial-gradient(ellipse_30%_100%_at_13%_100%,rgba(220,233,249,0.5)_0%,rgba(245,250,255,0)_100%),repeating-linear-gradient(to_right,transparent_0,transparent_98px,rgba(119,151,199,0.12)_99px,transparent_100px),repeating-linear-gradient(to_bottom,transparent_0,transparent_98px,rgba(119,151,199,0.1)_99px,transparent_100px)]
+    dark:bg-none dark:bg-transparent
+  "
+> */}
+          {/* 左侧会话列表：自己内部滚动 */}
           <Sessions
             hasSingleChatBox={hasSingleChatBox}
             handleConversationCardClick={handleSessionClick}
             switchSettingVisible={openChatSettings}
-            isWelcomePage={effectiveWelcome}
-            agentMod={agentMod}
-            onOpenSkill={openSkillPage}
-            onExitSkill={closeSkillPage}
-            skillActive={showSkillPage}
+            isWelcomePage={isWelcomePage} // 👈 传给 Sessions
           />
 
-          {/* 右侧区域 */}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            {/* 顶部知识库选择区域 */}
-            <div
-              className={cn(
-                'flex shrink-0 items-center bg-transparent px-5 py-0',
-                workspaceVisible ||
-                  sourcePreviewVisible ||
-                  settingVisible ||
-                  referenceVisible ||
-                  showSkillPage
-                  ? 'hidden'
-                  : 'mt-2',
-              )}
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex flex-col flex-1 min-w-0 h-full min-h-0 overflow-hidden">
+            <div className="shrink-0 flex items-center px-5 py-0 mt-2 bg-transparent">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
                 <div
                   className={cn('flex items-center gap-1', {
                     hidden:
                       settingVisible ||
                       referenceVisible ||
                       sourcePreviewVisible ||
-                      workspaceVisible ||
-                      showSkillPage,
+                      workspaceVisible,
                   })}
                 >
-                  <KnowledgeBaseFormField
-                    hideLabel
-                    onChange={async (kbIds) => {
-                      const values = form.getValues();
+                  <div className="w-auto">
+                    <KnowledgeBaseFormField
+                      hideLabel
+                      onChange={async (kbIds) => {
+                        const values = form.getValues();
+                        await onSubmit(
+                          { ...values, kb_ids: kbIds },
+                          { silent: true },
+                        );
+                      }}
+                    />
+                  </div>
 
-                      await onSubmit(
-                        {
-                          ...values,
-                          kb_ids: kbIds,
-                        },
-                        { silent: true },
-                      );
-                    }}
-                  />
+                  {/* ❌ SavingButton 已删除 */}
                 </div>
               </div>
             </div>
 
-            {/* 右侧主内容：必须是横向 flex */}
-            <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
-              {/* 聊天区域 */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
               <div
                 id="chat-main-content"
                 className={cn(
-                  'relative min-h-0 min-w-0 overflow-hidden',
+                  'min-w-0 min-h-0 overflow-hidden',
+                  // ✅ 打开工作区时，主内容区占 2/3
                   sourcePreviewVisible || workspaceVisible
-                    ? 'w-1/2 shrink-0'
+                    ? 'basis-1/2 w-1/2 flex-none' // 👈 从 1/2 改为 2/3
                     : 'flex-1',
                 )}
               >
-                {/* 聊天组件始终挂载 */}
                 <SingleChatBox
                   controller={controller}
                   stopOutputMessage={stopOutputMessage}
@@ -716,75 +727,59 @@ export default function Chat() {
                   agentMod={agentMod}
                   projectCompliance={projectCompliance}
                   experimentReport={experimentReport}
+                  customerComplaint={customerComplaint}
                   onEnableDeepReasoning={onEnableDeepReasoning}
                   onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                   onEnableAgent={onEnableAgent}
                   onEnableProjectCompliance={onEnableProjectCompliance}
                   onEnableExperimentReport={onEnableExperimentReport}
+                  onEnableCustomerComplaint={onEnableCustomerComplaint}
                   refreshConversation={refreshCurrentConversation}
+                  // ✅ 新增：点「工作区」按钮时触发
                   onOpenWorkspace={openWorkspace}
-                  onWelcomePageChange={setIsWelcomePage}
+                  onWelcomePageChange={setIsWelcomePage} // 👈 新增
                   isWorkspaceOpen={workspaceVisible}
-                  forceHideWelcome={showSkillPage}
-                  onClickSkill={openSkillPage}
-                  onSelectSkill={(skill) => {
-                    console.log('selected skill:', skill);
-                  }}
+                  // 👇 新增
+                  activeSkills={activeSkills}
+                  onAddSkillToSidebar={handleAddSkillToSidebar}
                 />
-
-                {/* 重点：技能页展示区域，不能删 */}
-                {showSkillPage && (
-                  <div
-                    className="
-                    absolute inset-0 z-30
-                    overflow-hidden
-                    bg-white
-                    dark:bg-slate-950
-                  "
-                  >
-                    <SkillPage />
-                  </div>
-                )}
               </div>
 
-              {/* 溯源高亮预览 */}
               <SourcePreviewPanel
-                className={cn('h-full min-h-0 min-w-0 w-1/2 shrink-0', {
-                  hidden: !sourcePreviewVisible,
-                })}
+                className={cn(
+                  'h-full min-h-0 min-w-0 flex-none basis-1/2 w-1/2',
+                  { hidden: !sourcePreviewVisible },
+                )}
                 documentId={sourcePreviewDocumentId}
                 chunk={sourcePreviewChunk}
                 visible={sourcePreviewVisible}
                 onClose={closeSourcePreviewPanel}
               />
 
-              {/* 工作区：和聊天区域左右各占一半 */}
+              {/* ✅ 工作区面板 */}
               <WorkspacePanel
-                className={cn('h-full min-h-0 min-w-0 w-1/2 shrink-0', {
-                  hidden: !workspaceVisible,
-                })}
+                className={cn(
+                  'h-full min-h-0 min-w-0 flex-none basis-1/2 w-1/2', // 👈 从 1/2 改为 1/3
+                  { hidden: !workspaceVisible },
+                )}
                 visible={workspaceVisible}
                 onClose={closeWorkspace}
-                dialogId={id}
+                dialogId={id!}
                 conversationId={conversationId}
-                isWelcomePage={effectiveWelcome}
+                isWelcomePage={isWelcomePage}
               />
 
-              {/* 来源列表 */}
+              {/* 右侧溯源来源列表 */}
               <ReferenceSourcePanel
-                className={cn('h-full shrink-0', {
-                  hidden: !referenceVisible,
-                })}
+                className={cn('shrink-0', { hidden: !referenceVisible })}
                 list={referenceList}
                 onClose={closeReferencePanel}
                 onOpenSourcePreview={openSourcePreviewPanel}
               />
 
-              {/* 设置面板 */}
+              {/* 右侧设置面板 */}
               <ChatSettings
-                className={cn('h-full shrink-0', {
-                  hidden: !settingVisible,
-                })}
+                className={cn('shrink-0', { hidden: !settingVisible })}
                 switchSettingVisible={switchSettingVisible}
                 onSubmit={form.handleSubmit(onSubmit, onInvalid)}
                 loading={loading}
@@ -793,7 +788,6 @@ export default function Chat() {
           </div>
         </div>
 
-        {/* 嵌入弹窗 */}
         {embedVisible && (
           <EmbedDialog
             visible={embedVisible}
@@ -805,7 +799,6 @@ export default function Chat() {
           />
         )}
 
-        {/* PDF 弹窗 */}
         {visible && (
           <PdfSheet
             visible={visible}
@@ -1383,7 +1376,7 @@ const WorkspacePanel: React.FC<{
           },
         );
         const result = await res.json();
-        const list = Array.isArray(result) ? result : result.data ?? [];
+        const list = Array.isArray(result) ? result : (result.data ?? []);
         if (!cancelled) setFiles(list);
       } catch (err) {
         console.error('拉取工作区文件失败', err);
@@ -1455,6 +1448,25 @@ const WorkspacePanel: React.FC<{
       message.error('下载失败');
     }
   };
+  // 根据文件名后缀返回对应图标
+  const getFileIcon = (name: string) => {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    const cls = 'shrink-0 text-slate-400';
+
+    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+      return <FileImage size={16} className={cls} />;
+    }
+    if (['xls', 'xlsx', 'csv'].includes(ext)) {
+      return <FileSpreadsheet size={16} className={cls} />;
+    }
+    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+      return <FileArchive size={16} className={cls} />;
+    }
+    if (['txt', 'md', 'doc', 'docx', 'pdf', 'ppt', 'pptx'].includes(ext)) {
+      return <FileText size={16} className={cls} />;
+    }
+    return <File size={16} className={cls} />;
+  };
 
   return (
     <>
@@ -1504,43 +1516,14 @@ const WorkspacePanel: React.FC<{
         .workspace-docx-preview hr { border: none; border-top: 1px solid #d0d7de; margin: 16px 0; }
         .workspace-docx-preview strong { font-weight: 700; }
         .workspace-docx-preview em { font-style: italic; }
-        /* ============ 暗色模式适配 ============ */
-        .dark .workspace-docx-preview {
-          color: #e5e7eb;
-        }
-        .dark .workspace-docx-preview h1,
-        .dark .workspace-docx-preview h2,
-        .dark .workspace-docx-preview h3,
-        .dark .workspace-docx-preview h4,
-        .dark .workspace-docx-preview strong {
-          color: #f3f4f6;
-        }
-        .dark .workspace-docx-preview th,
-        .dark .workspace-docx-preview td {
-          border-color: #374151;
-        }
-        .dark .workspace-docx-preview th {
-          background: #1f2937;
-          color: #e5e7eb;
-        }
-        .dark .workspace-docx-preview tr:nth-child(even) td {
-          background: #111827;
-        }
-        .dark .workspace-docx-preview blockquote {
-          border-left-color: #374151;
-          color: #9ca3af;
-        }
-        .dark .workspace-docx-preview hr {
-          border-top-color: #374151;
-        }
       `}</style>
-      <div className={cn('h-full min-h-0 w-full', className)}>
+      <div className={cn('h-full min-h-0 p-2', className)}>
         <div
           className={cn(
-            'flex h-full min-h-0 w-full flex-col overflow-hidden border-t',
+            'flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border',
             isWelcomePage
-              ? 'border-[#8FC0E0]/40 dark:border-[#2F4A66]/60 bg-white dark:bg-transparent'
-              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent',
+              ? 'border-[#8FC0E0]/40 dark:border-[#2F4A66]/60 bg-white dark:bg-[#0F2030]'
+              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900',
           )}
         >
           {/* ============ 头部 ============ */}
@@ -1602,8 +1585,8 @@ const WorkspacePanel: React.FC<{
 
           {/* ============ 内容：列表 or 预览 ============ */}
           {previewFile ? (
-            <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-transparent">
-              <div className="w-full px-4 py-3">
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-200 dark:bg-slate-950">
+              <div className="mx-auto my-4 max-w-[880px] rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900">
                 <DocPreviewer
                   url={previewFile._url}
                   className="
@@ -1622,7 +1605,7 @@ const WorkspacePanel: React.FC<{
             </div>
           ) : (
             // 列表
-            <div className="flex-1 overflow-auto py-1">
+            <div className="flex-1 overflow-auto p-3">
               {loading ? (
                 <div className="flex items-center justify-center py-8 text-slate-400">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1639,7 +1622,7 @@ const WorkspacePanel: React.FC<{
                       key={file.id}
                       onClick={() => handlePreviewFile(file)}
                       className="
-    group flex cursor-pointer items-center gap-3 px-2.5 py-2
+    group flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2
     border-b border-slate-100 last:border-b-0
     dark:border-slate-800
     transition-colors hover:bg-slate-100 dark:hover:bg-slate-800

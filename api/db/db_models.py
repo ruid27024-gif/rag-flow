@@ -922,7 +922,14 @@ class Dialog(DataBaseModel):
     prompt_type = CharField(max_length=16, null=False, default="simple", help_text="simple|advanced", index=True)
     prompt_config = JSONField(
         null=False,
-        default={"system": "", "prologue": "Hi! I'm your assistant. What can I do for you?", "parameters": [], "empty_response": "Sorry! No relevant content was found in the knowledge base!","agent_mod": False},
+        default={
+            "system": "",
+            "prologue": "Hi! I'm your assistant. What can I do for you?",
+            "parameters": [],
+            "empty_response": "Sorry! No relevant content was found in the knowledge base!",
+            "agent_mod": False,
+            "customer_complaint": False,
+        },
     )
     meta_data_filter = JSONField(null=True, default={})
 
@@ -1491,9 +1498,6 @@ class RoleUser(DataBaseModel):
 
     class Meta:
         db_table = "role_user"
-        indexes = (
-            (('user_id',), True),
-        )
 
 
 class KnowledgeTagType(DataBaseModel):
@@ -1662,9 +1666,6 @@ class StagedFileApprovalRequest(DataBaseModel):
 
     class Meta:
         table_name = "staged_file_approval_request"
-        indexes = (
-            (("batch_id",), False),
-        )
 
 # RAGFlow 审批明细表 StagedFileApprovalTask 审批任务表 StagedFileApprovalTask 每个审批人一条记录。
 class StagedFileApprovalTask(DataBaseModel):
@@ -1723,9 +1724,6 @@ class OAApprovalRequest(DataBaseModel):
 
     class Meta:
         table_name = "oa_approval_request"
-        indexes = (
-            (("batch_id",), False),
-        )
 
 # OA 审批任务表 OAApprovalTask 关联到具体的审批人员
 class OAApprovalTask(DataBaseModel):

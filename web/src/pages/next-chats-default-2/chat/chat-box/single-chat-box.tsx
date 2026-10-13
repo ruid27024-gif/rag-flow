@@ -39,11 +39,13 @@ interface IProps {
   agentMod: boolean;
   projectCompliance?: boolean;
   experimentReport?: boolean;
+  customerComplaint?: boolean;
   onEnableDeepReasoning?: () => void;
   onEnableMultiKbReasoning?: () => void;
   onEnableAgent?: () => void;
   onEnableProjectCompliance?: () => void | Promise<void>;
   onEnableExperimentReport?: () => void | Promise<void>;
+  onEnableCustomerComplaint?: () => void | Promise<void>;
   refreshConversation?: () => Promise<any>;
   onOpenWorkspace?: () => void;
 }
@@ -58,11 +60,13 @@ export function SingleChatBox({
   agentMod,
   projectCompliance,
   experimentReport,
+  customerComplaint,
   onEnableDeepReasoning,
   onEnableMultiKbReasoning,
   onEnableAgent,
   onEnableProjectCompliance,
   onEnableExperimentReport,
+  onEnableCustomerComplaint,
   refreshConversation,
   onOpenWorkspace,
 }: IProps) {
@@ -125,7 +129,7 @@ export function SingleChatBox({
         credentials: 'include',
       });
       const result = await res.json();
-      const list = Array.isArray(result) ? result : result.data ?? [];
+      const list = Array.isArray(result) ? result : (result.data ?? []);
 
       setComplianceTemplates(
         list.map((item: any) => ({
@@ -479,6 +483,7 @@ export function SingleChatBox({
       agentMod={agentMod}
       projectCompliance={projectCompliance}
       experimentReport={experimentReport}
+      customerComplaint={customerComplaint}
       // onResetMode={onEnableMultiKbReasoning}
       onClickComplianceFolder={handleOpenComplianceFolder}
       // ✅ 小面板要展示的数据
@@ -623,11 +628,13 @@ export function SingleChatBox({
                 agentMod={agentMod}
                 projectCompliance={projectCompliance}
                 experimentReport={experimentReport}
+                customerComplaint={customerComplaint}
                 onEnableDeepReasoning={onEnableDeepReasoning}
                 onEnableMultiKbReasoning={onEnableMultiKbReasoning}
                 onEnableAgent={onEnableAgent}
                 onEnableProjectCompliance={onEnableProjectCompliance}
                 onEnableExperimentReport={onEnableExperimentReport}
+                onEnableCustomerComplaint={onEnableCustomerComplaint}
                 disabled={disabled || sendLoading || isUploading}
                 className="mt-5 justify-center"
               />
